@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 用户表
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  email     String   @unique
+  name      String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  customers Customer[]
+  sales     Sale[]
+  projects  Project[]
+  contracts Contract[]
+}
+
+// 客户表
+model Customer {
+  id          Int      @id @default(autoincrement())
+  name        String   // 客户名称
+  companyName String?  // 公司名称
+  phone       String?  // 电话
+  email       String?  // 邮箱
+  address     String?  // 地址
+  status      CustomerStatus @default(ACTIVE)
+  notes       String?  // 备注
+  ownerId     Int      // 负责人ID
+  owner       User     @relation(fields: [ownerId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  sales       Sale[]
+  projects    Project[]
+  contracts   Contract[]
+}
+
+// 销售记录表
+model Sale {
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id])
+  type        SaleType // IN: 收入, OUT: 支出
+  amount      Decimal  @db.Decimal(12, 2)
+  description String?  // 描述
+  date        DateTime // 销售日期
+  ownerId     Int      // 负责人ID
+  owner       User     @relation(fields: [ownerId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 项目表
+model Project {
+  id          Int      @id @default(autoincrement())
+  name        String   // 项目名称
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id])
+  status      ProjectStatus @default(PENDING)
+  budget      Decimal? @db.Decimal(12, 2) // 预算
+  startDate   DateTime?
+  endDate     DateTime?
+  description String?
+  ownerId     Int
+  owner       User     @relation(fields: [ownerId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  contracts   Contract[]
+}
+
+// 合同表
+model Contract {
+  id          Int      @id @default(autoincrement())
+  name        String   // 合同名称
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id])
+  projectId   Int?
+  project     Project? @relation(fields: [projectId], references: [id])
+  amount      Decimal  @db.Decimal(12, 2) // 合同金额
+  signDate    DateTime? // 签订日期
+  startDate   DateTime?
+  endDate     DateTime?
+  status      ContractStatus @default(DRAFT)
+  content     String?  // 合同内容/条款
+  ownerId     Int
+  owner       User     @relation(fields: [ownerId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 枚举类型
+enum Role {
+  ADMIN
+  MANAGER
+  USER
+}
+
+enum CustomerStatus {
+  ACTIVE    // 活跃
+  INACTIVE  // 不活跃
+  POTENTIAL // 潜在客户
+}
+
+enum SaleType {
+  IN   // 收入
+  OUT  // 支出
+}
+
+enum ProjectStatus {
+  PENDING     // 待开始
+  IN_PROGRESS // 进行中
+  COMPLETED   // 已完成
+  CANCELLED   // 已取消
+}
+
+enum ContractStatus {
+  DRAFT      // 草稿
+  PENDING    // 待审批
+  ACTIVE     // 生效中
+  EXPIRED    // 已过期
+  CANCELLED  // 已取消
+}

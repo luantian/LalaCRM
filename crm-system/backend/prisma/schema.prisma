@@ -1,0 +1,1513 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 用户表
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  email     String   @unique
+  name      String
+  role      Role     @default(USER)  // 保留枚举用于向后兼容
+  roleId    Int?                     // 新增：关联角色表
+  roleRef   RoleModel? @relation(fields: [roleId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deptId    Int?     // 所属部门
+  dept      Department? @relation(fields: [deptId], references: [id])
+  customers Customer[]
+  sales     Sale[]
+  followUps CustomerFollowUp[] // 客户跟进
+  projects  Project[]
+  contracts Contract[]
+  businessTrips BusinessTrip[]
+  expenses  Expense[]
+  opportunities Opportunity[]          // 负责的商机
+  opportunityTeam  OpportunityTeamMember[] // 参与的商机团队
+  opportunityRecords OpportunityRecord[] // 商机信息记录
+  dailyReports DailyReport[]           // 工作日报
+  reportComments DailyReportComment[]  // 日报评论
+  reportTemplates DailyReportTemplate[] // 日报模板
+  weeklyReports WeeklyReport[]         // 周报
+  monthlyReports MonthlyReport[]       // 月报
+  reportReminders DailyReportReminder[] // 日报提醒设置
+  reportFavorites DailyReportFavorite[] // 日报收藏
+  reportVisibility DailyReportVisibility[] // 日报可见性设置
+  userRoles    UserRole[]              // 用户-角色关联（多角色支持）
+  projectNotes ProjectNote[]           // 项目备注
+  projectVersions ProjectVersion[]     // 项目版本
+  invoices     Invoice[]               // 发票
+  projectTeams ProjectTeamMember[]     // 项目团队成员
+  quotations   Quotation[]             // 报价单
+  checkIns     DailyCheckIn[]          // 每日打卡
+  assignedTasks   Task[] @relation("TaskAssigner") // 我委派的任务
+  receivedTasks   Task[] @relation("TaskAssignees") // 我被委派的任务
+  notifications   Notification[] // 我的通知
+}
+
+// 角色表
+model RoleModel {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique  // 角色名称（如：PROJECT_MANAGER）
+  displayName String             // 显示名称（如：项目经理）
+  description String             // 角色描述
+  permissions String[]           // 权限列表 - 兼容旧逻辑
+  dataScope   DataScope @default(ALL) // 数据权限范围
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+  userRoles   UserRole[] // 用户-角色关联（多角色支持）
+  roleMenus   RoleMenu[] // 角色-菜单关联
+}
+
+// 菜单表（若依模式：菜单即权限）
+model MenuItem {
+  id           Int       @id @default(autoincrement())
+  key          String    @unique  // 菜单标识（如：dashboard）
+  icon         String             // 图标名称
+  label        String             // 菜单名称
+  parentId     Int?               // 父菜单ID
+  parent       MenuItem? @relation("MenuTree", fields: [parentId], references: [id])
+  children     MenuItem[] @relation("MenuTree")
+  order        Int       @default(0)  // 排序
+  isVisible    Boolean   @default(true)  // 是否显示
+  requiredRoles String[]  @default([])  // 所需角色（多选）- 兼容旧逻辑
+  menuType     MenuType  @default(MENU)  // 菜单类型：目录/菜单/按钮
+  perm         String?   // 权限标识（如：system:user:list）
+  path         String?   // 前端路由路径
+  component    String?   // 前端组件路径
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  roleMenus    RoleMenu[] // 角色-菜单关联
+}
+
+// 客户表
+model Customer {
+  id          Int      @id @default(autoincrement())
+  name        String   // 客户名称
+  companyName String?  // 公司名称
+  phone       String?  // 电话
+  email       String?  // 邮箱
+  address     String?  // 地址
+  status      CustomerStatus @default(ACTIVE) // 客户状态
+  notes       String?  // 备注
+  ownerId     Int      // 负责人ID
+  owner       User     @relation(fields: [ownerId], references: [id])
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  sales       Sale[]
+  projects    Project[]
+  contracts   Contract[]
+  businessTrips BusinessTrip[]
+  expenses    Expense[]
+  opportunities Opportunity[] // 商机
+  contacts    CustomerContact[] // 联系人
+  followUps   CustomerFollowUp[] // 跟进记录
+  quotations  Quotation[]        // 报价单
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([createdAt])
+  @@index([name])
+}
+
+// 客户跟进记录
+model CustomerFollowUp {
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id])
+  userId      Int      // 跟进人
+  user        User     @relation(fields: [userId], references: [id])
+  type        FollowUpType // 跟进方式
+  content     String   // 跟进内容
+  nextPlan    String?  // 下次计划
+  nextDate    DateTime? // 下次跟进日期
+  result      String?  // 跟进结果
+  attachments String?  // 附件（JSON数组）
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([userId])
+  @@index([nextDate])
+}
+
+// 销售记录表（增强版）
+model Sale {
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id])
+  projectId   Int?     // 关联项目
+  project     Project? @relation(fields: [projectId], references: [id])
+  contractId  Int?     // 关联合同
+  contract    Contract? @relation(fields: [contractId], references: [id])
+  type        SaleType // IN: 收入, OUT: 支出
+  category    String   // 分类：产品销售、服务收入、出差费、住宿费、交通费、招待费等
+  amount      Decimal  @db.Decimal(12, 2)
+  description String?  // 描述
+  date        DateTime // 销售日期
+  ownerId     Int      // 负责人ID
+  owner       User     @relation(fields: [ownerId], references: [id])
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([type])
+  @@index([date])
+  @@index([ownerId])
+  @@index([createdAt])
+}
+
+// 项目表
+model Project {
+  id              Int      @id @default(autoincrement())
+  name            String   // 项目名称
+  customerId      Int
+  customer        Customer @relation(fields: [customerId], references: [id])
+  status          ProjectStatus @default(PENDING)
+  budget          Decimal? @db.Decimal(12, 2) // 预算
+  progress        Int      @default(0) // 当前进度百分比 0-100
+  startDate       DateTime?
+  endDate         DateTime?
+  acceptanceDate  DateTime? // 调试验收时间
+  description     String?
+  isArchived      Boolean  @default(false) // 是否归档
+  archivedAt      DateTime?                // 归档时间
+  opportunityId   Int?     @unique // 关联的商机（售前转项目）
+  opportunity     Opportunity? @relation(fields: [opportunityId], references: [id])
+  ownerId         Int
+  owner           User     @relation(fields: [ownerId], references: [id])
+  deletedAt       DateTime? // 软删除标记
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  contracts       Contract[]
+  sales           Sale[]
+  businessTrips   BusinessTrip[]
+  expenses        Expense[]
+  files           ProjectFile[]    // 项目文件
+  procurements    Procurement[]    // 采购清单
+  dailyReports    DailyReport[]    // 工作日报
+  reportItems     DailyReportItem[]       // 日报工作条目
+  reportTimeEntries DailyReportTimeEntry[] // 日报工时条目
+  notes           ProjectNote[]    // 项目备注
+  versions        ProjectVersion[] // 版本记录
+  invoices        Invoice[]        // 发票
+  teamMembers     ProjectTeamMember[] // 项目团队成员
+}
+
+// 合同表
+model Contract {
+  id          Int      @id @default(autoincrement())
+  name        String   // 合同名称
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id])
+  projectId   Int?
+  project     Project? @relation(fields: [projectId], references: [id])
+  opportunityId Int?   // 关联商机（售前→合同→项目联动）
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
+  amount      Decimal  @db.Decimal(12, 2) // 合同金额
+  signDate    DateTime? // 签订日期
+  startDate   DateTime?
+  endDate     DateTime?
+  status      ContractStatus @default(DRAFT)
+  content     String?  // 合同内容/条款
+  ownerId     Int
+  owner       User     @relation(fields: [ownerId], references: [id])
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  sales       Sale[]
+  files       ContractFile[] // 合同文件
+  orderItems  ContractOrderItem[]  // 订货明细
+  payments    ContractPayment[]    // 付款记录
+  shipments   ContractShipment[]   // 发货记录
+  procurements Procurement[]       // 关联采购
+  invoices     Invoice[]           // 发票
+
+  @@index([status])
+  @@index([customerId])
+  @@index([projectId])
+  @@index([ownerId])
+  @@index([createdAt])
+}
+
+// 合同文件表
+model ContractFile {
+  id          Int      @id @default(autoincrement())
+  contractId  Int
+  contract    Contract @relation(fields: [contractId], references: [id])
+  fileName    String   // 原始文件名
+  filePath    String   // 文件存储路径
+  fileSize    Int      // 文件大小（字节）
+  fileType    String   // 文件类型（MIME类型）
+  uploadedBy  Int      // 上传人ID
+  deletedAt   DateTime? // 软删除标记
+  uploadedAt  DateTime @default(now()) // 上传时间
+}
+
+// 合同订货明细表
+model ContractOrderItem {
+  id           Int      @id @default(autoincrement())
+  contractId   Int
+  contract     Contract @relation(fields: [contractId], references: [id])
+  productName  String   // 产品/服务名称
+  spec         String?  // 规格型号
+  quantity     Int      // 数量
+  unit         String?  // 单位
+  unitPrice    Decimal  @db.Decimal(12, 2) // 单价
+  totalPrice   Decimal  @db.Decimal(12, 2) // 总价
+  deliveryDate DateTime? // 交货日期
+  contactName  String?  // 联系人姓名
+  contactPhone String?  // 联系人手机号
+  remarks      String?  // 备注
+  deletedAt    DateTime? // 软删除标记
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  files        ContractOrderItemFile[] // 订货明细附件
+}
+
+// 订货明细附件表
+model ContractOrderItemFile {
+  id         Int             @id @default(autoincrement())
+  orderItemId Int
+  orderItem  ContractOrderItem @relation(fields: [orderItemId], references: [id])
+  fileName   String   // 原始文件名
+  filePath   String   // 文件存储路径
+  fileSize   Int      // 文件大小（字节）
+  fileType   String   // 文件类型（MIME类型）
+  uploadedBy Int      // 上传人ID
+  deletedAt  DateTime? // 软删除标记
+  uploadedAt DateTime @default(now()) // 上传时间
+}
+
+// 合同付款记录表
+model ContractPayment {
+  id          Int      @id @default(autoincrement())
+  contractId  Int
+  contract    Contract @relation(fields: [contractId], references: [id])
+  amount      Decimal  @db.Decimal(12, 2) // 付款金额
+  paymentDate DateTime // 付款日期
+  paymentMethod String? // 付款方式（银行转账/支票/现金等）
+  paymentType PaymentType @default(PROGRESS) // 付款类型
+  status      PaymentStatus @default(PENDING) // 付款状态
+  invoiceNo   String?  // 发票号
+  remarks     String?  // 备注
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 合同发货记录表
+model ContractShipment {
+  id          Int      @id @default(autoincrement())
+  contractId  Int
+  contract    Contract @relation(fields: [contractId], references: [id])
+  shipDate    DateTime // 发货日期
+  logisticsNo String?  // 物流单号
+  logisticsCompany String? // 物流公司
+  content     String?  // 发货内容
+  quantity    Int?     // 发货数量
+  status      ShipmentStatus @default(SHIPPED) // 发货状态
+  receiveDate DateTime? // 签收日期
+  receiver    String?  // 签收人
+  remarks     String?  // 备注
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 项目文件表
+model ProjectFile {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  project     Project  @relation(fields: [projectId], references: [id])
+  fileName    String   // 原始文件名
+  filePath    String   // 文件存储路径
+  fileSize    Int      // 文件大小（字节）
+  fileType    String   // 文件类型（MIME类型）
+  phase       ProjectPhase @default(PRE_SALES) // 所属阶段
+  uploadedBy  Int      // 上传人ID
+  deletedAt   DateTime? // 软删除标记
+  uploadedAt  DateTime @default(now()) // 上传时间
+}
+
+// 出差记录表
+model BusinessTrip {
+  id              Int      @id @default(autoincrement())
+  title           String   // 出差标题
+  customerId      Int?
+  customer        Customer? @relation(fields: [customerId], references: [id])
+  projectId       Int?
+  project         Project? @relation(fields: [projectId], references: [id])
+  destination     String   // 目的地
+  purpose         String?  // 出差目的
+  startDate       DateTime // 开始日期
+  endDate         DateTime // 结束日期
+  days            Int      // 出差天数
+  accommodation   Decimal? @db.Decimal(12, 2) // 住宿费
+  transportation  Decimal? @db.Decimal(12, 2) // 交通费
+  meals           Decimal? @db.Decimal(12, 2) // 餐饮费
+  otherExpenses   Decimal? @db.Decimal(12, 2) // 其他费用
+  totalAmount     Decimal  @db.Decimal(12, 2) // 总费用
+  status          TripStatus @default(DRAFT)
+  notes           String?  // 备注
+  ownerId         Int
+  owner           User     @relation(fields: [ownerId], references: [id])
+  deletedAt       DateTime? // 软删除标记
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  expenses        Expense[] // 关联费用报销
+  checkIns        DailyCheckIn[] // 出差期间的自动打卡
+}
+
+// 费用报销表
+model Expense {
+  id          Int      @id @default(autoincrement())
+  title       String   // 报销标题
+  customerId  Int?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  projectId   Int?
+  project     Project? @relation(fields: [projectId], references: [id])
+  category    String   // 费用类别
+  amount      Decimal  @db.Decimal(12, 2) // 金额
+  expenseDate DateTime // 费用发生日期
+  description String?  // 描述
+  receipt     String?  // 发票/凭证
+  status      ExpenseStatus @default(DRAFT)
+  approvedBy  Int?     // 审批人
+  approvedAt  DateTime? // 审批时间
+  assignedTo  Int?     // 报销管理人（指定审批人）
+  tripId      Int?     // 关联出差记录
+  trip        BusinessTrip? @relation(fields: [tripId], references: [id])
+  ownerId     Int
+  owner       User     @relation(fields: [ownerId], references: [id])
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  files       ExpenseFile[] // 报销附件
+}
+
+// 报销附件表
+model ExpenseFile {
+  id          Int      @id @default(autoincrement())
+  expenseId   Int
+  expense     Expense  @relation(fields: [expenseId], references: [id])
+  fileName    String   // 原始文件名
+  filePath    String   // 文件存储路径
+  fileSize    Int      // 文件大小（字节）
+  fileType    String   // 文件类型（MIME类型）
+  uploadedBy  Int      // 上传人ID
+  deletedAt   DateTime? // 软删除标记
+  uploadedAt  DateTime @default(now()) // 上传时间
+}
+
+// ==================== 售前管理/商机 ====================
+
+// 商机表
+model Opportunity {
+  id              Int      @id @default(autoincrement())
+  name            String   // 商机名称
+  customerId      Int
+  customer        Customer @relation(fields: [customerId], references: [id])
+  application     String?  // 应用领域/应用
+  budget          Decimal? @db.Decimal(12, 2) // 预算
+  decisionMaker   String?  // 客户决策人
+  technicalDetail String?  // 项目技术详细信息
+  configSelection String?  // 配置方案选品
+  expectedStart   DateTime? // 预计执行开始时间
+  expectedEnd     DateTime? // 预计执行结束时间
+  competitors     String?  // 竞争对手信息
+  winRate         Int      @default(0) // 预计成单百分比 0-100
+  status          OpportunityStatus @default(OPEN) // 商机状态
+  notes           String?  // 备注
+  ownerId         Int      // 归属销售人员
+  owner           User     @relation(fields: [ownerId], references: [id])
+  deletedAt       DateTime? // 软删除标记
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  teamMembers     OpportunityTeamMember[] // 团队成员
+  files           OpportunityFile[]       // 附件文件
+  records         OpportunityRecord[]     // 信息记录
+  project         Project?                // 转化后的项目
+  quotations      Quotation[]             // 报价单
+  contracts       Contract[]              // 关联合同
+}
+
+// 商机信息记录表
+model OpportunityRecord {
+  id            Int      @id @default(autoincrement())
+  opportunityId Int
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id])
+  userId        Int      // 记录人
+  user          User     @relation(fields: [userId], references: [id])
+  type          String   // 记录类型：note(备注)/call(电话)/meeting(会议)/email(邮件)/visit(拜访)/other(其他)
+  content       String   // 记录内容
+  nextPlan      String?  // 下次计划
+  nextDate      DateTime? // 下次跟进日期
+  deletedAt     DateTime? // 软删除标记
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  files         OpportunityRecordFile[] // 附件
+
+  @@index([opportunityId])
+  @@index([userId])
+  @@index([nextDate])
+}
+
+// 商机信息记录附件表
+model OpportunityRecordFile {
+  id            Int               @id @default(autoincrement())
+  recordId      Int
+  record        OpportunityRecord @relation(fields: [recordId], references: [id])
+  fileName      String
+  filePath      String
+  fileSize      Int
+  fileType      String
+  uploadedBy    Int
+  deletedAt     DateTime?
+  uploadedAt    DateTime          @default(now())
+
+  @@index([recordId])
+}
+
+// 商机团队成员表
+model OpportunityTeamMember {
+  id            Int      @id @default(autoincrement())
+  opportunityId Int
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id])
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id])
+  teamRole      TeamRole // 角色：销售/技术/商务
+  deletedAt     DateTime? // 软删除标记
+  createdAt     DateTime @default(now())
+}
+
+// 商机附件表
+model OpportunityFile {
+  id            Int      @id @default(autoincrement())
+  opportunityId Int
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id])
+  fileName      String
+  filePath      String
+  fileSize      Int
+  fileType      String
+  uploadedBy    Int
+  deletedAt     DateTime? // 软删除标记
+  uploadedAt    DateTime @default(now())
+}
+
+// ==================== 报价单管理（多版本） ====================
+
+// 报价单表
+model Quotation {
+  id              Int              @id @default(autoincrement())
+  name            String                            // 报价单名称
+  version         Int              @default(1)       // 版本号
+  opportunityId   Int                                // 关联商机
+  opportunity     Opportunity      @relation(fields: [opportunityId], references: [id])
+  customerId      Int                                // 关联客户
+  customer        Customer         @relation(fields: [customerId], references: [id])
+  totalAmount     Decimal          @db.Decimal(12,2) // 报价总额
+  status          QuotationStatus  @default(DRAFT)
+  validUntil      DateTime?                          // 报价有效期
+  notes           String?
+  ownerId         Int
+  owner           User             @relation(fields: [ownerId], references: [id])
+  deletedAt       DateTime?         // 软删除标记
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  items           QuotationItem[]
+  files           QuotationFile[]
+
+  @@index([opportunityId])
+  @@index([customerId])
+  @@index([status])
+}
+
+// 报价单明细
+model QuotationItem {
+  id           Int       @id @default(autoincrement())
+  quotationId  Int
+  quotation    Quotation @relation(fields: [quotationId], references: [id])
+  name         String                      // 产品/服务名称
+  description  String?                     // 规格描述
+  quantity     Int
+  unit         String     @default("套")
+  unitPrice    Decimal    @db.Decimal(12,2)
+  totalPrice   Decimal    @db.Decimal(12,2)
+  remarks      String?
+  deletedAt    DateTime?  // 软删除标记
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+// 报价单附件
+model QuotationFile {
+  id           Int       @id @default(autoincrement())
+  quotationId  Int
+  quotation    Quotation @relation(fields: [quotationId], references: [id])
+  fileName     String
+  filePath     String
+  fileSize     Int
+  fileType     String
+  uploadedBy   Int
+  deletedAt    DateTime? // 软删除标记
+  uploadedAt   DateTime  @default(now())
+}
+
+// ==================== 采购管理 ====================
+
+// 采购单表
+model Procurement {
+  id            Int      @id @default(autoincrement())
+  projectId     Int
+  project       Project  @relation(fields: [projectId], references: [id])
+  contractId    Int?     // 关联合同
+  contract      Contract? @relation(fields: [contractId], references: [id])
+  title         String   // 采购标题
+  vendor        String?  // 供应商
+  totalAmount   Decimal? @db.Decimal(12, 2) // 采购总金额
+  expectedDate  DateTime? // 预计到货时间
+  status        ProcurementStatus @default(PLANNED) // 采购状态
+  assignedTo    Int?     // 采购归属人员
+  remarks       String?  // 备注
+  // 采购合同信息（二期扩展）
+  purchaseContractNo    String?     // 采购合同编号
+  purchaseContractDate  DateTime?   // 采购合同签订日期
+  paymentTerms          String?     // 付款条款
+  deliveryTerms         String?     // 交付条款
+  warrantyTerms         String?     // 保修条款
+  deletedAt     DateTime? // 软删除标记
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  items         ProcurementItem[] // 采购明细
+  payments      ProcurementPayment[] // 采购付款记录
+  invoices      Invoice[]         // 发票
+}
+
+// 采购明细表
+model ProcurementItem {
+  id            Int      @id @default(autoincrement())
+  procurementId Int
+  procurement   Procurement @relation(fields: [procurementId], references: [id])
+  name          String   // 设备/材料名称
+  spec          String?  // 规格型号
+  quantity      Int      // 数量
+  unit          String?  // 单位
+  unitPrice     Decimal  @db.Decimal(12, 2) // 单价
+  totalPrice    Decimal  @db.Decimal(12, 2) // 总价
+  remarks       String?  // 备注
+  deletedAt     DateTime? // 软删除标记
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// 采购付款记录表
+model ProcurementPayment {
+  id            Int         @id @default(autoincrement())
+  procurementId Int
+  procurement   Procurement @relation(fields: [procurementId], references: [id])
+  amount        Decimal     @db.Decimal(12, 2) // 付款金额
+  paymentDate   DateTime    // 付款日期
+  paymentMethod String?     // 付款方式（银行转账/支票/现金等）
+  paymentType   PaymentType @default(PROGRESS) // 付款类型：预付款/进度款/尾款/全款
+  status        PaymentStatus @default(PENDING) // 付款状态
+  invoiceNo     String?     // 发票号
+  remarks       String?     // 备注
+  deletedAt     DateTime?   // 软删除标记
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+// ==================== 发票管理 ====================
+
+// 发票表
+model Invoice {
+  id              Int             @id @default(autoincrement())
+  invoiceNo       String                           // 发票号码
+  invoiceType     InvoiceType                      // 进项/出项
+  category        InvoiceCategory @default(VAT_SPECIAL) // 发票类别
+  amount          Decimal         @db.Decimal(12,2) // 不含税金额
+  taxRate         Decimal         @db.Decimal(5,2)  // 税率(%)
+  taxAmount       Decimal         @db.Decimal(12,2) // 税额
+  totalAmount     Decimal         @db.Decimal(12,2) // 价税合计
+  invoiceDate     DateTime?                        // 开票日期
+  status          InvoiceStatus   @default(PENDING) // 发票状态
+
+  // 三维关联：项目+合同+采购
+  projectId       Int?
+  project         Project?        @relation(fields: [projectId], references: [id])
+  contractId      Int?
+  contract        Contract?       @relation(fields: [contractId], references: [id])
+  procurementId   Int?
+  procurement     Procurement?    @relation(fields: [procurementId], references: [id])
+
+  // 对方信息
+  partyName       String?          // 对方单位名称（出项=客户名，进项=供应商名）
+  partyTaxNo      String?          // 对方税号
+
+  // 内部信息
+  ownerId         Int                               // 创建人
+  owner           User            @relation(fields: [ownerId], references: [id])
+  remarks         String?
+
+  // 审计字段
+  deletedAt       DateTime?        // 软删除标记
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  files           InvoiceFile[]
+
+  @@index([projectId])
+  @@index([contractId])
+  @@index([procurementId])
+  @@index([invoiceType])
+  @@index([status])
+  @@index([invoiceDate])
+}
+
+// 发票附件表（发票扫描件等）
+model InvoiceFile {
+  id          Int       @id @default(autoincrement())
+  invoiceId   Int
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id])
+  fileName    String    // 原始文件名
+  filePath    String    // 存储路径
+  fileSize    Int       // 文件大小（字节）
+  fileType    String    // 文件类型（MIME）
+  uploadedBy  Int       // 上传人
+  deletedAt   DateTime? // 软删除标记
+  uploadedAt  DateTime  @default(now())
+
+  @@index([invoiceId])
+}
+
+// ==================== 项目团队管理 ====================
+
+// 项目团队成员表
+model ProjectTeamMember {
+  id             Int          @id @default(autoincrement())
+  projectId      Int
+  project        Project      @relation(fields: [projectId], references: [id])
+  userId         Int
+  user           User         @relation(fields: [userId], references: [id])
+  projectRole    ProjectRole  @default(DEVELOPER) // 项目角色
+  responsibility String?      // 职责描述
+  joinDate       DateTime     @default(now())      // 加入时间
+  leaveDate      DateTime?    // 退出时间
+  deletedAt      DateTime?    // 软删除标记
+  createdAt      DateTime     @default(now())
+
+  @@unique([projectId, userId]) // 同一项目同一人不能重复
+  @@index([projectId])
+  @@index([userId])
+}
+
+// ==================== 工作日报 ====================
+
+// 工作日报表
+model DailyReport {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id])
+  reportDate    DateTime // 日报日期
+  projectId     Int?     // 关联项目
+  project       Project? @relation(fields: [projectId], references: [id])
+  opportunityId Int?     // 关联商机
+  type          DailyReportType @default(WORK) // 日报类型
+  content       String   // 工作内容
+  plan          String?  // 明日计划
+  issues        String?  // 问题与困难
+  hours         Decimal? @db.Decimal(4, 1) // 工作时长（小时）
+  status        ReportStatus @default(DRAFT) // 日报状态
+  rating        Int?     // 评分（1-5星）
+  ratedBy       Int?     // 评分人ID
+  ratedAt       DateTime? // 评分时间
+  deletedAt     DateTime? // 软删除标记
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // 关联
+  comments      DailyReportComment[] // 评论
+  files         DailyReportFile[]    // 附件
+  tags          DailyReportTag[]     // 标签
+  relations     DailyReportRelation[] // 关联对象
+  visibility    DailyReportVisibility[] // 可见性设置
+  favorites     DailyReportFavorite[] // 收藏
+  history       DailyReportHistory[] // 历史记录
+  items         DailyReportItem[]    // 工作条目（结构化内容）
+  timeEntries   DailyReportTimeEntry[] // 工时条目（细化工时）
+
+  @@index([userId])
+  @@index([reportDate])
+  @@index([status])
+}
+
+// 日报工作条目表（结构化内容）
+model DailyReportItem {
+  id          Int      @id @default(autoincrement())
+  reportId    Int
+  report      DailyReport @relation(fields: [reportId], references: [id])
+  projectId   Int?     // 关联项目
+  project     Project? @relation(fields: [projectId], references: [id])
+  title       String   // 工作标题
+  content     String   // 工作内容
+  hours       Decimal? @db.Decimal(4, 1) // 工时（小时）
+  priority    Priority @default(MEDIUM) // 优先级
+  status      WorkStatus @default(COMPLETED) // 完成状态
+  result      String?  // 工作成果
+  startTime   DateTime? // 开始时间
+  endTime     DateTime? // 结束时间
+  timeType    TimeEntryType @default(NORMAL) // 工时类型（正常/加班/请假/其他）
+  order       Int      @default(0) // 排序
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([reportId])
+  @@index([projectId])
+}
+
+// 日报工时条目表（细化工时管理）
+model DailyReportTimeEntry {
+  id          Int      @id @default(autoincrement())
+  reportId    Int
+  report      DailyReport @relation(fields: [reportId], references: [id])
+  projectId   Int?     // 关联项目
+  project     Project? @relation(fields: [projectId], references: [id])
+  description String   // 工作描述
+  hours       Decimal  @db.Decimal(4, 1) // 工时（小时）
+  startTime   DateTime? // 开始时间
+  endTime     DateTime? // 结束时间
+  type        TimeEntryType @default(NORMAL) // 工时类型
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([reportId])
+  @@index([projectId])
+  @@index([type])
+}
+
+// 日报评论表
+model DailyReportComment {
+  id          Int      @id @default(autoincrement())
+  reportId    Int
+  report      DailyReport @relation(fields: [reportId], references: [id])
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  content     String   // 评论内容
+  parentId    Int?     // 父评论ID（用于回复）
+  parent      DailyReportComment? @relation("CommentReplies", fields: [parentId], references: [id])
+  replies     DailyReportComment[] @relation("CommentReplies")
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([reportId])
+  @@index([userId])
+}
+
+// 日报模板表
+model DailyReportTemplate {
+  id          Int      @id @default(autoincrement())
+  name        String   // 模板名称
+  type        DailyReportType // 适用类型
+  content     String   // 模板内容（JSON格式）
+  isPublic    Boolean  @default(false) // 是否公开
+  userId      Int?     // 创建者（null表示系统模板）
+  user        User?    @relation(fields: [userId], references: [id])
+  useCount    Int      @default(0) // 使用次数
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([type])
+  @@index([userId])
+}
+
+// 周报表
+model WeeklyReport {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  weekStart   DateTime // 周开始日期
+  weekEnd     DateTime // 周结束日期
+  summary     String   // 周总结
+  highlights  String?  // 亮点工作
+  issues      String?  // 问题与困难
+  nextWeekPlan String? // 下周计划
+  totalHours  Decimal  @db.Decimal(5, 1) // 总工时
+  reportCount Int      // 日报数量
+  status      ReportStatus @default(DRAFT)
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, weekStart])
+  @@index([userId])
+  @@index([weekStart])
+}
+
+// 月报表
+model MonthlyReport {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  year        Int      // 年份
+  month       Int      // 月份
+  summary     String   // 月总结
+  achievements String? // 主要成就
+  issues      String?  // 问题与困难
+  nextMonthPlan String? // 下月计划
+  totalHours  Decimal  @db.Decimal(6, 1) // 总工时
+  reportCount Int      // 日报数量
+  status      ReportStatus @default(DRAFT)
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, year, month])
+  @@index([userId])
+  @@index([year, month])
+}
+
+// 日报提醒设置表
+model DailyReportReminder {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  reminderTime String  @default("18:00") // 提醒时间（HH:mm）
+  isEnabled   Boolean  @default(true)    // 是否启用
+  lastRemindedAt DateTime? // 最后提醒时间
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId])
+}
+
+// 日报关联对象表
+model DailyReportRelation {
+  id          Int      @id @default(autoincrement())
+  reportId    Int
+  report      DailyReport @relation(fields: [reportId], references: [id])
+  relationType String  // CUSTOMER/PROJECT/CONTRACT/TRIP/OPPORTUNITY
+  relationId  Int      // 关联对象ID
+  createdAt   DateTime @default(now())
+
+  @@unique([reportId, relationType, relationId])
+  @@index([reportId])
+  @@index([relationType, relationId])
+}
+
+// 日报附件表
+model DailyReportFile {
+  id          Int      @id @default(autoincrement())
+  reportId    Int
+  report      DailyReport @relation(fields: [reportId], references: [id])
+  fileName    String   // 原始文件名
+  filePath    String   // 存储路径
+  fileSize    Int      // 文件大小（字节）
+  fileType    String   // 文件类型（MIME）
+  uploadedBy  Int      // 上传人
+  deletedAt   DateTime? // 软删除标记
+  uploadedAt  DateTime @default(now())
+
+  @@index([reportId])
+}
+
+// 标签表
+model Tag {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique // 标签名称
+  color       String?  // 标签颜色
+  useCount    Int      @default(0) // 使用次数
+  createdAt   DateTime @default(now())
+  reportTags  DailyReportTag[] // 日报标签关联
+}
+
+// 日报标签关联表
+model DailyReportTag {
+  id          Int      @id @default(autoincrement())
+  reportId    Int
+  report      DailyReport @relation(fields: [reportId], references: [id])
+  tagId       Int
+  tag         Tag      @relation(fields: [tagId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([reportId, tagId])
+  @@index([reportId])
+  @@index([tagId])
+}
+
+// 日报可见性设置表
+model DailyReportVisibility {
+  id          Int      @id @default(autoincrement())
+  reportId    Int
+  report      DailyReport @relation(fields: [reportId], references: [id])
+  visibilityType String // SELF/MANAGER/DEPARTMENT/CUSTOM
+  userId      Int?     // CUSTOM类型时指定用户
+  user        User?    @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([reportId])
+}
+
+// 日报收藏表
+model DailyReportFavorite {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  reportId    Int
+  report      DailyReport @relation(fields: [reportId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, reportId])
+  @@index([userId])
+}
+
+// 日报历史记录表
+model DailyReportHistory {
+  id          Int      @id @default(autoincrement())
+  reportId    Int
+  report      DailyReport @relation(fields: [reportId], references: [id])
+  version     Int      // 版本号
+  content     String   // 修改后的内容
+  plan        String?
+  issues      String?
+  hours       Decimal?
+  changedBy   Int      // 修改人
+  changedAt   DateTime @default(now())
+  changeReason String? // 修改原因
+
+  @@index([reportId])
+  @@index([version])
+}
+
+// 日报归档表
+model DailyReportArchive {
+  id          Int      @id @default(autoincrement())
+  originalId  Int      // 原日报ID
+  userId      Int
+  reportDate  DateTime
+  type        DailyReportType
+  content     String
+  plan        String?
+  issues      String?
+  hours       Decimal?
+  projectId   Int?
+  status      ReportStatus
+  archivedAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([reportDate])
+}
+
+// 枚举类型
+enum Role {
+  ADMIN              // 管理员
+  PROJECT_DIRECTOR   // 项目总监
+  PROJECT_MANAGER    // 项目经理
+  USER               // 普通用户
+}
+
+enum CustomerStatus {
+  ACTIVE    // 活跃
+  INACTIVE  // 不活跃
+  POTENTIAL // 潜在客户
+}
+
+enum FollowUpType {
+  PHONE       // 电话
+  VISIT       // 拜访
+  EMAIL       // 邮件
+  WECHAT      // 微信
+  MEETING     // 会议
+  DEMO        // 演示
+  OTHER       // 其他
+}
+
+enum SaleType {
+  IN   // 收入
+  OUT  // 支出
+}
+
+enum ProjectStatus {
+  PENDING     // 待开始
+  IN_PROGRESS // 进行中
+  COMPLETED   // 已完成
+  CANCELLED   // 已取消
+}
+
+enum ContractStatus {
+  DRAFT      // 草稿
+  PENDING    // 待审批
+  ACTIVE     // 生效中
+  EXPIRED    // 已过期
+  CANCELLED  // 已取消
+}
+
+enum TripStatus {
+  DRAFT      // 草稿
+  SUBMITTED  // 待审批
+  APPROVED   // 已批准
+  REJECTED   // 已驳回
+  COMPLETED  // 已完成
+}
+
+enum ExpenseStatus {
+  DRAFT      // 草稿
+  SUBMITTED  // 待审批
+  APPROVED   // 已批准
+  REJECTED   // 已拒绝
+  PAID       // 已支付
+}
+
+enum ProjectPhase {
+  PRE_SALES    // 售前阶段
+  IN_PROGRESS  // 执行阶段
+  ACCEPTANCE   // 验收阶段
+}
+
+enum PaymentType {
+  ADVANCE      // 预付款
+  PROGRESS     // 进度款
+  FINAL        // 尾款
+  FULL         // 全款
+}
+
+enum PaymentStatus {
+  PENDING      // 待付款
+  CONFIRMED    // 已确认
+  RECEIVED     // 已到账
+}
+
+enum ShipmentStatus {
+  PENDING      // 待发货
+  SHIPPED      // 已发货
+  IN_TRANSIT   // 运输中
+  DELIVERED    // 已签收
+}
+
+enum OpportunityStatus {
+  OPEN         // 开放
+  QUALIFIED    // 已确认
+  PROPOSAL     // 方案阶段
+  NEGOTIATION  // 谈判中
+  WON          // 赢单
+  LOST         // 丢单
+  CLOSED       // 已关闭
+}
+
+enum TeamRole {
+  SALES        // 销售
+  TECHNICAL    // 技术
+  BUSINESS     // 商务
+}
+
+enum ProcurementStatus {
+  PLANNED      // 计划中
+  ORDERED      // 已下单
+  IN_TRANSIT   // 运输中
+  RECEIVED     // 已到货
+  CANCELLED    // 已取消
+}
+
+enum QuotationStatus {
+  DRAFT      // 草稿
+  SUBMITTED  // 已提交
+  APPROVED   // 已批准
+  REJECTED   // 已拒绝
+  WON        // 中标/成交
+  LOST       // 未中标
+}
+
+enum InvoiceType {
+  INCOME   // 出项发票（开给客户的）
+  EXPENSE  // 进项发票（供应商开给我们的）
+}
+
+enum InvoiceCategory {
+  VAT_SPECIAL     // 增值税专用发票
+  VAT_NORMAL      // 增值税普通发票
+  VAT_ELECTRONIC  // 电子发票
+  RECEIPT         // 收据
+  OTHER           // 其他
+}
+
+enum InvoiceStatus {
+  PENDING    // 待开/待收
+  ISSUED     // 已开/已收
+  CONFIRMED  // 已确认/已认证
+  CANCELLED  // 已作废
+}
+
+enum ProjectRole {
+  MANAGER       // 项目经理
+  DEVELOPER     // 开发工程师
+  TESTER        // 测试工程师
+  TECH_LEAD     // 技术负责人
+  SALES         // 销售
+  BUSINESS      // 商务
+  OTHER         // 其他
+}
+
+enum DailyReportType {
+  WORK         // 日常工作
+  PRE_SALES    // 售前支持
+  PROJECT      // 项目实施
+  MEETING      // 会议
+  TRAINING     // 培训
+  OTHER        // 其他
+}
+
+enum ReportStatus {
+  DRAFT      // 草稿
+  SUBMITTED  // 已提交
+  APPROVED   // 已批准
+  REJECTED   // 已拒绝
+}
+
+enum Priority {
+  LOW        // 低优先级
+  MEDIUM     // 中优先级
+  HIGH       // 高优先级
+  URGENT     // 紧急
+}
+
+enum WorkStatus {
+  COMPLETED    // 已完成
+  IN_PROGRESS  // 进行中
+  DELAYED      // 延期
+  CANCELLED    // 取消
+}
+
+enum TimeEntryType {
+  NORMAL     // 正常工时
+  OVERTIME   // 加班工时
+  LEAVE      // 请假工时
+  OTHER      // 其他
+}
+
+// ==================== 若依RBAC关联表 ====================
+
+// 角色-菜单关联表（角色分配了哪些菜单/按钮权限）
+model RoleMenu {
+  id        Int      @id @default(autoincrement())
+  roleId    Int
+  role      RoleModel @relation(fields: [roleId], references: [id])
+  menuId    Int
+  menu      MenuItem @relation(fields: [menuId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([roleId, menuId]) // 同一角色同一菜单只关联一次
+}
+
+// 用户-角色关联表（支持一个用户多个角色）
+model UserRole {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  roleId    Int
+  role      RoleModel @relation(fields: [roleId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roleId]) // 同一用户同一角色只关联一次
+}
+
+// 菜单类型枚举（若依模式）
+enum MenuType {
+  DIRECTORY  // 目录（文件夹，不直接显示）
+  MENU       // 菜单（页面）
+  BUTTON     // 按钮（权限节点，不显示在菜单中）
+}
+
+// 数据权限范围枚举
+enum DataScope {
+  ALL          // 全部数据
+  DEPARTMENT   // 本部门数据
+  DEPARTMENT_BELOW // 本部门及以下
+  SELF         // 仅本人数据
+  CUSTOM       // 自定义
+}
+
+// ==================== 部门管理 ====================
+
+// 部门表
+model Department {
+  id          Int          @id @default(autoincrement())
+  name        String       // 部门名称
+  parentId    Int?         // 父部门ID
+  parent      Department?  @relation("DeptTree", fields: [parentId], references: [id])
+  children    Department[] @relation("DeptTree")
+  order       Int          @default(0) // 排序
+  leader      String?      // 负责人
+  phone       String?      // 联系电话
+  email       String?      // 邮箱
+  status      DeptStatus   @default(ENABLED)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  users       User[]
+}
+
+// ==================== 操作日志 ====================
+
+// 操作日志表
+model OperationLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int?     // 操作人ID
+  userName    String?  // 操作人姓名
+  module      String   // 操作模块（如：项目管理、客户管理）
+  action      String   // 操作类型（创建/编辑/删除/审批/导出）
+  target      String?  // 操作对象（如：XX项目、XX合同）
+  detail      String?  // 操作详情/变更内容
+  ip          String?  // 操作IP
+  userAgent   String?  // 浏览器信息
+  status      LogStatus @default(SUCCESS)
+  createdAt   DateTime @default(now())
+}
+
+// ==================== 登录日志 ====================
+
+// 登录日志表
+model LoginLog {
+  id          Int         @id @default(autoincrement())
+  userId      Int?        // 用户ID（登录失败时可能为空）
+  username    String      // 用户名
+  ip          String?     // 登录IP
+  location    String?     // 登录地点
+  userAgent   String?     // 浏览器/设备信息
+  os          String?     // 操作系统
+  browser     String?     // 浏览器
+  status      LoginStatus @default(SUCCESS) // 登录状态
+  message     String?     // 提示消息
+  loginTime   DateTime    @default(now())
+}
+
+// ==================== 字典管理 ====================
+
+// 字典类型表
+model DictType {
+  id          Int        @id @default(autoincrement())
+  name        String     @unique // 字典名称（如：项目状态）
+  code        String     @unique // 字典编码（如：project_status）
+  status      DeptStatus @default(ENABLED)
+  remark      String?    // 备注
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  items       DictData[]
+}
+
+// 字典数据表
+model DictData {
+  id          Int        @id @default(autoincrement())
+  dictTypeId  Int
+  dictType    DictType   @relation(fields: [dictTypeId], references: [id])
+  label       String     // 字典标签（如：待开始）
+  value       String     // 字典值（如：PENDING）
+  sort        Int        @default(0) // 排序
+  cssClass    String?    // 样式（如：success, warning）
+  status      DeptStatus @default(ENABLED)
+  remark      String?    // 备注
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+// ==================== 项目备注 ====================
+
+// 项目备注表（开发日志/改进记录等）
+model ProjectNote {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  project     Project  @relation(fields: [projectId], references: [id])
+  title       String   // 标题
+  content     String   // 内容
+  noteType    NoteType @default(GENERAL) // 备注类型
+  userId      Int      // 创建人
+  user        User     @relation(fields: [userId], references: [id])
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  files       ProjectNoteFile[] // 备注附件
+}
+
+// 项目备注附件表
+model ProjectNoteFile {
+  id         Int         @id @default(autoincrement())
+  noteId     Int
+  note       ProjectNote @relation(fields: [noteId], references: [id])
+  fileName   String   // 原始文件名
+  filePath   String   // 文件存储路径
+  fileSize   Int      // 文件大小（字节）
+  fileType   String   // 文件类型（MIME类型）
+  uploadedBy Int      // 上传人ID
+  deletedAt  DateTime? // 软删除标记
+  uploadedAt DateTime @default(now()) // 上传时间
+}
+
+// ==================== 项目版本记录 ====================
+
+// 项目版本记录表（软件版本/交付物版本）
+model ProjectVersion {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  project     Project  @relation(fields: [projectId], references: [id])
+  version     String   // 版本号（如 v1.0.0）
+  title       String   // 版本标题
+  content     String   // 更新内容/变更说明
+  releaseDate DateTime? // 发布日期
+  userId      Int      // 创建人
+  user        User     @relation(fields: [userId], references: [id])
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ==================== 客户联系人 ====================
+
+// 客户联系人表（一个客户多个联系人）
+model CustomerContact {
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id])
+  name        String   // 联系人姓名
+  title       String?  // 职务
+  phone       String?  // 电话
+  email       String?  // 邮箱
+  isPrimary   Boolean  @default(false) // 是否主要联系人
+  notes       String?  // 备注
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ==================== 每日打卡 ====================
+
+// 打卡时段
+enum CheckInPeriod {
+  MORNING   // 上班打卡
+  EVENING   // 下班打卡
+}
+
+// 每日打卡记录表
+model DailyCheckIn {
+  id            Int           @id @default(autoincrement())
+  userId        Int
+  user          User          @relation(fields: [userId], references: [id])
+  checkInDate   DateTime      // 打卡日期
+  checkInTime   DateTime      // 打卡时间
+  period        CheckInPeriod @default(MORNING) // 打卡时段：上班/下班
+  type          CheckInType   @default(NORMAL) // 打卡类型
+  tripId        Int?          // 关联出差记录（自动打卡时）
+  trip          BusinessTrip? @relation(fields: [tripId], references: [id])
+  location      String?       // 打卡地点
+  notes         String?       // 备注（补卡时填写原因）
+  deletedAt     DateTime?     // 软删除标记
+  createdAt     DateTime      @default(now())
+
+  @@unique([userId, checkInDate, period]) // 每人每天每个时段只能有一条打卡记录
+  @@index([userId])
+  @@index([checkInDate])
+  @@index([type])
+}
+
+// ==================== 任务管理 ====================
+
+// 任务表
+model Task {
+  id            Int          @id @default(autoincrement())
+  title         String       // 任务标题
+  description   String?      // 任务描述
+  assignerId    Int          // 委派人ID
+  assigner      User         @relation("TaskAssigner", fields: [assignerId], references: [id])
+  assignees     User[]       @relation("TaskAssignees") // 被委派人（支持多人）
+  priority      TaskPriority @default(MEDIUM) // 优先级
+  status        TaskStatus   @default(PENDING)
+  dueDate       DateTime?    // 截止日期
+  completedAt   DateTime?    // 完成时间
+  deletedAt     DateTime?    // 软删除标记
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  notifications Notification[]
+
+  @@index([assignerId])
+  @@index([status])
+}
+
+// 通知表
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int      // 接收人ID
+  user      User     @relation(fields: [userId], references: [id])
+  type      String   // 通知类型：TASK_ASSIGNED, TASK_COMPLETED, TASK_OVERDUE
+  taskId    Int?
+  task      Task?    @relation(fields: [taskId], references: [id])
+  message   String   // 通知内容
+  isRead    Boolean  @default(false)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+// ==================== 枚举 ====================
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  SUBMITTED      // 已提交，等待指派人确认完成
+  COMPLETED
+  CANCELLED
+}
+
+enum DeptStatus {
+  ENABLED    // 正常
+  DISABLED   // 停用
+}
+
+enum LogStatus {
+  SUCCESS    // 成功
+  ERROR      // 失败
+}
+
+enum LoginStatus {
+  SUCCESS    // 成功
+  FAILED     // 失败
+  LOCKED     // 锁定
+}
+
+enum NoteType {
+  GENERAL      // 一般备注
+  DEVELOPMENT  // 开发记录
+  IMPROVEMENT  // 改进记录
+  ISSUE        // 问题记录
+  MEETING      // 会议记录
+}
+
+enum CheckInType {
+  NORMAL        // 正常打卡
+  LATE          // 迟到
+  EARLY_LEAVE   // 早退
+  AUTO          // 出差自动打卡
+  MAKEUP        // 补卡
+}

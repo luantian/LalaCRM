@@ -1,0 +1,82 @@
+.app-container {
+  min-height: 100vh;
+}
+
+/* 打卡日历样式 - 现代化设计 */
+.checkin-calendar {
+  background: #fff;
+}
+
+.checkin-calendar .ant-picker-calendar-header {
+  padding: 8px 0;
+}
+
+.checkin-calendar .ant-picker-calendar-header .ant-picker-calendar-header-control {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.checkin-calendar .ant-picker-content {
+  background: #fff;
+}
+
+.checkin-calendar .ant-picker-cell {
+  padding: 4px !important;
+}
+
+.checkin-calendar .ant-picker-cell-inner {
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  margin: 2px !important;
+  padding: 6px 4px !important;
+  min-height: auto !important;
+  background: #fff !important;
+  transition: all 0.2s ease;
+}
+
+.checkin-calendar .ant-picker-cell:hover .ant-picker-cell-inner {
+  background: #f3f4f6 !important;
+  border-color: #667eea !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.1);
+}
+
+.checkin-calendar .ant-picker-cell-selected .ant-picker-cell-inner {
+  background: #ede9fe !important;
+  border-color: #667eea !important;
+  border-width: 2px !important;
+}
+
+.checkin-calendar .ant-picker-cell-today .ant-picker-cell-inner {
+  border-color: #667eea !important;
+  border-width: 2px !important;
+  background: #f5f3ff !important;
+}
+
+.checkin-calendar .ant-picker-cell-today .ant-picker-cell-inner::before {
+  display: none;
+}
+
+.checkin-calendar .ant-picker-calendar-header-title {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  color: #1f2937 !important;
+}
+
+.checkin-calendar .ant-picker-cell-in-view {
+  color: #1f2937 !important;
+}
+
+.checkin-calendar .ant-picker-cell:not(.ant-picker-cell-in-view) {
+  color: #d1d5db !important;
+}
+
+.checkin-calendar .ant-picker-calendar-header .ant-select-selector {
+  border-radius: 6px !important;
+  border-color: #e5e7eb !important;
+}
+
+.checkin-calendar .ant-picker-calendar-header .ant-select-selector:hover {
+  border-color: #667eea !important;
+}

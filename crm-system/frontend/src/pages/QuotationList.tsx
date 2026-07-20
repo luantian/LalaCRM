@@ -1,0 +1,256 @@
+import React, { useEffect, useState } from 'react'
+import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicker, message, Tag, Row, Col, Statistic, Space, Dropdown } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, MoreOutlined, SendOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
+import dayjs from 'dayjs'
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, submitQuotation, approveQuotation, rejectQuotation, getOpportunities, getCustomers } from '../services/api'
+
+const { Option } = Select
+
+const statusConfig: Record<string, { text: string; color: string }> = {
+  DRAFT: { text: '草稿', color: 'default' },
+  SUBMITTED: { text: '已提交', color: 'processing' },
+  APPROVED: { text: '已批准', color: 'success' },
+  REJECTED: { text: '已拒绝', color: 'error' },
+  WON: { text: '中标', color: 'blue' },
+  LOST: { text: '未中标', color: 'orange' }
+}
+
+const QuotationList: React.FC = () => {
+  const navigate = useNavigate()
+  const [quotations, setQuotations] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [modalVisible, setModalVisible] = useState(false)
+  const [editingQuotation, setEditingQuotation] = useState<any>(null)
+  const [form] = Form.useForm()
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
+  const [filters, setFilters] = useState<any>({})
+  const [stats, setStats] = useState<any>({})
+  const [opportunities, setOpportunities] = useState<any[]>([])
+  const [customers, setCustomers] = useState<any[]>([])
+  const [items, setItems] = useState<any[]>([])
+
+  useEffect(() => {
+    fetchQuotations()
+    fetchStats()
+    fetchOpportunities()
+    fetchCustomers()
+  }, [pagination.current, pagination.pageSize, filters])
+
+  const fetchQuotations = async () => {
+    setLoading(true)
+    try {
+      const response: any = await getQuotations({ page: pagination.current, pageSize: pagination.pageSize, ...filters })
+      setQuotations(response.data || [])
+      setPagination(prev => ({ ...prev, total: response.pagination?.total || 0 }))
+    } catch { message.error('获取报价单列表失败') }
+    setLoading(false)
+  }
+
+  const fetchStats = async () => {
+    try { const res: any = await getQuotationStats(); setStats(res) } catch {}
+  }
+
+  const fetchOpportunities = async () => {
+    try {
+      const res: any = await getOpportunities({ pageSize: 1000 })
+      setOpportunities(res.data || [])
+    } catch {}
+  }
+
+  const fetchCustomers = async () => {
+    try {
+      const res: any = await getCustomers({ pageSize: 1000 })
+      setCustomers(res.data || [])
+    } catch {}
+  }
+
+  const handleCreate = () => {
+    setEditingQuotation(null)
+    form.resetFields()
+    setItems([])
+    setModalVisible(true)
+  }
+
+  const handleEdit = async (record: any) => {
+    if (record.status !== 'DRAFT') {
+      message.warning('只有草稿状态可以编辑')
+      return
+    }
+    setEditingQuotation(record)
+    form.setFieldsValue({ ...record, validUntil: record.validUntil ? dayjs(record.validUntil) : null })
+    // Load items
+    try {
+      const detail: any = await getQuotationDetail(record.id)
+      setItems(detail.items || [])
+    } catch {}
+    setModalVisible(true)
+  }
+
+  const handleDelete = (id: number) => {
+    Modal.confirm({
+      title: '确认删除', content: '确定要删除这条报价单吗？',
+      onOk: async () => {
+        try { await deleteQuotation(id); message.success('删除成功'); fetchQuotations(); fetchStats() }
+        catch (e: any) { message.error(e?.error || '删除失败') }
+      }
+    })
+  }
+
+  const handleSubmit = async (id: number) => {
+    try { await submitQuotation(id); message.success('已提交'); fetchQuotations(); fetchStats() }
+    catch (e: any) { message.error(e?.error || '提交失败') }
+  }
+
+  const handleApprove = async (id: number) => {
+    try { await approveQuotation(id); message.success('已批准'); fetchQuotations(); fetchStats() }
+    catch (e: any) { message.error(e?.error || '审批失败') }
+  }
+
+  const handleReject = async (id: number) => {
+    try { await rejectQuotation(id); message.success('已拒绝'); fetchQuotations(); fetchStats() }
+    catch (e: any) { message.error(e?.error || '操作失败') }
+  }
+
+  const addItem = () => {
+    setItems([...items, { name: '', quantity: 1, unit: '套', unitPrice: 0 }])
+  }
+
+  const updateItem = (index: number, field: string, value: any) => {
+    const newItems = [...items]
+    newItems[index] = { ...newItems[index], [field]: value }
+    setItems(newItems)
+  }
+
+  const removeItem = (index: number) => {
+    setItems(items.filter((_, i) => i !== index))
+  }
+
+  const handleFormSubmit = async () => {
+    try {
+      const values = await form.validateFields()
+      const totalAmount = items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0)
+      const data = {
+        ...values,
+        validUntil: values.validUntil ? values.validUntil.toDate() : null,
+        items,
+        totalAmount
+      }
+      if (editingQuotation) {
+        await updateQuotation(editingQuotation.id, data)
+        message.success('更新成功')
+      } else {
+        await createQuotation(data)
+        message.success('创建成功')
+      }
+      setModalVisible(false)
+      form.resetFields()
+      setItems([])
+      fetchQuotations()
+      fetchStats()
+    } catch {}
+  }
+
+  const columns = [
+    { title: '报价单', dataIndex: 'name', key: 'name', render: (text: string, r: any) => <a onClick={() => navigate(`/quotations/${r.id}`)}>{text} <Tag>v{r.version}</Tag></a> },
+    { title: '关联商机', key: 'opportunity', render: (_: any, r: any) => r.opportunity?.name || '-' },
+    { title: '客户', key: 'customer', render: (_: any, r: any) => r.customer?.name || '-' },
+    { title: '报价总额', dataIndex: 'totalAmount', key: 'totalAmount', render: (v: number) => <strong>¥{Number(v).toLocaleString()}</strong> },
+    { title: '有效期', dataIndex: 'validUntil', key: 'validUntil', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
+    { title: '状态', dataIndex: 'status', key: 'status', width: 90,
+      render: (s: string) => { const c = statusConfig[s]; return c ? <Tag color={c.color}>{c.text}</Tag> : s }
+    },
+    { title: '创建人', key: 'owner', render: (_: any, r: any) => r.owner?.name || '-' },
+    {
+      title: '操作', key: 'action', width: 120,
+      render: (_: any, record: any) => (
+        <Dropdown menu={{
+          items: [
+            ...(record.status === 'DRAFT' ? [
+              { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => handleEdit(record) },
+              { key: 'submit', icon: <SendOutlined />, label: '提交审批', onClick: () => handleSubmit(record.id) },
+              { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => handleDelete(record.id) },
+            ] : []),
+            ...(record.status === 'SUBMITTED' ? [
+              { key: 'approve', icon: <CheckOutlined />, label: '批准', onClick: () => handleApprove(record.id) },
+              { key: 'reject', icon: <CloseOutlined />, label: '拒绝', onClick: () => handleReject(record.id) },
+            ] : []),
+          ]
+        }}>
+          <Button type="text" icon={<MoreOutlined />} />
+        </Dropdown>
+      )
+    }
+  ]
+
+  return (
+    <div>
+      <h2>报价单管理</h2>
+
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col span={6}><Card><Statistic title="报价总额" value={stats.totalAmount || 0} prefix="¥" precision={2} valueStyle={{ color: '#1890ff' }} /></Card></Col>
+        <Col span={6}><Card><Statistic title="草稿" value={stats.draft || 0} suffix="份" /></Card></Col>
+        <Col span={6}><Card><Statistic title="已批准" value={stats.approved || 0} suffix="份" valueStyle={{ color: '#52c41a' }} /></Card></Col>
+        <Col span={6}><Card><Statistic title="中标" value={stats.won || 0} suffix="份" valueStyle={{ color: '#722ed1' }} /></Card></Col>
+      </Row>
+
+      <Card style={{ marginBottom: 16 }}>
+        <Space wrap>
+          <Select placeholder="状态" allowClear style={{ width: 120 }} onChange={v => setFilters((f: any) => ({ ...f, status: v || undefined }))}>
+            {Object.entries(statusConfig).map(([k, v]) => <Option key={k} value={k}>{v.text}</Option>)}
+          </Select>
+          <Input.Search placeholder="搜索报价单" allowClear style={{ width: 200 }} onSearch={v => setFilters((f: any) => ({ ...f, search: v || undefined }))} />
+        </Space>
+      </Card>
+
+      <Card>
+        <div style={{ marginBottom: 16 }}><Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建报价单</Button></div>
+        <Table columns={columns} dataSource={quotations} rowKey="id" loading={loading}
+          pagination={{ ...pagination, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
+          onChange={(pag) => setPagination(prev => ({ ...prev, current: pag.current || 1, pageSize: pag.pageSize || 10 }))}
+        />
+      </Card>
+
+      <Modal title={editingQuotation ? '编辑报价单' : '新建报价单'} open={modalVisible} onOk={handleFormSubmit} onCancel={() => setModalVisible(false)} width={800}>
+        <Form form={form} layout="vertical">
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="name" label="报价单名称" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col span={12}><Form.Item name="opportunityId" label="关联商机" rules={[{ required: true }]}>
+              <Select showSearch optionFilterProp="children">
+                {opportunities.map(o => <Option key={o.id} value={o.id}>{o.name}</Option>)}
+              </Select>
+            </Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="customerId" label="客户" rules={[{ required: true }]}>
+              <Select showSearch optionFilterProp="children">
+                {customers.map(c => <Option key={c.id} value={c.id}>{c.name}</Option>)}
+              </Select>
+            </Form.Item></Col>
+            <Col span={12}><Form.Item name="validUntil" label="报价有效期"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
+          </Row>
+          <Form.Item name="notes" label="备注"><Input.TextArea rows={2} /></Form.Item>
+
+          <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+            <strong>报价明细</strong>
+            <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addItem}>添加行</Button>
+          </div>
+          <Table
+            size="small" pagination={false} dataSource={items} rowKey={(_, i) => String(i)}
+            columns={[
+              { title: '产品/服务', dataIndex: 'name', render: (v: string, _: any, i: number) => <Input size="small" value={v} onChange={e => updateItem(i, 'name', e.target.value)} /> },
+              { title: '数量', dataIndex: 'quantity', width: 80, render: (v: number, _: any, i: number) => <InputNumber size="small" min={1} value={v} onChange={v => updateItem(i, 'quantity', v)} /> },
+              { title: '单位', dataIndex: 'unit', width: 80, render: (v: string, _: any, i: number) => <Input size="small" value={v} onChange={e => updateItem(i, 'unit', e.target.value)} /> },
+              { title: '单价', dataIndex: 'unitPrice', width: 120, render: (v: number, _: any, i: number) => <InputNumber size="small" min={0} precision={2} value={v} onChange={v => updateItem(i, 'unitPrice', v)} /> },
+              { title: '小计', width: 120, render: (_: any, r: any) => `¥${((Number(r.quantity) || 0) * (Number(r.unitPrice) || 0)).toLocaleString()}` },
+              { title: '', width: 40, render: (_: any, __: any, i: number) => <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItem(i)} /> },
+            ]}
+            summary={() => <Table.Summary.Row><Table.Summary.Cell index={0} colSpan={4} align="right"><strong>合计</strong></Table.Summary.Cell><Table.Summary.Cell index={1}><strong>¥{items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0).toLocaleString()}</strong></Table.Summary.Cell><Table.Summary.Cell index={2} /></Table.Summary.Row>}
+          />
+        </Form>
+      </Modal>
+    </div>
+  )
+}
+
+export default QuotationList
