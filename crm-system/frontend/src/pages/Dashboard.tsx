@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, Tooltip, App as AntApp } from 'antd'
+import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, App as AntApp } from 'antd'
 import {
   UserOutlined, ProjectOutlined, FileTextOutlined,
   CheckCircleOutlined, ClockCircleOutlined, FundOutlined,
@@ -230,7 +230,7 @@ function Dashboard() {
         className={`bd-task-item${isDone ? ' done' : ''}`}
         style={{ borderLeftColor: p.hex }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* Title row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6, textDecoration: isDone ? 'line-through' : 'none' }}>
@@ -268,25 +268,21 @@ function Dashboard() {
             )}
           </div>
           {/* Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
             {!isDelegated && !isDone && !isSubmitted && task.status === 'PENDING' && (
-              <Tooltip title="开始">
-                <Button size="small" type="text" icon={<PlayCircleOutlined />} style={{ color: '#4f46e5' }} onClick={() => handleUpdateTask(task.id, 'IN_PROGRESS')} />
-              </Tooltip>
+              <Button type="link" size="small" icon={<PlayCircleOutlined />} style={{ color: '#4f46e5' }} onClick={() => handleUpdateTask(task.id, 'IN_PROGRESS')}>开始</Button>
             )}
             {!isDelegated && !isDone && !isSubmitted && (
-              <Tooltip title="提交完成">
-                <Button size="small" type="text" icon={<CheckOutlined />} style={{ color: '#059669' }} onClick={() => handleUpdateTask(task.id, 'SUBMITTED')} />
-              </Tooltip>
+              <Button type="link" size="small" icon={<CheckOutlined />} style={{ color: '#059669' }} onClick={() => handleUpdateTask(task.id, 'SUBMITTED')}>提交</Button>
             )}
             {isDelegated && isSubmitted && (
               <Popconfirm title="确认此任务已完成？" onConfirm={() => handleUpdateTask(task.id, 'COMPLETED')}>
-                <Button size="small" type="primary" icon={<CheckCircleOutlined />} style={{ background: '#059669', borderColor: '#059669', borderRadius: 6, fontSize: 12 }}>确认</Button>
+                <Button type="link" size="small" style={{ color: '#059669' }} icon={<CheckCircleOutlined />}>确认</Button>
               </Popconfirm>
             )}
             {isDelegated && isSubmitted && (
               <Popconfirm title="确定驳回此任务？" onConfirm={() => handleUpdateTask(task.id, 'IN_PROGRESS')}>
-                <Button size="small" danger style={{ borderRadius: 6, fontSize: 12 }}>驳回</Button>
+                <Button type="link" size="small" danger>驳回</Button>
               </Popconfirm>
             )}
             {!isDelegated && isSubmitted && (
@@ -296,12 +292,12 @@ function Dashboard() {
             )}
             {!isDone && !isSubmitted && (
               <Popconfirm title="确定取消此任务？" onConfirm={() => handleUpdateTask(task.id, 'CANCELLED')}>
-                <Tooltip title="取消"><Button size="small" type="text" icon={<StopOutlined />} danger /></Tooltip>
+                <Button type="link" size="small" danger icon={<StopOutlined />}>取消</Button>
               </Popconfirm>
             )}
-            <Tooltip title="编辑"><Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEditTask(task)} /></Tooltip>
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEditTask(task)}>编辑</Button>
             <Popconfirm title="确定删除此任务？" onConfirm={() => handleDeleteTask(task.id)}>
-              <Tooltip title="删除"><Button size="small" type="text" icon={<DeleteOutlined />} danger /></Tooltip>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
             </Popconfirm>
           </div>
         </div>
