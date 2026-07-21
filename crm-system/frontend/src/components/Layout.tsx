@@ -250,7 +250,8 @@ function Layout() {
           mode="inline"
           items={menuItems}
           onClick={handleMenuClick}
-          selectedKeys={[location.pathname]}
+          selectedKeys={[location.pathname === '/' ? '/' : '/' + location.pathname.split('/').filter(Boolean)[0]]}
+          defaultOpenKeys={menus.filter(m => m.parentId === null && menus.some(c => c.parentId === m.id)).map(m => `/${m.key}`)}
           style={{
             borderRight: 0,
             marginTop: 8,
