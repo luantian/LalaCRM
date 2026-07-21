@@ -86,12 +86,8 @@ function CheckInList() {
 
   const handleCheckIn = async (period: 'MORNING' | 'EVENING') => {
     try {
-      await checkIn({ period })
-      message.success(
-        period === 'MORNING'
-          ? (todayStatus?.onBusinessTrip ? '出差上班打卡成功！' : '上班打卡成功！')
-          : (todayStatus?.onBusinessTrip ? '出差下班打卡成功！' : '下班打卡成功！')
-      )
+      const result: any = await checkIn({ period })
+      message.success(result?.message || (period === 'MORNING' ? '上班打卡成功！' : '下班打卡成功！'))
       fetchTodayStatus()
       fetchData()
     } catch (error: any) {
@@ -173,7 +169,6 @@ function CheckInList() {
                 size="large"
                 icon={todayStatus?.morningCheckedIn ? <CheckCircleOutlined /> : <SunOutlined />}
                 onClick={() => handleCheckIn('MORNING')}
-                disabled={todayStatus?.morningCheckedIn}
                 block
                 style={{
                   height: 64,
@@ -189,7 +184,7 @@ function CheckInList() {
                 }}
               >
                 {todayStatus?.morningCheckedIn
-                  ? `✓ 已上班打卡 ${todayStatus.morningRecord ? dayjs(todayStatus.morningRecord.checkInTime).format('HH:mm') : ''}`
+                  ? `✓ 上班打卡 ${todayStatus.morningRecord ? dayjs(todayStatus.morningRecord.checkInTime).format('HH:mm') : ''}${(todayStatus.morningCount || 0) > 1 ? ` (共${todayStatus.morningCount}次，以最早为准)` : ''}`
                   : todayStatus?.onBusinessTrip
                     ? '出差上班打卡'
                     : '上班打卡'}
@@ -200,7 +195,6 @@ function CheckInList() {
                 size="large"
                 icon={todayStatus?.eveningCheckedIn ? <CheckCircleOutlined /> : <MoonOutlined />}
                 onClick={() => handleCheckIn('EVENING')}
-                disabled={todayStatus?.eveningCheckedIn}
                 block
                 style={{
                   height: 64,
@@ -216,7 +210,7 @@ function CheckInList() {
                 }}
               >
                 {todayStatus?.eveningCheckedIn
-                  ? `✓ 已下班打卡 ${todayStatus.eveningRecord ? dayjs(todayStatus.eveningRecord.checkInTime).format('HH:mm') : ''}`
+                  ? `✓ 下班打卡 ${todayStatus.eveningRecord ? dayjs(todayStatus.eveningRecord.checkInTime).format('HH:mm') : ''}${(todayStatus.eveningCount || 0) > 1 ? ` (共${todayStatus.eveningCount}次，以最晚为准)` : ''}`
                   : todayStatus?.onBusinessTrip
                     ? '出差下班打卡'
                     : '下班打卡'}

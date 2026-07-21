@@ -1416,7 +1416,6 @@ model DailyCheckIn {
   deletedAt     DateTime?     // 软删除标记
   createdAt     DateTime      @default(now())
 
-  @@unique([userId, checkInDate, period]) // 每人每天每个时段只能有一条打卡记录
   @@index([userId])
   @@index([checkInDate])
   @@index([type])

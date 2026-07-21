@@ -65,13 +65,7 @@ function Dashboard() {
       const hour = now.hour()
       const period = hour < 12 ? 'MORNING' : 'EVENING'
       const result: any = await checkIn({ period })
-      const typeMessages: Record<string, string> = {
-        NORMAL: '打卡成功！',
-        LATE: '打卡成功（迟到）',
-        EARLY_LEAVE: '打卡成功（早退）',
-        AUTO: '出差打卡成功！'
-      }
-      message.success(typeMessages[result.type] || '打卡成功！')
+      message.success(result?.message || '打卡成功！')
       fetchTodayCheckIn()
     } catch (error: any) {
       message.error(error?.error || '打卡失败')
@@ -195,16 +189,15 @@ function Dashboard() {
   let checkinLabel = '快速打卡'
   let checkinIcon = <ClockCircleOutlined />
   let checkinColor = '#4f46e5'
-  let checkinDisabled = false
   let checkinStatusText = ''
 
   if (hour < 12) {
     if (morningChecked) {
+      const mc = todayCheckIn?.morningCount || 1
       checkinLabel = '上班已打卡'
       checkinIcon = <CheckCircleOutlined />
       checkinColor = '#059669'
-      checkinDisabled = true
-      checkinStatusText = `✓ ${todayCheckIn?.morningTime ? dayjs(todayCheckIn.morningTime).format('HH:mm') : ''} 已签到`
+      checkinStatusText = `✓ ${todayCheckIn?.morningRecord ? dayjs(todayCheckIn.morningRecord.checkInTime).format('HH:mm') : ''} 已签到${mc > 1 ? ` (共${mc}次)` : ''}`
     } else if (hour >= 9) {
       checkinLabel = '上班打卡 (迟到)'
       checkinColor = '#d97706'
@@ -214,11 +207,11 @@ function Dashboard() {
     }
   } else {
     if (eveningChecked) {
+      const ec = todayCheckIn?.eveningCount || 1
       checkinLabel = '下班已打卡'
       checkinIcon = <CheckCircleOutlined />
       checkinColor = '#059669'
-      checkinDisabled = true
-      checkinStatusText = `✓ ${todayCheckIn?.eveningTime ? dayjs(todayCheckIn.eveningTime).format('HH:mm') : ''} 已签退`
+      checkinStatusText = `✓ ${todayCheckIn?.eveningRecord ? dayjs(todayCheckIn.eveningRecord.checkInTime).format('HH:mm') : ''} 已签退${ec > 1 ? ` (共${ec}次)` : ''}`
     } else if (hour < 17 || (hour === 17 && currentTime.minute() < 30)) {
       checkinLabel = '下班打卡 (早退)'
       checkinColor = '#d97706'
@@ -425,19 +418,18 @@ function Dashboard() {
                 {currentTime.format('HH:mm')}
               </div>
               <Button
-                type={checkinDisabled ? 'default' : 'primary'}
+                type={isAllChecked ? 'default' : 'primary'}
                 size="small"
                 icon={checkinIcon}
-                disabled={checkinDisabled}
-                onClick={checkinDisabled ? undefined : handleQuickCheckIn}
+                onClick={handleQuickCheckIn}
                 style={{
                   borderRadius: 8,
                   fontWeight: 600,
                   fontSize: 12,
                   padding: '4px 16px',
                   height: 'auto',
-                  ...(checkinDisabled ? {} : { background: checkinColor, borderColor: checkinColor }),
-                  boxShadow: checkinDisabled ? 'none' : `0 4px 12px ${checkinColor}33`,
+                  ...(isAllChecked ? {} : { background: checkinColor, borderColor: checkinColor }),
+                  boxShadow: isAllChecked ? 'none' : `0 4px 12px ${checkinColor}33`,
                 }}
               >
                 {checkinLabel}
