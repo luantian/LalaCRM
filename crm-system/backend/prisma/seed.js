@@ -23,7 +23,7 @@ async function main() {
     { id: 2,  key: 'customers',       icon: 'TeamOutlined',         label: '客户管理', order: 4,  menuType: 'MENU',      path: '/customers',      component: 'CustomerList',     perm: 'view_customers' },
     { id: 4,  key: 'projects',        icon: 'ProjectOutlined',      label: '项目管理', order: 5,  menuType: 'MENU',      path: '/projects',       component: 'ProjectList',      perm: 'view_projects' },
     // 财务相关（平铺）
-    { id: 3,  key: 'sales',           icon: 'DollarOutlined',       label: '项目收支', order: 6,  menuType: 'MENU',      path: '/sales',          component: 'SaleList' },
+    { id: 3,  key: 'sales',           icon: 'DollarOutlined',       label: '项目归档', order: 6,  menuType: 'MENU',      path: '/sales',          component: 'SaleList' },
     { id: 9,  key: 'expenses',        icon: 'MoneyCollectOutlined', label: '费用报销', order: 7,  menuType: 'MENU',      path: '/expenses',       component: 'ExpenseList',      perm: 'view_expenses' },
     // 日常办公
     { id: 6,  key: 'office',          icon: 'ScheduleOutlined',     label: '日常办公', order: 8,  menuType: 'DIRECTORY' },
