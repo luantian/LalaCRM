@@ -251,6 +251,7 @@ function DepartmentManagement() {
       title: '操作',
       key: 'action',
       width: 240,
+      fixed: 'right' as const,
       render: (_: any, record: any) => (
         <Space size={0}>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewDept(record)}>查看</Button>

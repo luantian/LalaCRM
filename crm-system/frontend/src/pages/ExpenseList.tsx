@@ -197,6 +197,12 @@ function ExpenseList() {
   }
 
   const handleEdit = (expense: any) => {
+    const isOwner = expense.ownerId === user.id
+    const canEdit = (expense.status === 'DRAFT' || expense.status === 'REJECTED') && (isOwner || user.role === 'ADMIN')
+    if (!canEdit) {
+      message.warning('当前状态不允许编辑')
+      return
+    }
     setEditingExpense(expense)
     form.setFieldsValue({
       ...expense,
@@ -206,6 +212,12 @@ function ExpenseList() {
   }
 
   const handleDelete = async (id: number) => {
+    const expense = expenses.find(e => e.id === id)
+    const isOwner = expense?.ownerId === user.id
+    if (!(isOwner || user.role === 'ADMIN')) {
+      message.warning('没有权限删除')
+      return
+    }
     try {
       await deleteExpense(id)
       message.success('删除成功')
@@ -408,9 +420,9 @@ function ExpenseList() {
       title: '操作',
       key: 'action',
       width: 300,
+      fixed: 'right' as const,
       render: (_: any, record: any) => {
         const isOwner = record.ownerId === user.id
-        const canEdit = (record.status === 'DRAFT' || record.status === 'REJECTED') && (isOwner || user.role === 'ADMIN')
 
         const moreItems: any[] = []
         moreItems.push({ key: 'files', icon: <FileOutlined />, label: '管理发票', onClick: () => handleManageFiles(record) })
@@ -439,17 +451,15 @@ function ExpenseList() {
         return (
           <Space size={0}>
             <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/expenses/${record.id}`)}>查看</Button>
-            {canEdit && (
-              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+            <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            </Popconfirm>
+            {moreItems.length > 0 && (
+              <Dropdown menu={{ items: moreItems }}>
+                <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
+              </Dropdown>
             )}
-            {(isOwner || user.role === 'ADMIN') && (
-              <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
-                <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-              </Popconfirm>
-            )}
-            <Dropdown menu={{ items: moreItems }}>
-              <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
-            </Dropdown>
           </Space>
         )
       }

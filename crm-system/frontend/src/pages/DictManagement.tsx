@@ -236,6 +236,7 @@ function DictManagement() {
       title: '操作',
       key: 'action',
       width: 240,
+      fixed: 'right' as const,
       render: (_: any, record: DictType) => (
         <Space size={0}>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewType(record)}>查看</Button>
@@ -290,6 +291,7 @@ function DictManagement() {
       title: '操作',
       key: 'action',
       width: 240,
+      fixed: 'right' as const,
       render: (_: any, record: DictItem) => (
         <Space size={0}>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewItem(record)}>查看</Button>

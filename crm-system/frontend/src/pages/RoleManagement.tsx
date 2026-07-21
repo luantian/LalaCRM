@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Card, Table, Tag, message, Button, Modal, Tree, Space, Form, Input, Checkbox, Divider, Empty, Dropdown, Descriptions } from 'antd'
+import { Card, Table, Tag, message, Button, Modal, Tree, Space, Form, Input, Checkbox, Divider, Empty, Dropdown, Descriptions, Popconfirm } from 'antd'
 import { CheckCircleFilled, CloseCircleFilled, SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, MoreOutlined } from '@ant-design/icons'
 import type { DataNode } from 'antd/es/tree'
 import api from '../services/api'
@@ -337,19 +337,26 @@ function RoleManagement() {
               )
             },
             {
-              title: '操作', key: 'action', width: 300,
-              render: (_: any, record: Role) => (
-                <Space size={0}>
-                  <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewRole(record)}>查看</Button>
-                  <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditRole(record)}>编辑</Button>
-                  <Dropdown menu={{ items: [
-                    { key: 'menu', icon: <SettingOutlined />, label: '分配菜单', onClick: () => handleAssignMenus(record) }
-                  ]}}>
-                    <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
-                  </Dropdown>
-                  <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => Modal.confirm({ title: '确认删除', content: `确定删除角色"${record.displayName}"？如果该角色下有用户将无法删除。`, onOk: () => handleDeleteRole(record) })}>删除</Button>
-                </Space>
-              )
+              title: '操作', key: 'action', width: 300, fixed: 'right' as const,
+              render: (_: any, record: Role) => {
+                const moreItems: any[] = []
+                moreItems.push({ key: 'menu', icon: <SettingOutlined />, label: '分配菜单', onClick: () => handleAssignMenus(record) })
+
+                return (
+                  <Space size={0}>
+                    <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewRole(record)}>查看</Button>
+                    <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditRole(record)}>编辑</Button>
+                    <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteRole(record)}>
+                      <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                    </Popconfirm>
+                    {moreItems.length > 0 && (
+                      <Dropdown menu={{ items: moreItems }}>
+                        <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
+                      </Dropdown>
+                    )}
+                  </Space>
+                )
+              }
             }
           ]}
           locale={{ emptyText: <Empty description="暂无数据" /> }}
