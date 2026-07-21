@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, Tooltip, App as AntApp, Space } from 'antd'
+import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, Tooltip, App as AntApp } from 'antd'
 import {
   UserOutlined, ProjectOutlined, FileTextOutlined,
   CheckCircleOutlined, ClockCircleOutlined, FundOutlined,
@@ -60,8 +60,10 @@ function Dashboard() {
     }
   }
 
-  const handleQuickCheckInPeriod = async (period: 'MORNING' | 'EVENING') => {
+  const handleQuickCheckIn = async () => {
     try {
+      const hour = dayjs().hour()
+      const period = hour < 12 ? 'MORNING' : 'EVENING'
       const result: any = await checkIn({ period })
       message.success(result?.message || (period === 'MORNING' ? '上班打卡成功！' : '下班打卡成功！'))
       fetchTodayCheckIn()
@@ -432,46 +434,34 @@ function Dashboard() {
             )}
           </Col>
 
-          {/* Right: Check-in Buttons */}
-          <Col xs={24} md={12}>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <Button
-                size="large"
-                icon={morningChecked ? <CheckCircleOutlined /> : <SunOutlined />}
-                onClick={() => { handleQuickCheckInPeriod('MORNING') }}
-                block
-                style={{
-                  height: 56,
-                  fontSize: 16,
-                  fontWeight: 600,
-                  borderRadius: 12,
-                  background: morningChecked ? '#059669' : '#fff',
-                  color: morningChecked ? '#fff' : '#f59e0b',
-                  border: morningChecked ? 'none' : '2px solid #fde68a',
-                  boxShadow: morningChecked ? 'none' : '0 2px 8px rgba(245,158,11,0.15)',
-                }}
-              >
-                {morningChecked ? `✓ 上班已打卡` : '上班打卡'}
-              </Button>
-              <Button
-                size="large"
-                icon={eveningChecked ? <CheckCircleOutlined /> : <MoonOutlined />}
-                onClick={() => { handleQuickCheckInPeriod('EVENING') }}
-                block
-                style={{
-                  height: 56,
-                  fontSize: 16,
-                  fontWeight: 600,
-                  borderRadius: 12,
-                  background: eveningChecked ? '#059669' : '#fff',
-                  color: eveningChecked ? '#fff' : '#6366f1',
-                  border: eveningChecked ? 'none' : '2px solid #c7d2fe',
-                  boxShadow: eveningChecked ? 'none' : '0 2px 8px rgba(99,102,241,0.15)',
-                }}
-              >
-                {eveningChecked ? `✓ 下班已打卡` : '下班打卡'}
-              </Button>
-            </Space>
+          {/* Right: Single Check-in Button */}
+          <Col xs={24} md={12} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Button
+              size="large"
+              icon={isAllChecked ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
+              onClick={handleQuickCheckIn}
+              style={{
+                height: 72,
+                fontSize: 20,
+                fontWeight: 700,
+                borderRadius: 16,
+                minWidth: 200,
+                background: isAllChecked
+                  ? 'linear-gradient(135deg, #059669, #10b981)'
+                  : 'linear-gradient(135deg, #4f46e5, #6366f1)',
+                color: '#fff',
+                border: 'none',
+                boxShadow: isAllChecked
+                  ? '0 4px 16px rgba(5, 150, 105, 0.3)'
+                  : '0 4px 16px rgba(79, 70, 229, 0.3)',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {isAllChecked ? '✓ 今日已打卡' : (hour < 12 ? '上班打卡' : '下班打卡')}
+            </Button>
+            <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', marginTop: 8 }}>
+              {isAllChecked ? '上下班均已打卡' : `当前为${hour < 12 ? '上班' : '下班'}时段，12点前为上班打卡`}
+            </div>
           </Col>
         </Row>
       </Card>

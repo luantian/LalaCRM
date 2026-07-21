@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Card, Row, Col, Button, message, Tag, Modal, Input, Space } from 'antd'
-import { CheckCircleOutlined, ClockCircleOutlined, CarOutlined, ExclamationCircleOutlined, CalendarOutlined, SunOutlined, MoonOutlined, TrophyOutlined, FireOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined, ClockCircleOutlined, CarOutlined, ExclamationCircleOutlined, CalendarOutlined, TrophyOutlined, FireOutlined } from '@ant-design/icons'
 import { getCheckIns, getTodayCheckIn, checkIn, makeupCheckIn, getCheckInStats } from '../services/api'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
@@ -84,8 +84,10 @@ function CheckInList() {
     }
   }
 
-  const handleCheckIn = async (period: 'MORNING' | 'EVENING') => {
+  const handleCheckIn = async () => {
     try {
+      const hour = dayjs().hour()
+      const period = hour < 12 ? 'MORNING' as const : 'EVENING' as const
       const result: any = await checkIn({ period })
       message.success(result?.message || (period === 'MORNING' ? '上班打卡成功！' : '下班打卡成功！'))
       fetchTodayStatus()
@@ -162,60 +164,32 @@ function CheckInList() {
             )}
           </Col>
 
-          <Col xs={24} md={12}>
-            <Space direction="vertical" size="large" style={{ width: '100%' }}>
-              {/* 上班打卡按钮 */}
+          <Col xs={24} md={12} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ textAlign: 'center' }}>
               <Button
                 size="large"
-                icon={todayStatus?.morningCheckedIn ? <CheckCircleOutlined /> : <SunOutlined />}
-                onClick={() => handleCheckIn('MORNING')}
-                block
+                icon={todayCheckedCount >= 2 ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
+                onClick={handleCheckIn}
                 style={{
-                  height: 64,
-                  fontSize: 18,
-                  fontWeight: 600,
-                  borderRadius: 12,
-                  background: todayStatus?.morningCheckedIn
+                  height: 72,
+                  fontSize: 20,
+                  fontWeight: 700,
+                  borderRadius: 16,
+                  minWidth: 200,
+                  background: todayCheckedCount >= 2
                     ? 'rgba(255,255,255,0.3)'
                     : 'rgba(255,255,255,0.95)',
                   border: 'none',
-                  color: todayStatus?.morningCheckedIn ? '#fff' : '#667eea',
-                  boxShadow: todayStatus?.morningCheckedIn ? 'none' : '0 4px 12px rgba(0,0,0,0.15)'
+                  color: todayCheckedCount >= 2 ? '#fff' : '#667eea',
+                  boxShadow: todayCheckedCount >= 2 ? 'none' : '0 4px 16px rgba(0,0,0,0.15)',
                 }}
               >
-                {todayStatus?.morningCheckedIn
-                  ? `✓ 上班打卡 ${todayStatus.morningRecord ? dayjs(todayStatus.morningRecord.checkInTime).format('HH:mm') : ''}${(todayStatus.morningCount || 0) > 1 ? ` (共${todayStatus.morningCount}次，以最早为准)` : ''}`
-                  : todayStatus?.onBusinessTrip
-                    ? '出差上班打卡'
-                    : '上班打卡'}
+                {todayCheckedCount >= 2 ? '✓ 今日已打卡' : (dayjs().hour() < 12 ? '上班打卡' : '下班打卡')}
               </Button>
-
-              {/* 下班打卡按钮 */}
-              <Button
-                size="large"
-                icon={todayStatus?.eveningCheckedIn ? <CheckCircleOutlined /> : <MoonOutlined />}
-                onClick={() => handleCheckIn('EVENING')}
-                block
-                style={{
-                  height: 64,
-                  fontSize: 18,
-                  fontWeight: 600,
-                  borderRadius: 12,
-                  background: todayStatus?.eveningCheckedIn
-                    ? 'rgba(255,255,255,0.3)'
-                    : 'rgba(255,255,255,0.95)',
-                  border: 'none',
-                  color: todayStatus?.eveningCheckedIn ? '#fff' : '#f59e0b',
-                  boxShadow: todayStatus?.eveningCheckedIn ? 'none' : '0 4px 12px rgba(0,0,0,0.15)'
-                }}
-              >
-                {todayStatus?.eveningCheckedIn
-                  ? `✓ 下班打卡 ${todayStatus.eveningRecord ? dayjs(todayStatus.eveningRecord.checkInTime).format('HH:mm') : ''}${(todayStatus.eveningCount || 0) > 1 ? ` (共${todayStatus.eveningCount}次，以最晚为准)` : ''}`
-                  : todayStatus?.onBusinessTrip
-                    ? '出差下班打卡'
-                    : '下班打卡'}
-              </Button>
-            </Space>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 8 }}>
+                {todayCheckedCount >= 2 ? '上下班均已打卡' : `当前为${dayjs().hour() < 12 ? '上班' : '下班'}时段`}
+              </div>
+            </div>
           </Col>
         </Row>
       </Card>
