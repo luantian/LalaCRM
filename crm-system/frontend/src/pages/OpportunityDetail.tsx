@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Image } from 'antd'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Image } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, FileTextOutlined, ScheduleOutlined, CheckOutlined, EyeOutlined } from '@ant-design/icons'
 import { getOpportunityDetail, updateOpportunity, convertOpportunity, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getCustomers, getUsers, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
@@ -485,18 +485,30 @@ function OpportunityDetail() {
       </Button>
 
       <Card style={{ marginBottom: 16 }}>
-        <Row justify="space-between" align="middle">
-          <Col>
-            <h2 style={{ margin: 0 }}>{opportunity.name}</h2>
-            <p style={{ margin: '8px 0 0', color: '#666' }}>
+        <Row justify="space-between" align="middle" wrap={false}>
+          <Col flex="auto" style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>{opportunity.name}</h3>
+              <Tag color={status.color}>{status.text}</Tag>
+              <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>预算: <strong style={{ color: '#2563eb' }}>{opportunity.budget ? Number(opportunity.budget).toFixed(2) : '0.00'}元</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>成单率: <strong style={{ color: '#059669' }}>{opportunity.winRate ?? 0}%</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>团队: <strong style={{ color: '#7c3aed' }}>{opportunity.teamMembers?.length || 0}人</strong></span>
+              {opportunity.owner?.name && (
+                <>
+                  <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
+                  <span style={{ color: '#6b7280', fontSize: 13 }}>负责人: <strong style={{ color: '#374151' }}>{opportunity.owner.name}</strong></span>
+                </>
+              )}
+            </div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
               {opportunity.customer?.name || '暂无客户'}
-            </p>
+              {opportunity.expectedStart && <> · 预计开始: {dayjs(opportunity.expectedStart).format('YYYY-MM-DD')}</>}
+              {opportunity.expectedEnd && <> · 预计结束: {dayjs(opportunity.expectedEnd).format('YYYY-MM-DD')}</>}
+            </div>
           </Col>
-          <Col>
+          <Col flex="none">
             <Space>
-              <Tag color={status.color} style={{ fontSize: 14, padding: '4px 12px' }}>
-                {status.text}
-              </Tag>
               {opportunity.project ? (
                 <Button
                   icon={<FileTextOutlined />}
@@ -531,40 +543,6 @@ function OpportunityDetail() {
           </Col>
         </Row>
       </Card>
-
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={8}>
-          <Card>
-            <Statistic
-              title="预算金额"
-              value={opportunity.budget ? Number(opportunity.budget) : 0}
-              precision={2}
-              valueStyle={{ color: '#1890ff' }}
-              suffix="元"
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card>
-            <Statistic
-              title="成单率"
-              value={opportunity.winRate ?? 0}
-              valueStyle={{ color: '#52c41a' }}
-              suffix="%"
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card>
-            <Statistic
-              title="团队人数"
-              value={opportunity.teamMembers?.length || 0}
-              valueStyle={{ color: '#722ed1' }}
-              suffix="人"
-            />
-          </Card>
-        </Col>
-      </Row>
 
       <Card>
         <Tabs items={tabItems} />

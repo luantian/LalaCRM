@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Dropdown, Slider, Progress, Avatar, Empty, Image } from 'antd'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Dropdown, Slider, Avatar, Empty, Image } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, MoreOutlined, EyeOutlined } from '@ant-design/icons'
 import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getCustomers, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, getShipments, createShipment, updateShipment, deleteShipment, getProcurements, createProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUsers, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
@@ -830,17 +830,25 @@ function ProjectDetail() {
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/projects')} style={{ marginBottom: 16 }}>返回列表</Button>
 
       <Card style={{ marginBottom: 16 }}>
-        <Row justify="space-between" align="middle">
-          <Col><h2 style={{ margin: 0 }}>{project.name}</h2><p style={{ margin: '8px 0 0', color: '#666' }}>{project.customer?.name || '暂无客户'}</p></Col>
-          <Col><Space><Tag color={projectStatus.color} style={{ fontSize: 14, padding: '4px 12px' }}>{projectStatus.text}</Tag><Button type="primary" icon={<EditOutlined />} onClick={handleEditProject}>编辑</Button></Space></Col>
+        <Row justify="space-between" align="middle" wrap={false}>
+          <Col flex="auto" style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>{project.name}</h3>
+              <Tag color={projectStatus.color}>{projectStatus.text}</Tag>
+              <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>预算: <strong style={{ color: '#059669' }}>{project.budget ? `${Number(project.budget)}元` : '-'}</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>合同总额: <strong style={{ color: '#2563eb' }}>{totalContractAmount}元</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>进度: <strong style={{ color: '#7c3aed' }}>{project.progress || 0}%</strong></span>
+            </div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{project.customer?.name || '暂无客户'} · 合同 {contractCount} 份</div>
+          </Col>
+          <Col flex="none">
+            <Space>
+              <Button type="primary" icon={<EditOutlined />} onClick={handleEditProject}>编辑</Button>
+            </Space>
+          </Col>
         </Row>
       </Card>
-
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={8}><Card><Statistic title="项目预算" value={project.budget ? Number(project.budget) : 0} precision={2} valueStyle={{ color: '#1890ff' }} suffix="元" /></Card></Col>
-        <Col xs={24} sm={8}><Card><Statistic title="合同总额" value={totalContractAmount} precision={2} valueStyle={{ color: '#52c41a' }} suffix="元" /></Card></Col>
-        <Col xs={24} sm={8}><Card title="项目进度"><Progress percent={project.progress || 0} status={project.progress >= 100 ? 'success' : 'active'} /></Card></Col>
-      </Row>
 
       <Card><Tabs items={tabItems} /></Card>
 

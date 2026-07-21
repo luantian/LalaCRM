@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Row, Col, Statistic, Modal } from 'antd'
+import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Row, Col, Modal, Space } from 'antd'
 import { ArrowLeftOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, SendOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
@@ -99,26 +99,30 @@ const QuotationDetail: React.FC = () => {
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/quotations')} style={{ marginBottom: 16 }}>返回列表</Button>
 
       <Card style={{ marginBottom: 16 }}>
-        <Row justify="space-between" align="middle">
-          <Col>
-            <h2 style={{ margin: 0 }}>{quotation.name} <Tag>v{quotation.version}</Tag> <Tag color={sc.color}>{sc.text}</Tag></h2>
-            <p style={{ margin: '8px 0 0', color: '#666' }}>商机: {quotation.opportunity?.name || '-'} | 客户: {quotation.customer?.name || '-'}</p>
+        <Row justify="space-between" align="middle" wrap={false}>
+          <Col flex="auto" style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>{quotation.name}</h3>
+              <Tag>v{quotation.version}</Tag>
+              <Tag color={sc.color}>{sc.text}</Tag>
+              <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>报价总额: <strong style={{ color: '#cf1322' }}>¥{Number(quotation.totalAmount).toLocaleString()}</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>有效期: <strong style={{ color: '#2563eb' }}>{quotation.validUntil ? dayjs(quotation.validUntil).format('YYYY-MM-DD') : '未设置'}</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>明细: <strong style={{ color: '#7c3aed' }}>{quotation.items?.length || 0}项</strong></span>
+            </div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>商机: {quotation.opportunity?.name || '-'} · 客户: {quotation.customer?.name || '-'}</div>
           </Col>
-          <Col>
-            {quotation.status === 'DRAFT' && <Button type="primary" icon={<SendOutlined />} onClick={handleSubmit} style={{ marginRight: 8 }}>提交审批</Button>}
-            {quotation.status === 'SUBMITTED' && (<>
-              <Button type="primary" icon={<CheckOutlined />} onClick={handleApprove} style={{ marginRight: 8 }}>批准</Button>
-              <Button danger icon={<CloseOutlined />} onClick={handleReject}>拒绝</Button>
-            </>)}
+          <Col flex="none">
+            <Space>
+              {quotation.status === 'DRAFT' && <Button type="primary" icon={<SendOutlined />} onClick={handleSubmit}>提交审批</Button>}
+              {quotation.status === 'SUBMITTED' && (<>
+                <Button type="primary" icon={<CheckOutlined />} onClick={handleApprove}>批准</Button>
+                <Button danger icon={<CloseOutlined />} onClick={handleReject}>拒绝</Button>
+              </>)}
+            </Space>
           </Col>
         </Row>
       </Card>
-
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={8}><Card><Statistic title="报价总额" value={Number(quotation.totalAmount)} prefix="¥" precision={2} valueStyle={{ color: '#cf1322' }} /></Card></Col>
-        <Col span={8}><Card><Statistic title="报价有效期" value={quotation.validUntil ? dayjs(quotation.validUntil).format('YYYY-MM-DD') : '未设置'} /></Card></Col>
-        <Col span={8}><Card><Statistic title="明细数" value={quotation.items?.length || 0} suffix="项" /></Card></Col>
-      </Row>
 
       <Card>
         <Tabs defaultActiveKey="items" items={[

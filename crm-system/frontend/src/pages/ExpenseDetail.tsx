@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message } from 'antd'
+import { Card, Descriptions, Tag, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message } from 'antd'
 import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons'
 import { getExpenseDetail, updateExpense, getCustomers, getProjects } from '../services/api'
 import dayjs from 'dayjs'
@@ -118,18 +118,22 @@ function ExpenseDetail() {
       </Button>
 
       <Card style={{ marginBottom: 16 }}>
-        <Row justify="space-between" align="middle">
-          <Col>
-            <h2 style={{ margin: 0 }}>{expense.title}</h2>
-            <p style={{ margin: '8px 0 0', color: '#666' }}>
+        <Row justify="space-between" align="middle" wrap={false}>
+          <Col flex="auto" style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>{expense.title}</h3>
+              <Tag color={status.color}>{status.text}</Tag>
+              <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>金额: <strong style={{ color: '#dc2626' }}>{Number(expense.amount || 0).toFixed(2)}元</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>类别: <strong style={{ color: '#374151' }}>{expense.category || '-'}</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>费用日期: <strong style={{ color: '#2563eb' }}>{expense.expenseDate ? dayjs(expense.expenseDate).format('YYYY-MM-DD') : '-'}</strong></span>
+            </div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
               {expense.customer?.name || '暂无客户'} | {expense.project?.name || '暂无项目'}
-            </p>
+            </div>
           </Col>
-          <Col>
+          <Col flex="none">
             <Space>
-              <Tag color={status.color} style={{ fontSize: 14, padding: '4px 12px' }}>
-                {status.text}
-              </Tag>
               <Button
                 type="primary"
                 icon={<EditOutlined />}
@@ -141,38 +145,6 @@ function ExpenseDetail() {
           </Col>
         </Row>
       </Card>
-
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={8}>
-          <Card>
-            <Statistic
-              title="报销金额"
-              value={expense.amount || 0}
-              precision={2}
-              valueStyle={{ color: '#f5222d' }}
-              suffix="元"
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card>
-            <Statistic
-              title="费用类别"
-              value={expense.category || '-'}
-              valueStyle={{ fontSize: 20 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card>
-            <Statistic
-              title="费用日期"
-              value={expense.expenseDate ? dayjs(expense.expenseDate).format('YYYY-MM-DD') : '-'}
-              valueStyle={{ fontSize: 20 }}
-            />
-          </Card>
-        </Col>
-      </Row>
 
       <Card title="基本信息">
         <Descriptions column={2} bordered>

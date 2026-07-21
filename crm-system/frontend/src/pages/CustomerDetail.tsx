@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, message, Dropdown, Checkbox } from 'antd'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, message, Dropdown, Checkbox } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, StarOutlined, PlusOutlined, MoreOutlined } from '@ant-design/icons'
 import { getCustomerDetail, updateCustomer, getCustomerContacts, createCustomerContact, updateCustomerContact, deleteCustomerContact, setPrimaryContact } from '../services/api'
 import dayjs from 'dayjs'
@@ -340,18 +340,22 @@ function CustomerDetail() {
       </Button>
 
       <Card style={{ marginBottom: 16 }}>
-        <Row justify="space-between" align="middle">
-          <Col>
-            <h2 style={{ margin: 0 }}>{customer.name}</h2>
-            <p style={{ margin: '8px 0 0', color: '#666' }}>
+        <Row justify="space-between" align="middle" wrap={false}>
+          <Col flex="auto" style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>{customer.name}</h3>
+              <Tag color={status.color}>{status.text}</Tag>
+              <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>收入: <strong style={{ color: '#059669' }}>{totalIncome.toFixed(2)}元</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>支出: <strong style={{ color: '#dc2626' }}>{totalExpense.toFixed(2)}元</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>合同: <strong style={{ color: '#2563eb' }}>{totalContractAmount.toFixed(2)}元</strong></span>
+            </div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
               {customer.companyName || '暂无公司'}
-            </p>
+            </div>
           </Col>
-          <Col>
+          <Col flex="none">
             <Space>
-              <Tag color={status.color} style={{ fontSize: 14, padding: '4px 12px' }}>
-                {status.text}
-              </Tag>
               <Button
                 type="primary"
                 icon={<EditOutlined />}
@@ -363,42 +367,6 @@ function CustomerDetail() {
           </Col>
         </Row>
       </Card>
-
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={8}>
-          <Card>
-            <Statistic
-              title="总收入"
-              value={totalIncome}
-              precision={2}
-              valueStyle={{ color: '#52c41a' }}
-              suffix="元"
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card>
-            <Statistic
-              title="总支出"
-              value={totalExpense}
-              precision={2}
-              valueStyle={{ color: '#f5222d' }}
-              suffix="元"
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={8}>
-          <Card>
-            <Statistic
-              title="合同总额"
-              value={totalContractAmount}
-              precision={2}
-              valueStyle={{ color: '#1890ff' }}
-              suffix="元"
-            />
-          </Card>
-        </Col>
-      </Row>
 
       <Card title="基本信息" style={{ marginBottom: 16 }}>
         <Descriptions column={2}>

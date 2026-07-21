@@ -130,71 +130,25 @@ function BusinessTripDetail() {
       </Button>
 
       <Card style={{ marginBottom: 16 }}>
-        <Row justify="space-between" align="middle">
-          <Col>
-            <h2 style={{ margin: 0 }}>{trip.title}</h2>
-            <p style={{ margin: '8px 0 0', color: '#666' }}>
-              {trip.destination}
-              {trip.customer?.name ? ` - ${trip.customer.name}` : ''}
-            </p>
+        <Row justify="space-between" align="middle" wrap={false}>
+          <Col flex="auto" style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>{trip.title}</h3>
+              <Tag color={status.color}>{status.text}</Tag>
+              <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>总费用: <strong style={{ color: '#f5222d' }}>{totalAmount}元</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>天数: <strong style={{ color: '#2563eb' }}>{trip.days || 0}天</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>日期: <strong style={{ color: '#7c3aed' }}>{trip.startDate ? dayjs(trip.startDate).format('MM-DD') : '-'} ~ {trip.endDate ? dayjs(trip.endDate).format('MM-DD') : '-'}</strong></span>
+            </div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{trip.destination}{trip.customer?.name ? ` · ${trip.customer.name}` : ''}</div>
           </Col>
-          <Col>
+          <Col flex="none">
             <Space>
-              <Tag color={status.color} style={{ fontSize: 14, padding: '4px 12px' }}>
-                {status.text}
-              </Tag>
-              <Button
-                type="primary"
-                icon={<EditOutlined />}
-                onClick={handleEdit}
-              >
-                编辑
-              </Button>
+              <Button type="primary" icon={<EditOutlined />} onClick={handleEdit}>编辑</Button>
             </Space>
           </Col>
         </Row>
       </Card>
-
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={6}>
-          <Card>
-            <Statistic
-              title="总费用"
-              value={totalAmount}
-              precision={2}
-              valueStyle={{ color: '#f5222d' }}
-              suffix="元"
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={6}>
-          <Card>
-            <Statistic
-              title="出差天数"
-              value={trip.days || 0}
-              suffix="天"
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={6}>
-          <Card>
-            <Statistic
-              title="开始日期"
-              value={trip.startDate ? dayjs(trip.startDate).format('MM-DD') : '-'}
-              valueStyle={{ fontSize: 20 }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={6}>
-          <Card>
-            <Statistic
-              title="结束日期"
-              value={trip.endDate ? dayjs(trip.endDate).format('MM-DD') : '-'}
-              valueStyle={{ fontSize: 20 }}
-            />
-          </Card>
-        </Col>
-      </Row>
 
       <Card title="基本信息" style={{ marginBottom: 16 }}>
         <Descriptions column={2}>
