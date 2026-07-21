@@ -65,7 +65,7 @@ function Dashboard() {
       const hour = dayjs().hour()
       const period = hour < 12 ? 'MORNING' : 'EVENING'
       const result: any = await checkIn({ period })
-      message.success(result?.message || (period === 'MORNING' ? '上班打卡成功！' : '下班打卡成功！'))
+      message.success(result?.message || '打卡成功！')
       fetchTodayCheckIn()
     } catch (error: any) {
       message.error(error?.error || '打卡失败')
@@ -453,11 +453,8 @@ function Dashboard() {
                 transition: 'all 0.2s ease',
               }}
             >
-              {isAllChecked ? '✓ 今日已打卡' : (hour < 12 ? '上班打卡' : '下班打卡')}
+              {isAllChecked ? '✓ 已打卡' : '打卡'}
             </Button>
-            <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', marginTop: 8 }}>
-              {isAllChecked ? '上下班均已打卡' : `当前为${hour < 12 ? '上班' : '下班'}时段，12点前为上班打卡`}
-            </div>
           </Col>
         </Row>
       </Card>
