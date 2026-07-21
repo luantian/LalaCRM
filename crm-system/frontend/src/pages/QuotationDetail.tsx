@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Row, Col, Modal } from 'antd'
+import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Row, Col, Modal, Space, Popconfirm } from 'antd'
 import { ArrowLeftOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
@@ -73,11 +73,13 @@ const QuotationDetail: React.FC = () => {
     { title: '文件名', dataIndex: 'fileName', key: 'fileName' },
     { title: '大小', dataIndex: 'fileSize', key: 'fileSize', width: 100, render: (s: number) => `${(s / 1024).toFixed(1)} KB` },
     { title: '上传时间', dataIndex: 'uploadedAt', key: 'uploadedAt', width: 160, render: (d: string) => dayjs(d).format('YYYY-MM-DD HH:mm') },
-    { title: '操作', key: 'action', width: 100, render: (_: any, r: any) => (
-      <span>
-        <Button type="link" icon={<DownloadOutlined />} onClick={() => handleDownload(r)} />
-        <Button type="link" danger icon={<DeleteOutlined />} onClick={() => handleDeleteFile(r.id)} />
-      </span>
+    { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
+      <Space size={0}>
+        <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => handleDownload(r)}>下载</Button>
+        <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteFile(r.id)}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+        </Popconfirm>
+      </Space>
     )}
   ]
 

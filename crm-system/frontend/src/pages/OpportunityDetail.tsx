@@ -326,8 +326,8 @@ function OpportunityDetail() {
       title: '操作',
       key: 'action',
       render: (_: any, record: any) => (
-        <Popconfirm title="确定移除该成员?" onConfirm={() => handleRemoveTeamMember(record.id)}>
-          <Button type="link" danger icon={<DeleteOutlined />}>移除</Button>
+        <Popconfirm title="确定要删除吗?" onConfirm={() => handleRemoveTeamMember(record.id)}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />}>移除</Button>
         </Popconfirm>
       )
     }

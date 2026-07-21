@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, message, Dropdown, Checkbox } from 'antd'
-import { ArrowLeftOutlined, EditOutlined, StarOutlined, PlusOutlined, MoreOutlined } from '@ant-design/icons'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, message, Popconfirm, Checkbox } from 'antd'
+import { ArrowLeftOutlined, EditOutlined, StarOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import { getCustomerDetail, updateCustomer, getCustomerContacts, createCustomerContact, updateCustomerContact, deleteCustomerContact, setPrimaryContact } from '../services/api'
 import dayjs from 'dayjs'
 
@@ -240,23 +240,17 @@ function CustomerDetail() {
     {
       title: '操作',
       key: 'action',
+      width: 300,
       render: (_: any, record: any) => (
-        <Dropdown
-          menu={{
-            items: [
-              ...(!record.isPrimary ? [{ key: 'primary', label: '设为主要联系人' }] : []),
-              { key: 'edit', label: '编辑' },
-              { key: 'delete', label: '删除', danger: true }
-            ],
-            onClick: ({ key }) => {
-              if (key === 'primary') handleSetPrimary(record.id)
-              else if (key === 'edit') handleEditContact(record)
-              else if (key === 'delete') handleDeleteContact(record.id)
-            }
-          }}
-        >
-          <Button type="link" icon={<MoreOutlined />} />
-        </Dropdown>
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditContact(record)}>编辑</Button>
+          {!record.isPrimary && (
+            <Button type="link" size="small" icon={<StarOutlined />} onClick={() => handleSetPrimary(record.id)}>设为主要</Button>
+          )}
+          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteContact(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+        </Space>
       )
     }
   ]

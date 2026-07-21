@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Dropdown, Slider, Avatar, Empty, Image } from 'antd'
-import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, MoreOutlined, EyeOutlined } from '@ant-design/icons'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Slider, Avatar, Empty, Image } from 'antd'
+import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, EyeOutlined } from '@ant-design/icons'
 import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getCustomers, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, getShipments, createShipment, updateShipment, deleteShipment, getProcurements, createProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUsers, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
@@ -311,12 +311,13 @@ function ProjectDetail() {
     { title: '金额', dataIndex: 'amount', key: 'amount', render: (v: number) => <span style={{ color: '#1890ff', fontWeight: 'bold' }}>{Number(v)}元</span> },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => { const c = contractStatusConfig[s] || { text: s, color: 'default' }; return <Tag color={c.color}>{c.text}</Tag> } },
     { title: '签订日期', dataIndex: 'signDate', key: 'signDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
-    { title: '操作', key: 'action', width: 60, render: (_: any, r: any) => (
-      <Dropdown menu={{ items: [
-        { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => handleEditContract(r) },
-        { type: 'divider' },
-        { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => handleDeleteContract(r.id) },
-      ]}}><Button type="text" icon={<MoreOutlined />} /></Dropdown>
+    { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
+      <Space size={0}>
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditContract(r)}>编辑</Button>
+        <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteContract(r.id)}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+        </Popconfirm>
+      </Space>
     ) }
   ]
 
@@ -330,12 +331,13 @@ function ProjectDetail() {
     { title: '联系人', dataIndex: 'contactName', key: 'contactName', render: (v: string) => v || '-' },
     { title: '联系电话', dataIndex: 'contactPhone', key: 'contactPhone', render: (v: string) => v || '-' },
     { title: '交货日期', dataIndex: 'deliveryDate', key: 'deliveryDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
-    { title: '操作', key: 'action', width: 60, render: (_: any, r: any) => (
-      <Dropdown menu={{ items: [
-        { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => { setEditingOrderItem(r); orderForm.setFieldsValue({ ...r, unitPrice: Number(r.unitPrice), deliveryDate: r.deliveryDate ? dayjs(r.deliveryDate) : null }); setOrderModalVisible(true) } },
-        { type: 'divider' },
-        { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: async () => { await deleteOrderItem(r.id); if (orderContractId) fetchOrderItems(orderContractId) } },
-      ]}}><Button type="text" icon={<MoreOutlined />} /></Dropdown>
+    { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
+      <Space size={0}>
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingOrderItem(r); orderForm.setFieldsValue({ ...r, unitPrice: Number(r.unitPrice), deliveryDate: r.deliveryDate ? dayjs(r.deliveryDate) : null }); setOrderModalVisible(true) }}>编辑</Button>
+        <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteOrderItem(r.id); if (orderContractId) fetchOrderItems(orderContractId) }}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+        </Popconfirm>
+      </Space>
     ) }
   ]
 
@@ -346,12 +348,13 @@ function ProjectDetail() {
     { title: '付款日期', dataIndex: 'paymentDate', key: 'paymentDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={s === 'RECEIVED' ? 'success' : s === 'CONFIRMED' ? 'processing' : 'default'}>{{ PENDING: '待付款', CONFIRMED: '已确认', RECEIVED: '已到账' }[s] || s}</Tag> },
     { title: '发票号', dataIndex: 'invoiceNo', key: 'invoiceNo', render: (v: string) => v || '-' },
-    { title: '操作', key: 'action', width: 60, render: (_: any, r: any) => (
-      <Dropdown menu={{ items: [
-        { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => { setEditingPayment(r); paymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setPaymentModalVisible(true) } },
-        { type: 'divider' },
-        { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: async () => { await deletePayment(r.id); if (paymentContractId) fetchPayments(paymentContractId) } },
-      ]}}><Button type="text" icon={<MoreOutlined />} /></Dropdown>
+    { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
+      <Space size={0}>
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingPayment(r); paymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setPaymentModalVisible(true) }}>编辑</Button>
+        <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deletePayment(r.id); if (paymentContractId) fetchPayments(paymentContractId) }}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+        </Popconfirm>
+      </Space>
     ) }
   ]
 
@@ -364,12 +367,13 @@ function ProjectDetail() {
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={s === 'DELIVERED' ? 'success' : s === 'IN_TRANSIT' ? 'processing' : s === 'SHIPPED' ? 'blue' : 'default'}>{{ PENDING: '待发货', SHIPPED: '已发货', IN_TRANSIT: '运输中', DELIVERED: '已签收' }[s] || s}</Tag> },
     { title: '签收日期', dataIndex: 'receiveDate', key: 'receiveDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
     { title: '签收人', dataIndex: 'receiver', key: 'receiver', render: (v: string) => v || '-' },
-    { title: '操作', key: 'action', width: 60, render: (_: any, r: any) => (
-      <Dropdown menu={{ items: [
-        { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => { setEditingShipment(r); shipmentForm.setFieldsValue({ ...r, shipDate: dayjs(r.shipDate), receiveDate: r.receiveDate ? dayjs(r.receiveDate) : null }); setShipmentModalVisible(true) } },
-        { type: 'divider' },
-        { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: async () => { await deleteShipment(r.id); if (shipmentContractId) fetchShipments(shipmentContractId) } },
-      ]}}><Button type="text" icon={<MoreOutlined />} /></Dropdown>
+    { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
+      <Space size={0}>
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingShipment(r); shipmentForm.setFieldsValue({ ...r, shipDate: dayjs(r.shipDate), receiveDate: r.receiveDate ? dayjs(r.receiveDate) : null }); setShipmentModalVisible(true) }}>编辑</Button>
+        <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteShipment(r.id); if (shipmentContractId) fetchShipments(shipmentContractId) }}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+        </Popconfirm>
+      </Space>
     ) }
   ]
 
@@ -727,10 +731,12 @@ function ProjectDetail() {
                         { title: '单位', dataIndex: 'unit', key: 'unit' },
                         { title: '单价', dataIndex: 'unitPrice', key: 'unitPrice', render: (v: number) => `${Number(v)}元` },
                         { title: '总价', dataIndex: 'totalPrice', key: 'totalPrice', render: (v: number) => <span style={{ color: '#1890ff' }}>{Number(v)}元</span> },
-                        { title: '操作', key: 'action', width: 60, render: (_: any, r: any) => (
-                          <Popconfirm title="确定删除?" onConfirm={async () => { await deleteProcurementItem(r.id); handleViewProcurement(record) }}>
-                            <Button size="small" danger icon={<DeleteOutlined />} />
-                          </Popconfirm>
+                        { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
+                          <Space size={0}>
+                            <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteProcurementItem(r.id); handleViewProcurement(record) }}>
+                              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                            </Popconfirm>
+                          </Space>
                         )}
                       ]}
                       summary={(data) => {
@@ -763,11 +769,11 @@ function ProjectDetail() {
                         { title: '方式', dataIndex: 'paymentMethod', render: (v: string) => v || '-' },
                         { title: '日期', dataIndex: 'paymentDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
                         { title: '状态', dataIndex: 'status', render: (s: string) => <Tag color={s === 'RECEIVED' ? 'success' : s === 'CONFIRMED' ? 'processing' : 'default'}>{{ PENDING: '待付款', CONFIRMED: '已确认', RECEIVED: '已到账' }[s] || s}</Tag> },
-                        { title: '操作', key: 'action', width: 80, render: (_: any, r: any) => (
-                          <Space>
-                            <Button type="text" size="small" icon={<EditOutlined />} onClick={() => { setCurrentProcurement(record); setEditingProcPayment(r); procPaymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setProcPaymentModalVisible(true) }} />
-                            <Popconfirm title="确定删除?" onConfirm={async () => { await deleteProcurementPayment(r.id); fetchProcPayments(record.id) }}>
-                              <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                        { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
+                          <Space size={0}>
+                            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setCurrentProcurement(record); setEditingProcPayment(r); procPaymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setProcPaymentModalVisible(true) }}>编辑</Button>
+                            <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteProcurementPayment(r.id); fetchProcPayments(record.id) }}>
+                              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
                             </Popconfirm>
                           </Space>
                         )}
@@ -810,12 +816,13 @@ function ProjectDetail() {
             },
             { title: '职责', dataIndex: 'responsibility', key: 'responsibility', ellipsis: true },
             { title: '加入时间', dataIndex: 'joinDate', key: 'joinDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
-            { title: '操作', key: 'action', width: 100, render: (_: any, r: any) => (
-              <Dropdown menu={{ items: [
-                { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => handleEditTeamMember(r) },
-                { type: 'divider' },
-                { key: 'remove', icon: <DeleteOutlined />, label: '移除', danger: true, onClick: () => handleRemoveMember(r.id) },
-              ]}}><Button type="text" icon={<MoreOutlined />} /></Dropdown>
+            { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
+              <Space size={0}>
+                <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditTeamMember(r)}>编辑</Button>
+                <Popconfirm title="确定要删除吗?" onConfirm={() => handleRemoveMember(r.id)}>
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />}>移除</Button>
+                </Popconfirm>
+              </Space>
             )}
           ]}
           dataSource={teamMembers} rowKey="id" pagination={false}
