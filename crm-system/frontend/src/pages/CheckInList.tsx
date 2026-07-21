@@ -119,7 +119,7 @@ function CheckInList() {
   const todayCheckedCount = (todayStatus?.morningCheckedIn ? 1 : 0) + (todayStatus?.eveningCheckedIn ? 1 : 0)
 
   return (
-    <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+    <div>
       {/* Hero Section - 今日打卡状态 */}
       <Card
         style={{
