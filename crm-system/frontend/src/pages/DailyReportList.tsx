@@ -663,13 +663,16 @@ function DailyReportList() {
                 >
                   <List.Item.Meta
                     title={
-                      <Space>
+                      <Space size={8}>
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>优先级</span>
                         <Tag color={item.priority === 'HIGH' ? 'red' : item.priority === 'MEDIUM' ? 'orange' : 'blue'}>
                           {item.priority === 'HIGH' ? '高' : item.priority === 'MEDIUM' ? '中' : '低'}
                         </Tag>
+                        <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 8 }}>状态</span>
                         <Tag color={item.status === 'COMPLETED' ? 'green' : item.status === 'IN_PROGRESS' ? 'blue' : 'red'}>
                           {item.status === 'COMPLETED' ? '已完成' : item.status === 'IN_PROGRESS' ? '进行中' : item.status === 'DELAYED' ? '延期' : '取消'}
                         </Tag>
+                        <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 8 }}>工时</span>
                         <Tag color={item.timeType === 'OVERTIME' ? 'red' : item.timeType === 'LEAVE' ? 'orange' : item.timeType === 'OTHER' ? 'default' : 'cyan'}>
                           {item.timeType === 'OVERTIME' ? '加班' : item.timeType === 'LEAVE' ? '请假' : item.timeType === 'OTHER' ? '其他' : '正常'}
                         </Tag>
