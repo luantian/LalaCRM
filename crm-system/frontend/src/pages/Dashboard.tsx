@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, Tooltip, App as AntApp } from 'antd'
+import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, Tooltip, App as AntApp, Space } from 'antd'
 import {
   UserOutlined, ProjectOutlined, FileTextOutlined,
   CheckCircleOutlined, ClockCircleOutlined, FundOutlined,
   CarOutlined, AccountBookOutlined, SendOutlined,
   DashboardOutlined, PlusOutlined, CheckOutlined, PlayCircleOutlined,
   DeleteOutlined, ExclamationCircleOutlined, EditOutlined, StopOutlined,
-  InboxOutlined, CalendarOutlined, FieldTimeOutlined
+  InboxOutlined, CalendarOutlined, FieldTimeOutlined,
+  SunOutlined, MoonOutlined
 } from '@ant-design/icons'
 import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
@@ -59,13 +60,10 @@ function Dashboard() {
     }
   }
 
-  const handleQuickCheckIn = async () => {
+  const handleQuickCheckInPeriod = async (period: 'MORNING' | 'EVENING') => {
     try {
-      const now = dayjs()
-      const hour = now.hour()
-      const period = hour < 12 ? 'MORNING' : 'EVENING'
       const result: any = await checkIn({ period })
-      message.success(result?.message || '打卡成功！')
+      message.success(result?.message || (period === 'MORNING' ? '上班打卡成功！' : '下班打卡成功！'))
       fetchTodayCheckIn()
     } catch (error: any) {
       message.error(error?.error || '打卡失败')
@@ -186,21 +184,13 @@ function Dashboard() {
   const eveningChecked = todayCheckIn?.eveningCheckedIn
   const isAllChecked = morningChecked && eveningChecked
 
-  let checkinLabel = '快速打卡'
-  let checkinIcon = <ClockCircleOutlined />
-  let checkinColor = '#4f46e5'
   let checkinStatusText = ''
 
   if (hour < 12) {
     if (morningChecked) {
       const mc = todayCheckIn?.morningCount || 1
-      checkinLabel = '上班已打卡'
-      checkinIcon = <CheckCircleOutlined />
-      checkinColor = '#059669'
-      checkinStatusText = `✓ ${todayCheckIn?.morningRecord ? dayjs(todayCheckIn.morningRecord.checkInTime).format('HH:mm') : ''} 已签到${mc > 1 ? ` (共${mc}次)` : ''}`
+      checkinStatusText = `✓ ${todayCheckIn?.morningRecord ? dayjs(todayCheckIn.morningRecord.checkInTime).format('HH:mm') : ''} 已签到${mc > 1 ? ` (共${mc}次，以最早为准)` : ''}`
     } else if (hour >= 9) {
-      checkinLabel = '上班打卡 (迟到)'
-      checkinColor = '#d97706'
       checkinStatusText = '⚠ 已超过 09:00'
     } else {
       checkinStatusText = '✦ 请在 09:00 前打卡'
@@ -208,13 +198,8 @@ function Dashboard() {
   } else {
     if (eveningChecked) {
       const ec = todayCheckIn?.eveningCount || 1
-      checkinLabel = '下班已打卡'
-      checkinIcon = <CheckCircleOutlined />
-      checkinColor = '#059669'
-      checkinStatusText = `✓ ${todayCheckIn?.eveningRecord ? dayjs(todayCheckIn.eveningRecord.checkInTime).format('HH:mm') : ''} 已签退${ec > 1 ? ` (共${ec}次)` : ''}`
+      checkinStatusText = `✓ ${todayCheckIn?.eveningRecord ? dayjs(todayCheckIn.eveningRecord.checkInTime).format('HH:mm') : ''} 已签退${ec > 1 ? ` (共${ec}次，以最晚为准)` : ''}`
     } else if (hour < 17 || (hour === 17 && currentTime.minute() < 30)) {
-      checkinLabel = '下班打卡 (早退)'
-      checkinColor = '#d97706'
       checkinStatusText = '⚠ 未到 17:30'
     } else {
       checkinStatusText = '✦ 可以下班打卡了'
@@ -355,9 +340,144 @@ function Dashboard() {
         )}
       </div>
 
-      {/* ====== Quick Action Cards + Check-in Card ====== */}
+      {/* ====== Check-in Section ====== */}
+      <Card
+        className="bd-page-enter-d1"
+        style={{
+          marginBottom: 24,
+          borderRadius: 16,
+          border: '1px solid #f1f5f9',
+          overflow: 'hidden',
+          background: isAllChecked
+            ? 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)'
+            : (hour < 12 && morningChecked) || (hour >= 12 && eveningChecked)
+              ? 'linear-gradient(135deg, #f0fdf4 0%, #f0f9ff 100%)'
+              : 'linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%)'
+        }}
+        styles={{ body: { padding: '20px 24px' } }}
+      >
+        <Row gutter={24} align="middle">
+          {/* Left: Title & Status */}
+          <Col xs={24} md={12}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 10,
+                background: 'linear-gradient(135deg, #059669, #10b981)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', fontSize: 18,
+              }}>
+                <CalendarOutlined />
+              </div>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>今日考勤</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>
+                  {dayjs().format('M月D日 dddd')} · 当前 {currentTime.format('HH:mm')}
+                </div>
+              </div>
+            </div>
+
+            {/* Status badges */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+              <div style={{
+                flex: 1,
+                padding: '12px 16px',
+                borderRadius: 10,
+                background: morningChecked ? '#fff' : '#f9fafb',
+                border: `1.5px solid ${morningChecked ? '#a7f3d0' : '#e5e7eb'}`,
+                transition: 'all 0.2s ease',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <SunOutlined style={{ color: morningChecked ? '#f59e0b' : '#d1d5db', fontSize: 16 }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: morningChecked ? '#059669' : '#9ca3af' }}>上班打卡</span>
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: morningChecked ? '#059669' : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>
+                  {morningChecked && todayCheckIn?.morningRecord
+                    ? dayjs(todayCheckIn.morningRecord.checkInTime).format('HH:mm')
+                    : '--:--'}
+                </div>
+                {(todayCheckIn?.morningCount || 0) > 1 && (
+                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                    共 {todayCheckIn.morningCount} 次 · 以最早为准
+                  </div>
+                )}
+              </div>
+
+              <div style={{
+                flex: 1,
+                padding: '12px 16px',
+                borderRadius: 10,
+                background: eveningChecked ? '#fff' : '#f9fafb',
+                border: `1.5px solid ${eveningChecked ? '#a7f3d0' : '#e5e7eb'}`,
+                transition: 'all 0.2s ease',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <MoonOutlined style={{ color: eveningChecked ? '#6366f1' : '#d1d5db', fontSize: 16 }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: eveningChecked ? '#059669' : '#9ca3af' }}>下班打卡</span>
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: eveningChecked ? '#059669' : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>
+                  {eveningChecked && todayCheckIn?.eveningRecord
+                    ? dayjs(todayCheckIn.eveningRecord.checkInTime).format('HH:mm')
+                    : '--:--'}
+                </div>
+                {(todayCheckIn?.eveningCount || 0) > 1 && (
+                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                    共 {todayCheckIn.eveningCount} 次 · 以最晚为准
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {checkinStatusText && (
+              <div style={{ fontSize: 12, color: '#6b7280' }}>{checkinStatusText}</div>
+            )}
+          </Col>
+
+          {/* Right: Check-in Buttons */}
+          <Col xs={24} md={12}>
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <Button
+                size="large"
+                icon={morningChecked ? <CheckCircleOutlined /> : <SunOutlined />}
+                onClick={() => { handleQuickCheckInPeriod('MORNING') }}
+                block
+                style={{
+                  height: 56,
+                  fontSize: 16,
+                  fontWeight: 600,
+                  borderRadius: 12,
+                  background: morningChecked ? '#059669' : '#fff',
+                  color: morningChecked ? '#fff' : '#f59e0b',
+                  border: morningChecked ? 'none' : '2px solid #fde68a',
+                  boxShadow: morningChecked ? 'none' : '0 2px 8px rgba(245,158,11,0.15)',
+                }}
+              >
+                {morningChecked ? `✓ 上班已打卡` : '上班打卡'}
+              </Button>
+              <Button
+                size="large"
+                icon={eveningChecked ? <CheckCircleOutlined /> : <MoonOutlined />}
+                onClick={() => { handleQuickCheckInPeriod('EVENING') }}
+                block
+                style={{
+                  height: 56,
+                  fontSize: 16,
+                  fontWeight: 600,
+                  borderRadius: 12,
+                  background: eveningChecked ? '#059669' : '#fff',
+                  color: eveningChecked ? '#fff' : '#6366f1',
+                  border: eveningChecked ? 'none' : '2px solid #c7d2fe',
+                  boxShadow: eveningChecked ? 'none' : '0 2px 8px rgba(99,102,241,0.15)',
+                }}
+              >
+                {eveningChecked ? `✓ 下班已打卡` : '下班打卡'}
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
+
+      {/* ====== Quick Action Cards ====== */}
       <Row gutter={[16, 16]} className="bd-page-enter-d1" style={{ marginBottom: 24 }}>
-        {/* Quick Action Cards */}
         {filteredQuickActions.map((item, idx) => (
           <Col xs={8} sm={8} md={6} lg={3} key={item.label}>
             <div
@@ -373,70 +493,6 @@ function Dashboard() {
             </div>
           </Col>
         ))}
-
-        {/* Check-in Card - spans remaining columns */}
-        <Col xs={8} sm={8} md={6} lg={Math.max(3, 12 - filteredQuickActions.length)}>
-          <div className={`bd-checkin-card${isAllChecked || (hour < 12 && morningChecked) || (hour >= 12 && eveningChecked) ? ' checked' : ''}`}>
-            {/* Left: Status info */}
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                <CalendarOutlined style={{ fontSize: 14, color: '#059669' }} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#059669', letterSpacing: 0.5 }}>今日考勤</span>
-              </div>
-              {/* Status badges */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <span style={{
-                  fontSize: 11,
-                  padding: '2px 8px',
-                  borderRadius: 6,
-                  fontWeight: 500,
-                  background: morningChecked ? '#ecfdf5' : '#f3f4f6',
-                  color: morningChecked ? '#059669' : '#9ca3af',
-                  border: `1px solid ${morningChecked ? '#a7f3d0' : '#e5e7eb'}`,
-                }}>
-                  {morningChecked ? '✓ 上班' : '○ 上班'}
-                </span>
-                <span style={{
-                  fontSize: 11,
-                  padding: '2px 8px',
-                  borderRadius: 6,
-                  fontWeight: 500,
-                  background: eveningChecked ? '#ecfdf5' : '#f3f4f6',
-                  color: eveningChecked ? '#059669' : '#9ca3af',
-                  border: `1px solid ${eveningChecked ? '#a7f3d0' : '#e5e7eb'}`,
-                }}>
-                  {eveningChecked ? '✓ 下班' : '○ 下班'}
-                </span>
-              </div>
-              {checkinStatusText && (
-                <div style={{ fontSize: 11, color: '#6b7280' }}>{checkinStatusText}</div>
-              )}
-            </div>
-            {/* Right: Action button */}
-            <div style={{ textAlign: 'center', flexShrink: 0 }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#1e293b', marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>
-                {currentTime.format('HH:mm')}
-              </div>
-              <Button
-                type={isAllChecked ? 'default' : 'primary'}
-                size="small"
-                icon={checkinIcon}
-                onClick={handleQuickCheckIn}
-                style={{
-                  borderRadius: 8,
-                  fontWeight: 600,
-                  fontSize: 12,
-                  padding: '4px 16px',
-                  height: 'auto',
-                  ...(isAllChecked ? {} : { background: checkinColor, borderColor: checkinColor }),
-                  boxShadow: isAllChecked ? 'none' : `0 4px 12px ${checkinColor}33`,
-                }}
-              >
-                {checkinLabel}
-              </Button>
-            </div>
-          </div>
-        </Col>
       </Row>
 
       {/* ====== Task Management Panel ====== */}
