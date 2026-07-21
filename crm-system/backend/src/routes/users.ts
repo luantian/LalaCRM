@@ -8,6 +8,13 @@ import logger from '../utils/logger'
 const router = Router()
 const prisma = new PrismaClient()
 
+// 辅助函数：从返回的用户对象中剥离 password 字段，防止哈希泄露
+const userWithoutPassword = (user: any) => {
+  if (!user) return user
+  const { password, ...rest } = user
+  return rest
+}
+
 // 中间件：检查是否是admin
 const checkAdmin = async (req: Request, res: Response, next: Function) => {
   try {
@@ -49,7 +56,7 @@ router.get('/', authenticateToken, checkAdmin, async (req: Request, res: Respons
       orderBy: { createdAt: 'desc' }
     })
 
-    res.json(users)
+    res.json(users.map(userWithoutPassword))
   } catch (error) {
     logger.error('Get users error:', error)
     res.status(500).json({ error: '获取用户列表失败' })
@@ -142,7 +149,7 @@ router.post('/', authenticateToken, checkAdmin, logOperation('用户管理', 'CR
       }
     })
 
-    res.status(201).json(user)
+    res.status(201).json(userWithoutPassword(user))
   } catch (error) {
     logger.error('Create user error:', error)
     res.status(500).json({ error: '创建用户失败' })
@@ -210,7 +217,7 @@ router.put('/:id', authenticateToken, checkAdmin, logOperation('用户管理', '
       }
     })
 
-    res.json(user)
+    res.json(userWithoutPassword(user))
   } catch (error) {
     logger.error('Update user error:', error)
     res.status(500).json({ error: '更新用户失败' })
@@ -236,14 +243,21 @@ router.delete('/:id', authenticateToken, checkAdmin, logOperation('用户管理'
       return res.status(404).json({ error: '用户不存在' })
     }
 
-    // 删除用户
+    // 删除用户（硬删除，User 模型无 deletedAt 字段）
+    // 若用户存在关联业务数据（客户、销售、项目等），Prisma 会抛出外键约束错误
     await prisma.user.delete({
       where: { id: userId }
     })
 
     res.json({ message: '用户删除成功' })
-  } catch (error) {
+  } catch (error: any) {
     logger.error('Delete user error:', error)
+    // Prisma 外键约束错误（P2003 / P2014）：用户仍有未解绑的业务数据
+    if (error?.code === 'P2003' || error?.code === 'P2014') {
+      return res.status(409).json({
+        error: '该用户仍存在关联的业务数据（如客户、销售单、项目等），请先将相关数据转移给其他用户后再删除'
+      })
+    }
     res.status(500).json({ error: '删除用户失败' })
   }
 })

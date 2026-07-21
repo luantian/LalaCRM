@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Card, Space, Switch, Tooltip, Row, Col } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Card, Space, Switch, Tooltip } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, DownOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
 import api from '../services/api'
 import * as Icons from '@ant-design/icons'
@@ -140,7 +140,7 @@ function MenuManagement() {
   // 获取角色列表
   const fetchRoles = async () => {
     try {
-      const response = await api.get('/roles')
+      const response = await api.get('/roles') as any
       setRoles(response)
     } catch (error: any) {
       console.error('获取角色列表失败:', error)
@@ -151,11 +151,11 @@ function MenuManagement() {
   const fetchMenus = async () => {
     setLoading(true)
     try {
-      const response = await api.get('/menus')
+      const response = await api.get('/menus') as any
       const menuTree = buildMenuTree(response)
       setMenus(menuTree)
     } catch (error: any) {
-      message.error(error.response?.data?.error || '获取菜单列表失败')
+      message.error(error?.error || '获取菜单列表失败')
     } finally {
       setLoading(false)
     }
@@ -187,7 +187,7 @@ function MenuManagement() {
       message.success('菜单删除成功')
       fetchMenus()
     } catch (error: any) {
-      message.error(error.response?.data?.error || '删除菜单失败')
+      message.error(error?.error || '删除菜单失败')
     }
   }
 
@@ -209,8 +209,8 @@ function MenuManagement() {
       setModalVisible(false)
       fetchMenus()
     } catch (error: any) {
-      if (error.response?.data?.error) {
-        message.error(error.response.data.error)
+      if (error?.error) {
+        message.error(error?.error)
       } else {
         message.error('操作失败')
       }

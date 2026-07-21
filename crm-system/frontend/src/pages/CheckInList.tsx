@@ -95,7 +95,7 @@ function CheckInList() {
       fetchTodayStatus()
       fetchData()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '打卡失败')
+      message.error(error?.error || '打卡失败')
     }
   }
 
@@ -116,7 +116,7 @@ function CheckInList() {
       setMakeupModalVisible(false)
       fetchData()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '补卡失败')
+      message.error(error?.error || '补卡失败')
     }
   }
 

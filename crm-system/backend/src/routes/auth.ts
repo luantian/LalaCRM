@@ -126,7 +126,10 @@ router.post('/login', async (req, res) => {
     // 获取用户菜单
     const menus = await getUserMenus(user.id, resolvedRoleId, user.role)
 
-    const secret = process.env.JWT_SECRET || 'default-secret'
+    const secret = process.env.JWT_SECRET
+    if (!secret) {
+      return res.status(500).json({ error: '服务器配置错误：JWT密钥未设置' })
+    }
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role, permissions },
       secret,
@@ -169,7 +172,10 @@ router.get('/me', async (req, res) => {
       return res.status(401).json({ error: '未提供认证令牌' })
     }
 
-    const secret = process.env.JWT_SECRET || 'default-secret'
+    const secret = process.env.JWT_SECRET
+    if (!secret) {
+      return res.status(500).json({ error: '服务器配置错误：JWT密钥未设置' })
+    }
     const decoded = jwt.verify(token, secret) as any
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
@@ -206,7 +212,10 @@ router.get('/menus', async (req, res) => {
       return res.status(401).json({ error: '未提供认证令牌' })
     }
 
-    const secret = process.env.JWT_SECRET || 'default-secret'
+    const secret = process.env.JWT_SECRET
+    if (!secret) {
+      return res.status(500).json({ error: '服务器配置错误：JWT密钥未设置' })
+    }
     const decoded = jwt.verify(token, secret) as any
     const user = await prisma.user.findUnique({ where: { id: decoded.id } })
 

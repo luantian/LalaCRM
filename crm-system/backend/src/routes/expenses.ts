@@ -3,13 +3,14 @@ import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
+import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有费用报销记录
-router.get('/', authenticateToken, checkPermission('view_expenses'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('view_expenses'), applyDataScope('ownerId'), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const { page = '1', pageSize = '10', status = '', category = '', search = '' } = req.query
 
@@ -90,9 +91,10 @@ router.get('/', authenticateToken, checkPermission('view_expenses'), applyDataSc
 })
 
 // 费用统计
-router.get('/stats/overview', authenticateToken, checkPermission('view_expenses'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('view_expenses'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
-    const expenses = await prisma.expense.findMany({ where: { deletedAt: null } })
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const expenses = await prisma.expense.findMany({ where: { deletedAt: null, ...dataScopeWhere } })
 
     const totalExpenses = expenses.length
     const totalAmount = expenses.reduce((sum, e) => sum + Number(e.amount), 0)
@@ -154,7 +156,7 @@ router.get('/:id', authenticateToken, checkPermission('view_expenses'), async (r
 })
 
 // 创建费用报销记录（默认为草稿）
-router.post('/', authenticateToken, checkPermission('submit_expenses'), logOperation('费用报销', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('submit_expenses'), logOperation('费用报销', 'CREATE'), dateValidation('expenseDate'), async (req: AuthRequest, res) => {
   try {
     const {
       title,
@@ -310,6 +312,11 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_expenses
 
     if (expense.status !== 'SUBMITTED') {
       return res.status(400).json({ error: '只有待审批状态可以审批' })
+    }
+
+    // 防止自审批（管理员除外）
+    if (expense.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '不能审批自己提交的申请' })
     }
 
     // 将审批备注追加到 description

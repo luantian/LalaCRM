@@ -3,13 +3,14 @@ import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
+import { clampPagination } from '../middleware/validation'
 import logger from '../utils/logger'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 // 获取工作日报列表（分页，支持筛选）
-router.get('/', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -99,15 +100,16 @@ router.get('/', authenticateToken, checkPermission('view_reports'), applyDataSco
 })
 
 // 日报统计概览（本月报告数、总工时、按类型统计）
-router.get('/stats/overview', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
 
     const where = {
       deletedAt: null,
-      userId: req.user!.id,
+      ...dataScopeWhere,
       reportDate: {
         gte: monthStart,
         lte: monthEnd
@@ -141,7 +143,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_reports')
 })
 
 // 导出日报 CSV
-router.get('/export/csv', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/export/csv', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
   try {
     const {
       userId = '',
@@ -152,12 +154,11 @@ router.get('/export/csv', authenticateToken, checkPermission('view_reports'), as
       search = ''
     } = req.query
 
-    const where: any = { deletedAt: null }
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, ...dataScopeWhere }
 
     if (userId) {
       where.userId = parseInt(userId as string)
-    } else {
-      where.userId = req.user!.id
     }
 
     if (projectId) {
@@ -251,6 +252,11 @@ router.get('/:id', authenticateToken, checkPermission('view_reports'), async (re
       return res.status(404).json({ error: '工作日报不存在' })
     }
 
+    // 数据权限：非管理员/经理只能查看自己的日报
+    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
+      return res.status(403).json({ error: '没有权限查看此日报' })
+    }
+
     res.json(report)
   } catch (error) {
     res.status(500).json({ error: '获取工作日报详情失败' })
@@ -309,6 +315,16 @@ router.put('/:id', authenticateToken, checkPermission('create_reports'), logOper
       issues,
       hours
     } = req.body
+
+    const existing = await prisma.dailyReport.findFirst({ where: { id, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '工作日报不存在' })
+    }
+
+    // 只能更新自己的日报（管理员/经理除外）
+    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
+      return res.status(403).json({ error: '无权操作此记录' })
+    }
 
     const report = await prisma.dailyReport.update({
       where: { id },
@@ -602,17 +618,21 @@ router.delete('/:id/comments/:commentId', authenticateToken, logOperation('工�
 })
 
 // 获取日报提交率统计
-router.get('/stats/submission-rate', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/stats/submission-rate', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const where: any = { deletedAt: null }
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, ...dataScopeWhere }
     if (startDate || endDate) {
       where.reportDate = {}
       if (startDate) where.reportDate.gte = new Date(startDate as string)
       if (endDate) where.reportDate.lte = new Date(endDate as string)
     }
-    if (userId) {
+    // 非管理员只能查看自己的统计
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
+      where.userId = req.user!.id
+    } else if (userId) {
       where.userId = parseInt(userId as string)
     }
 
@@ -642,17 +662,21 @@ router.get('/stats/submission-rate', authenticateToken, checkPermission('view_re
 })
 
 // 获取日报质量统计
-router.get('/stats/quality', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/stats/quality', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const where: any = { deletedAt: null, rating: { not: null } }
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, rating: { not: null }, ...dataScopeWhere }
     if (startDate || endDate) {
       where.reportDate = {}
       if (startDate) where.reportDate.gte = new Date(startDate as string)
       if (endDate) where.reportDate.lte = new Date(endDate as string)
     }
-    if (userId) {
+    // 非管理员只能查看自己的统计
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
+      where.userId = req.user!.id
+    } else if (userId) {
       where.userId = parseInt(userId as string)
     }
 
@@ -984,17 +1008,21 @@ router.delete('/:id/time-entries/:entryId', authenticateToken, checkPermission('
 })
 
 // 获取工时统计（按项目、按类型）
-router.get('/stats/hours-analysis', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/stats/hours-analysis', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const where: any = { deletedAt: null }
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, ...dataScopeWhere }
     if (startDate || endDate) {
       where.reportDate = {}
       if (startDate) where.reportDate.gte = new Date(startDate as string)
       if (endDate) where.reportDate.lte = new Date(endDate as string)
     }
-    if (userId) {
+    // 非管理员只能查看自己的统计
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
+      where.userId = req.user!.id
+    } else if (userId) {
       where.userId = parseInt(userId as string)
     }
 

@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest, checkPermission } from '../middleware/a
 import { upload } from '../middleware/upload'
 import { applyDataScope } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
+import { sortValidation, clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import fs from 'fs'
 import path from 'path'
@@ -12,7 +13,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有商机（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('view_opportunities'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('view_opportunities'), applyDataScope('ownerId'), sortValidation(['name', 'budget', 'status', 'winRate', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -84,22 +85,23 @@ router.get('/', authenticateToken, checkPermission('view_opportunities'), applyD
 })
 
 // 商机统计（放在 /:id 之前，避免被 /:id 拦截）
-router.get('/stats/overview', authenticateToken, checkPermission('view_opportunities'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('view_opportunities'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     // 只统计未转化的商机（project 为 null）
     const [total, open, qualified, proposal, negotiation, won, lost, closed] = await Promise.all([
-      prisma.opportunity.count({ where: { deletedAt: null, project: null } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'OPEN', project: null } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'QUALIFIED', project: null } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'PROPOSAL', project: null } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'NEGOTIATION', project: null } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'WON', project: null } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'LOST', project: null } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'CLOSED', project: null } })
+      prisma.opportunity.count({ where: { deletedAt: null, project: null, ...dataScopeWhere } }),
+      prisma.opportunity.count({ where: { deletedAt: null, status: 'OPEN', project: null, ...dataScopeWhere } }),
+      prisma.opportunity.count({ where: { deletedAt: null, status: 'QUALIFIED', project: null, ...dataScopeWhere } }),
+      prisma.opportunity.count({ where: { deletedAt: null, status: 'PROPOSAL', project: null, ...dataScopeWhere } }),
+      prisma.opportunity.count({ where: { deletedAt: null, status: 'NEGOTIATION', project: null, ...dataScopeWhere } }),
+      prisma.opportunity.count({ where: { deletedAt: null, status: 'WON', project: null, ...dataScopeWhere } }),
+      prisma.opportunity.count({ where: { deletedAt: null, status: 'LOST', project: null, ...dataScopeWhere } }),
+      prisma.opportunity.count({ where: { deletedAt: null, status: 'CLOSED', project: null, ...dataScopeWhere } })
     ])
 
     const opportunities = await prisma.opportunity.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...dataScopeWhere },
       select: { budget: true }
     })
 
@@ -155,7 +157,7 @@ router.get('/:id', authenticateToken, checkPermission('view_opportunities'), asy
 })
 
 // 创建商机
-router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'CREATE'), dateValidation('expectedStart', 'expectedEnd'), async (req: AuthRequest, res) => {
   try {
     const {
       name,
@@ -211,6 +213,7 @@ router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOp
 router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
+    const numericId = parseInt(id)
     const {
       name,
       customerId,
@@ -227,8 +230,13 @@ router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), log
       notes
     } = req.body
 
+    const existing = await prisma.opportunity.findFirst({ where: { id: numericId, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '商机不存在' })
+    }
+
     const opportunity = await prisma.opportunity.update({
-      where: { id: parseInt(id) },
+      where: { id: numericId },
       data: {
         name,
         customerId,
@@ -257,10 +265,17 @@ router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), log
 router.delete('/:id', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
-    await prisma.opportunityTeamMember.updateMany({ where: { opportunityId: parseInt(id) }, data: { deletedAt: new Date() } })
-    await prisma.opportunityFile.updateMany({ where: { opportunityId: parseInt(id) }, data: { deletedAt: new Date() } })
+    const numericId = parseInt(id)
+
+    const existing = await prisma.opportunity.findFirst({ where: { id: numericId, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '商机不存在' })
+    }
+
+    await prisma.opportunityTeamMember.updateMany({ where: { opportunityId: numericId }, data: { deletedAt: new Date() } })
+    await prisma.opportunityFile.updateMany({ where: { opportunityId: numericId }, data: { deletedAt: new Date() } })
     await prisma.opportunity.update({
-      where: { id: parseInt(id) },
+      where: { id: numericId },
       data: { deletedAt: new Date() }
     })
 
@@ -476,30 +491,30 @@ router.post('/:id/convert', authenticateToken, checkPermission('edit_opportuniti
       return res.status(404).json({ error: '商机不存在' })
     }
 
-    // 检查是否已经转化过
-    const existingProject = await prisma.project.findUnique({
-      where: { opportunityId: opportunity.id }
-    })
-
-    if (existingProject) {
-      return res.status(400).json({ error: '该商机已转化为项目' })
-    }
-
-    const project = await prisma.project.create({
-      data: {
-        name: opportunity.name,
-        customerId: opportunity.customerId,
-        budget: opportunity.budget,
-        ownerId: opportunity.ownerId,
-        opportunityId: opportunity.id,
-        status: 'PENDING',
-        description: opportunity.notes
-      },
-      include: {
-        customer: { select: { id: true, name: true } },
-        owner: { select: { id: true, name: true } }
+    // 检查是否已经转化过，利用 Project.opportunityId 的 @unique 约束处理并发
+    let project
+    try {
+      project = await prisma.project.create({
+        data: {
+          name: opportunity.name,
+          customerId: opportunity.customerId,
+          budget: opportunity.budget,
+          ownerId: opportunity.ownerId,
+          opportunityId: opportunity.id,
+          status: 'PENDING',
+          description: opportunity.notes
+        },
+        include: {
+          customer: { select: { id: true, name: true } },
+          owner: { select: { id: true, name: true } }
+        }
+      })
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        return res.status(400).json({ error: '该商机已转化为项目' })
       }
-    })
+      throw err
+    }
 
     res.status(201).json({
       message: '商机已成功转化为项目',

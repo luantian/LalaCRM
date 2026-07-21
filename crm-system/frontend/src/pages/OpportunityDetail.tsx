@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Timeline, Tooltip, Empty, Avatar, Image } from 'antd'
-import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, PhoneOutlined, MailOutlined, TeamOutlined, CarOutlined, FileTextOutlined, ScheduleOutlined, MessageOutlined, CheckOutlined, EyeOutlined } from '@ant-design/icons'
-import { getOpportunityDetail, updateOpportunity, deleteOpportunity, convertOpportunity, addOpportunityTeamMember, removeOpportunityTeamMember, uploadOpportunityFiles, getOpportunityFiles, deleteOpportunityFile, getCustomers, getUsers, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl } from '../services/api'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Image } from 'antd'
+import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, FileTextOutlined, ScheduleOutlined, CheckOutlined, EyeOutlined } from '@ant-design/icons'
+import { getOpportunityDetail, updateOpportunity, convertOpportunity, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getCustomers, getUsers, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl } from '../services/api'
 import dayjs from 'dayjs'
 
 const { TextArea } = Input
@@ -30,8 +30,7 @@ function OpportunityDetail() {
   const [teamMemberRole, setTeamMemberRole] = useState<string>('SALES')
 
   // 文件管理状态
-  const [files, setFiles] = useState<any[]>([])
-  const [uploading, setUploading] = useState(false)
+  const [, setFiles] = useState<any[]>([])
 
   // 信息记录状态
   const [records, setRecords] = useState<any[]>([])
@@ -165,48 +164,6 @@ function OpportunityDetail() {
     }
   }
 
-  // ===== 文件管理 =====
-  const handleUpload = async (fileList: FileList) => {
-    setUploading(true)
-    try {
-      await uploadOpportunityFiles(parseInt(id!), fileList)
-      message.success('上传成功')
-      fetchFiles()
-    } catch (e: any) {
-      message.error(e?.message || '上传失败')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const handleDeleteFile = async (fileId: number) => {
-    try {
-      await deleteOpportunityFile(parseInt(id!), fileId)
-      message.success('删除成功')
-      fetchFiles()
-    } catch (error) {
-      message.error('删除失败')
-    }
-  }
-
-  const handleDownload = (fileId: number, fileName: string) => {
-    const token = localStorage.getItem('token')
-    fetch(`${import.meta.env.VITE_API_URL || '/api'}/opportunities/files/${fileId}/download`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(r => r.blob())
-      .then(blob => {
-        const a = document.createElement('a')
-        a.href = window.URL.createObjectURL(blob)
-        a.download = fileName
-        a.click()
-      })
-      .catch(() => message.error('下载失败'))
-  }
-
-  const formatFileSize = (b: number) =>
-    b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(2) + ' KB' : (b / 1048576).toFixed(2) + ' MB'
-
   // ===== 信息记录 =====
   const handleAddRecord = () => {
     setEditingRecord(null)
@@ -284,19 +241,12 @@ function OpportunityDetail() {
       .then(blob => {
         const previewUrl = window.URL.createObjectURL(blob)
         const ext = fileName.split('.').pop()?.toLowerCase()
+        // 释放旧的预览 URL
+        if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url)
         setPreviewFile({ url: previewUrl, name: fileName, type: ext || '' })
         setPreviewVisible(true)
       })
       .catch(() => message.error('预览失败'))
-  }
-
-  const recordTypeConfig: Record<string, { text: string; color: string; icon: any }> = {
-    note: { text: '备注', color: 'default', icon: <FileTextOutlined /> },
-    call: { text: '电话', color: 'blue', icon: <PhoneOutlined /> },
-    meeting: { text: '会议', color: 'purple', icon: <TeamOutlined /> },
-    email: { text: '邮件', color: 'cyan', icon: <MailOutlined /> },
-    visit: { text: '拜访', color: 'orange', icon: <CarOutlined /> },
-    other: { text: '其他', color: 'default', icon: <MessageOutlined /> }
   }
 
   // ===== 转化项目 =====
@@ -761,9 +711,9 @@ function OpportunityDetail() {
       <Modal
         title={previewFile?.name || '文件预览'}
         open={previewVisible}
-        onCancel={() => { setPreviewVisible(false); setPreviewFile(null) }}
+        onCancel={() => { if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url); setPreviewVisible(false); setPreviewFile(null) }}
         footer={[
-          <Button key="close" onClick={() => { setPreviewVisible(false); setPreviewFile(null) }}>关闭</Button>
+          <Button key="close" onClick={() => { if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url); setPreviewVisible(false); setPreviewFile(null) }}>关闭</Button>
         ]}
         width="80%"
         style={{ top: 20 }}

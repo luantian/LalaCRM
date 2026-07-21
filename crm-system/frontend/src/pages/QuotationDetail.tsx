@@ -60,7 +60,10 @@ const QuotationDetail: React.FC = () => {
     const token = localStorage.getItem('token')
     fetch(`/api/quotations/files/${file.id}/download`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.blob()).then(blob => {
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.fileName; a.click()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a'); a.href = url; a.download = file.fileName
+        document.body.appendChild(a); a.click(); a.remove()
+        URL.revokeObjectURL(url)
       })
   }
 

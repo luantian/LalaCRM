@@ -32,10 +32,10 @@ function UserManagement() {
   const fetchUsers = async () => {
     setLoading(true)
     try {
-      const response = await api.get('/users')
+      const response = await api.get('/users') as any
       setUsers(response)
     } catch (error: any) {
-      message.error(error.response?.data?.error || '获取用户列表失败')
+      message.error(error?.error || '获取用户列表失败')
     } finally {
       setLoading(false)
     }
@@ -44,7 +44,7 @@ function UserManagement() {
   // 获取角色列表（从数据库）
   const fetchRoles = async () => {
     try {
-      const response = await api.get('/roles')
+      const response = await api.get('/roles') as any
       // 转换格式以适配Select组件
       const roleOptions = response.map((role: any) => ({
         value: role.id,
@@ -54,7 +54,7 @@ function UserManagement() {
       }))
       setRoles(roleOptions)
     } catch (error: any) {
-      message.error(error.response?.data?.error || '获取角色列表失败')
+      message.error(error?.error || '获取角色列表失败')
     }
   }
 
@@ -88,7 +88,7 @@ function UserManagement() {
       message.success('用户删除成功')
       fetchUsers()
     } catch (error: any) {
-      message.error(error.response?.data?.error || '删除用户失败')
+      message.error(error?.error || '删除用户失败')
     }
   }
 
@@ -123,8 +123,8 @@ function UserManagement() {
       setModalVisible(false)
       fetchUsers()
     } catch (error: any) {
-      if (error.response?.data?.error) {
-        message.error(error.response.data.error)
+      if (error?.error) {
+        message.error(error?.error)
       } else {
         message.error('操作失败')
       }
@@ -138,12 +138,6 @@ function UserManagement() {
     PROJECT_MANAGER: 'blue',
     USER: 'green',
     VIEWER: 'default'
-  }
-
-  // 获取角色显示名称
-  const getRoleName = (role: string) => {
-    const roleObj = roles.find(r => r.value === role)
-    return roleObj ? roleObj.label : role
   }
 
   const columns = [

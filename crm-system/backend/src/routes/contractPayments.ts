@@ -73,6 +73,11 @@ router.put('/:id', authenticateToken, logOperation('合同付款', 'UPDATE'), as
     const id = parseInt(req.params.id as string)
     const { amount, paymentDate, paymentMethod, paymentType, status, invoiceNo, remarks } = req.body
 
+    const existing = await prisma.contractPayment.findFirst({ where: { id, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '付款记录不存在' })
+    }
+
     const payment = await prisma.contractPayment.update({
       where: { id },
       data: {
@@ -97,6 +102,10 @@ router.put('/:id', authenticateToken, logOperation('合同付款', 'UPDATE'), as
 router.delete('/:id', authenticateToken, logOperation('合同付款', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+    const existing = await prisma.contractPayment.findFirst({ where: { id, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '付款记录不存在' })
+    }
     await prisma.contractPayment.update({ where: { id }, data: { deletedAt: new Date() } })
     res.json({ message: '删除成功' })
   } catch (error) {

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Dropdown, Empty } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Dropdown, Empty } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, MoreOutlined } from '@ant-design/icons'
 import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getCustomers } from '../services/api'
 import dayjs from 'dayjs'
@@ -21,13 +21,16 @@ function ProjectList() {
   const [stats, setStats] = useState<any>(null)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [searchText, setSearchText] = useState('')
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const searchTextRef = useRef(searchText)
+  useEffect(() => { searchTextRef.current = searchText }, [searchText])
 
-  const fetchProjects = async (page = 1, pageSize = 10) => {
+  const fetchProjects = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
     try {
       const params: any = { page, pageSize, sortBy: 'createdAt', sortOrder: 'desc' }
-      if (searchText.trim()) {
-        params.search = searchText.trim()
+      if (searchTextRef.current.trim()) {
+        params.search = searchTextRef.current.trim()
       }
       const response: any = await getProjects(params)
       setProjects(response.data || [])
@@ -41,7 +44,7 @@ function ProjectList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   const fetchCustomers = async () => {
     try {
@@ -62,10 +65,13 @@ function ProjectList() {
   }
 
   useEffect(() => {
-    fetchProjects()
     fetchCustomers()
     fetchStats()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetchProjects()
+  }, [refreshTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = () => {
     fetchProjects(1, pagination.pageSize)
@@ -73,7 +79,7 @@ function ProjectList() {
 
   const handleReset = () => {
     setSearchText('')
-    setTimeout(() => fetchProjects(1, pagination.pageSize), 0)
+    setRefreshTrigger(prev => prev + 1)
   }
 
   const handleTableChange = (page: number, pageSize: number) => {

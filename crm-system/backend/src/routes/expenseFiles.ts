@@ -20,9 +20,14 @@ router.post('/:id/files', authenticateToken, upload.array('files', 10), logOpera
       return res.status(400).json({ error: '请选择要上传的文件' })
     }
 
-    const expense = await prisma.expense.findUnique({ where: { id: expenseId } })
+    const expense = await prisma.expense.findFirst({ where: { id: expenseId, deletedAt: null } })
     if (!expense) {
       return res.status(404).json({ error: '报销记录不存在' })
+    }
+
+    // 只能为自己的报销上传附件（管理员除外）
+    if (expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此报销记录' })
     }
 
     const fileRecords = await Promise.all(
@@ -55,8 +60,18 @@ router.get('/:id/files', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const expenseId = parseInt(req.params.id as string)
 
+    // 检查报销记录是否存在且用户有权限访问
+    const expense = await prisma.expense.findFirst({ where: { id: expenseId, deletedAt: null } })
+    if (!expense) {
+      return res.status(404).json({ error: '报销记录不存在' })
+    }
+
+    if (expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权访问此报销记录' })
+    }
+
     const files = await prisma.expenseFile.findMany({
-      where: { expenseId },
+      where: { expenseId, deletedAt: null },
       orderBy: { uploadedAt: 'desc' }
     })
 
@@ -72,9 +87,17 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('报销附�
   try {
     const fileId = parseInt(req.params.fileId as string)
 
-    const file = await prisma.expenseFile.findUnique({ where: { id: fileId } })
+    const file = await prisma.expenseFile.findFirst({
+      where: { id: fileId, deletedAt: null },
+      include: { expense: { select: { ownerId: true } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 只能删除自己报销的附件（管理员除外）
+    if (file.expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权删除此文件' })
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)
@@ -82,7 +105,7 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('报销附�
       fs.unlinkSync(filePath)
     }
 
-    await prisma.expenseFile.delete({ where: { id: fileId } })
+    await prisma.expenseFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
 
     res.json({ message: '文件删除成功' })
   } catch (error) {
@@ -96,9 +119,17 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
   try {
     const fileId = parseInt(req.params.fileId as string)
 
-    const file = await prisma.expenseFile.findUnique({ where: { id: fileId } })
+    const file = await prisma.expenseFile.findFirst({
+      where: { id: fileId, deletedAt: null },
+      include: { expense: { select: { ownerId: true } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 只能下载自己报销的附件（管理员除外）
+    if (file.expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权下载此文件' })
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)

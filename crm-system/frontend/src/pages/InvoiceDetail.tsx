@@ -83,10 +83,14 @@ const InvoiceDetailPage: React.FC = () => {
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.blob())
       .then(blob => {
+        const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
-        a.href = URL.createObjectURL(blob)
+        a.href = url
         a.download = file.fileName
+        document.body.appendChild(a)
         a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
       })
   }
 
@@ -181,7 +185,7 @@ const InvoiceDetailPage: React.FC = () => {
             children: (
               <Descriptions bordered column={1}>
                 <Descriptions.Item label="关联项目">
-                  {invoice.project ? <a onClick={() => navigate(`/projects/${invoice.project.id}`)}>{invoice.project.name}</a> : '未关联'}
+                  {invoice.project ? <a onClick={() => navigate(`/projects/${invoice.project!.id}`)}>{invoice.project.name}</a> : '未关联'}
                 </Descriptions.Item>
                 <Descriptions.Item label="关联合同">
                   {invoice.contract ? <span>{invoice.contract.name}</span> : '未关联'}

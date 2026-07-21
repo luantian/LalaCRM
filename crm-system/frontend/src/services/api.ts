@@ -1,5 +1,15 @@
 import axios from 'axios'
 
+// 安全解析 JSON，防止 localStorage 损坏导致崩溃
+export function safeJsonParse(value: string | null, fallback: any): any {
+  if (!value) return fallback
+  try {
+    return JSON.parse(value)
+  } catch {
+    return fallback
+  }
+}
+
 const api = axios.create({
   baseURL: '/api',
   headers: {
@@ -38,7 +48,12 @@ api.interceptors.response.use(
         window.location.href = '/login'
       }
     }
-    return Promise.reject(error.response?.data || error)
+    // 保留 error.response?.data?.error 的访问路径，同时保留 e?.error 的向后兼容
+    if (error.response?.data) {
+      error.response.data.error = error.response.data.error || msg
+      return Promise.reject(error.response.data)
+    }
+    return Promise.reject(error)
   }
 )
 

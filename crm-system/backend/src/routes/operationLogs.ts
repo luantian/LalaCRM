@@ -8,6 +8,10 @@ const prisma = new PrismaClient()
 // 操作日志列表（分页 + 筛选）
 router.get('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    if (req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '只有管理员才能查看操作日志' })
+    }
+
     const {
       page = '1',
       pageSize = '20',
@@ -61,6 +65,10 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
 // 基础统计
 router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    if (req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '只有管理员才能查看操作日志' })
+    }
+
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
 

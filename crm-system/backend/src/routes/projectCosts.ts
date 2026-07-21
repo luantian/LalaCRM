@@ -6,6 +6,23 @@ import logger from '../utils/logger';
 const router = Router();
 const prisma = new PrismaClient();
 
+// 检查用户是否有权限访问项目
+async function checkProjectAccess(projectId: number, userId: number, role?: string): Promise<boolean> {
+  if (role === 'ADMIN' || role === 'MANAGER') return true;
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null },
+    select: { ownerId: true }
+  });
+  if (!project) return false;
+  if (project.ownerId === userId) return true;
+
+  const member = await prisma.projectTeamMember.findFirst({
+    where: { projectId, userId, deletedAt: null }
+  });
+  return !!member;
+}
+
 // GET /:projectId/summary - 项目费用汇总（收入/支出分开统计）
 router.get('/:projectId/summary', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -14,6 +31,12 @@ router.get('/:projectId/summary', authenticateToken, async (req: AuthRequest, re
 
     if (isNaN(pid)) {
       return res.status(400).json({ error: 'Invalid projectId' });
+    }
+
+    // 检查用户是否有权限访问此项目
+    const hasAccess = await checkProjectAccess(pid, req.user!.id, req.user?.role);
+    if (!hasAccess) {
+      return res.status(403).json({ error: '无权访问此项目的费用数据' });
     }
 
     // 获取项目预算

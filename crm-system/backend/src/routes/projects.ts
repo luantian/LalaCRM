@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest, checkPermission } from '../middleware/a
 import { upload } from '../middleware/upload'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
+import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import fs from 'fs'
 import path from 'path'
@@ -12,7 +13,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有项目（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('view_projects'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('view_projects'), applyDataScope('ownerId'), sortValidation(['name', 'status', 'budget', 'startDate', 'endDate', 'createdAt', 'updatedAt', 'progress']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -126,18 +127,19 @@ router.get('/', authenticateToken, checkPermission('view_projects'), applyDataSc
 })
 
 // 项目统计（放在 /:id 之前，避免被 /:id 拦截）
-router.get('/stats/overview', authenticateToken, checkPermission('view_projects'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('view_projects'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const [total, pending, inProgress, completed, cancelled] = await Promise.all([
-      prisma.project.count({ where: { deletedAt: null } }),
-      prisma.project.count({ where: { deletedAt: null, status: 'PENDING' } }),
-      prisma.project.count({ where: { deletedAt: null, status: 'IN_PROGRESS' } }),
-      prisma.project.count({ where: { deletedAt: null, status: 'COMPLETED' } }),
-      prisma.project.count({ where: { deletedAt: null, status: 'CANCELLED' } })
+      prisma.project.count({ where: { deletedAt: null, ...dataScopeWhere } }),
+      prisma.project.count({ where: { deletedAt: null, status: 'PENDING', ...dataScopeWhere } }),
+      prisma.project.count({ where: { deletedAt: null, status: 'IN_PROGRESS', ...dataScopeWhere } }),
+      prisma.project.count({ where: { deletedAt: null, status: 'COMPLETED', ...dataScopeWhere } }),
+      prisma.project.count({ where: { deletedAt: null, status: 'CANCELLED', ...dataScopeWhere } })
     ])
 
     const projects = await prisma.project.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...dataScopeWhere },
       select: { budget: true }
     })
 
@@ -241,7 +243,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_projects'), logOpera
 
     // 如果请求中包含状态变更，验证状态流转是否合法
     if (status) {
-      const currentProject = await prisma.project.findUnique({ where: { id: parseInt(id) } })
+      const currentProject = await prisma.project.findFirst({ where: { id: parseInt(id), deletedAt: null } })
       if (!currentProject) {
         return res.status(404).json({ error: '项目不存在' })
       }

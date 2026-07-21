@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, CheckOutlined, CloseOutlined, MoreOutlined, SendOutlined, UndoOutlined, CheckCircleOutlined } from '@ant-design/icons'
-import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getCustomers, getProjects } from '../services/api'
+import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getCustomers, getProjects, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -25,6 +25,11 @@ function BusinessTripList() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [searchText, setSearchText] = useState('')
   const [filterStatus, setFilterStatus] = useState<string | undefined>(undefined)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const searchTextRef = useRef(searchText)
+  const filterStatusRef = useRef(filterStatus)
+  useEffect(() => { searchTextRef.current = searchText }, [searchText])
+  useEffect(() => { filterStatusRef.current = filterStatus }, [filterStatus])
 
   // 审批弹窗状态
   const [approveModalVisible, setApproveModalVisible] = useState(false)
@@ -33,15 +38,15 @@ function BusinessTripList() {
   const [approveRemark, setApproveRemark] = useState('')
   const [rejectReason, setRejectReason] = useState('')
 
-  const fetchTrips = async (page = 1, pageSize = 10) => {
+  const fetchTrips = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
     try {
       const params: any = { page, pageSize }
-      if (searchText.trim()) {
-        params.search = searchText.trim()
+      if (searchTextRef.current.trim()) {
+        params.search = searchTextRef.current.trim()
       }
-      if (filterStatus) {
-        params.status = filterStatus
+      if (filterStatusRef.current) {
+        params.status = filterStatusRef.current
       }
       const response: any = await getBusinessTrips(params)
       setTrips(response.data || [])
@@ -55,7 +60,7 @@ function BusinessTripList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   const fetchCustomers = async () => {
     try {
@@ -85,11 +90,14 @@ function BusinessTripList() {
   }
 
   useEffect(() => {
-    fetchTrips()
     fetchCustomers()
     fetchProjects()
     fetchStats()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetchTrips()
+  }, [refreshTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = () => {
     fetchTrips(1, pagination.pageSize)
@@ -98,7 +106,7 @@ function BusinessTripList() {
   const handleReset = () => {
     setSearchText('')
     setFilterStatus(undefined)
-    setTimeout(() => fetchTrips(1, pagination.pageSize), 0)
+    setRefreshTrigger(prev => prev + 1)
   }
 
   const handleTableChange = (page: number, pageSize: number) => {
@@ -128,7 +136,7 @@ function BusinessTripList() {
       fetchTrips(pagination.current, pagination.pageSize)
       fetchStats()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '提交失败')
+      message.error(error?.error || '提交失败')
     }
   }
 
@@ -160,7 +168,7 @@ function BusinessTripList() {
       fetchTrips(pagination.current, pagination.pageSize)
       fetchStats()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '审批失败')
+      message.error(error?.error || '审批失败')
     }
   }
 
@@ -172,7 +180,7 @@ function BusinessTripList() {
       fetchTrips(pagination.current, pagination.pageSize)
       fetchStats()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '重新提交失败')
+      message.error(error?.error || '重新提交失败')
     }
   }
 
@@ -184,11 +192,11 @@ function BusinessTripList() {
       fetchTrips(pagination.current, pagination.pageSize)
       fetchStats()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '操作失败')
+      message.error(error?.error || '操作失败')
     }
   }
 
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const user = safeJsonParse(localStorage.getItem('user'), {})
   const canApprove = ['ADMIN', 'PROJECT_DIRECTOR', 'PROJECT_MANAGER'].includes(user.role) || user.permissions?.includes('approve_business_trips')
 
   const handleDelete = async (id: number) => {
@@ -259,11 +267,6 @@ function BusinessTripList() {
     return customer ? customer.name : '-'
   }
 
-  const getProjectName = (projectId: number | null) => {
-    if (!projectId) return '-'
-    const project = projects.find(p => p.id === projectId)
-    return project ? project.name : '-'
-  }
 
   const columns = [
     { title: '出差标题', dataIndex: 'title', key: 'title' },

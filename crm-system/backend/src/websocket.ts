@@ -1,26 +1,72 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import { Server, IncomingMessage } from 'http'
+import jwt from 'jsonwebtoken'
 import logger from './utils/logger'
 
 // 存储所有连接的客户端: userId -> WebSocket[]
 const clients = new Map<number, WebSocket[]>()
 
+// 每个用户最大连接数
+const MAX_CONNECTIONS_PER_USER = 5
+
 let wss: WebSocketServer | null = null
+
+// 获取 JWT 密钥
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is not set')
+  }
+  return secret
+}
 
 // 初始化 WebSocket 服务
 export function initWebSocket(server: Server) {
   wss = new WebSocketServer({ server, path: '/ws' })
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-    // 从 URL 参数获取 userId
+    // 从 Sec-WebSocket-Protocol header 获取 token（比 URL 参数更安全）
+    const protocols = (req.headers['sec-websocket-protocol'] || '').split(',').map(p => p.trim())
+    const authProtocol = protocols.find(p => p.startsWith('auth.'))
+    const token = authProtocol ? authProtocol.slice(5) : ''
     const url = new URL(req.url || '', 'http://localhost')
-    const userId = parseInt(url.searchParams.get('userId') || '0')
+    const userIdParam = parseInt(url.searchParams.get('userId') || '0')
 
-    logger.info(`WebSocket connection attempt from: ${req.socket.remoteAddress}, userId param: ${userId}`)
+    logger.info(`WebSocket connection attempt from: ${req.socket.remoteAddress}`)
 
-    if (!userId) {
-      logger.warn('WebSocket connection rejected: Missing userId')
-      ws.close(1008, 'Missing userId')
+    // 验证 JWT token
+    if (!token) {
+      logger.warn('WebSocket connection rejected: Missing token')
+      ws.close(1008, 'Missing authentication token')
+      return
+    }
+
+    let decoded: any
+    try {
+      decoded = jwt.verify(token, getJwtSecret()) as any
+    } catch (err) {
+      logger.warn('WebSocket connection rejected: Invalid token')
+      ws.close(1008, 'Invalid authentication token')
+      return
+    }
+
+    const userId = decoded.id
+
+    // 验证 token 中的 userId 与参数一致
+    if (!userId || (userIdParam && userIdParam !== userId)) {
+      logger.warn(`WebSocket connection rejected: userId mismatch (token=${userId}, param=${userIdParam})`)
+      ws.close(1008, 'User ID mismatch')
+      return
+    }
+
+    // 初始化 isAlive
+    ;(ws as any).isAlive = true
+
+    // 检查连接数限制
+    const userClients = clients.get(userId) || []
+    if (userClients.length >= MAX_CONNECTIONS_PER_USER) {
+      logger.warn(`WebSocket connection rejected: Max connections reached for userId=${userId}`)
+      ws.close(1008, 'Maximum connections reached')
       return
     }
 
@@ -41,12 +87,12 @@ export function initWebSocket(server: Server) {
     })
 
     ws.on('close', () => {
-      const userClients = clients.get(userId) || []
-      const index = userClients.indexOf(ws)
+      const currentClients = clients.get(userId) || []
+      const index = currentClients.indexOf(ws)
       if (index > -1) {
-        userClients.splice(index, 1)
+        currentClients.splice(index, 1)
       }
-      if (userClients.length === 0) {
+      if (currentClients.length === 0) {
         clients.delete(userId)
       }
       logger.info(`WebSocket disconnected: userId=${userId}`)

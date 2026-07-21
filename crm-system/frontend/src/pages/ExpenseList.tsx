@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, List, Tooltip } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
-import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getCustomers, getProjects, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile } from '../services/api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, List } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined } from '@ant-design/icons'
+import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getCustomers, getProjects, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
 function ExpenseList() {
@@ -21,6 +21,11 @@ function ExpenseList() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [searchText, setSearchText] = useState('')
   const [filterStatus, setFilterStatus] = useState<string | undefined>(undefined)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const searchTextRef = useRef(searchText)
+  const filterStatusRef = useRef(filterStatus)
+  useEffect(() => { searchTextRef.current = searchText }, [searchText])
+  useEffect(() => { filterStatusRef.current = filterStatus }, [filterStatus])
 
   // 审批弹窗状态
   const [approveModalVisible, setApproveModalVisible] = useState(false)
@@ -35,22 +40,22 @@ function ExpenseList() {
   const [expenseFiles, setExpenseFiles] = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
 
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const user = safeJsonParse(localStorage.getItem('user'), {})
   const canApprove = ['ADMIN', 'PROJECT_DIRECTOR', 'PROJECT_MANAGER'].includes(user.role) || user.permissions?.includes('approve_expenses')
 
   const expenseCategories = [
     '办公用品', '差旅费', '招待费', '交通费', '通讯费', '培训费', '其他'
   ]
 
-  const fetchExpenses = async (page = 1, pageSize = 10) => {
+  const fetchExpenses = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
     try {
       const params: any = { page, pageSize }
-      if (searchText.trim()) {
-        params.search = searchText.trim()
+      if (searchTextRef.current.trim()) {
+        params.search = searchTextRef.current.trim()
       }
-      if (filterStatus) {
-        params.status = filterStatus
+      if (filterStatusRef.current) {
+        params.status = filterStatusRef.current
       }
       const response: any = await getExpenses(params)
       setExpenses(response.data || [])
@@ -64,7 +69,7 @@ function ExpenseList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   const fetchCustomers = async () => {
     try {
@@ -94,11 +99,14 @@ function ExpenseList() {
   }
 
   useEffect(() => {
-    fetchExpenses()
     fetchCustomers()
     fetchProjects()
     fetchStats()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetchExpenses()
+  }, [refreshTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = () => {
     fetchExpenses(1, pagination.pageSize)
@@ -107,7 +115,7 @@ function ExpenseList() {
   const handleReset = () => {
     setSearchText('')
     setFilterStatus(undefined)
-    setTimeout(() => fetchExpenses(1, pagination.pageSize), 0)
+    setRefreshTrigger(prev => prev + 1)
   }
 
   // ===== 文件管理 =====
@@ -134,7 +142,7 @@ function ExpenseList() {
       message.success('文件上传成功')
       fetchExpenseFiles(currentExpense.id)
     } catch (error: any) {
-      message.error(error?.message || '文件上传失败')
+      message.error(error?.error || error?.message || '文件上传失败')
     } finally {
       setUploading(false)
     }
@@ -162,7 +170,9 @@ function ExpenseList() {
         const a = document.createElement('a')
         a.href = url
         a.download = fileName
+        document.body.appendChild(a)
         a.click()
+        a.remove()
         window.URL.revokeObjectURL(url)
       })
       .catch(() => message.error('下载失败'))
@@ -237,7 +247,7 @@ function ExpenseList() {
       fetchExpenses(pagination.current, pagination.pageSize)
       fetchStats()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '提交失败')
+      message.error(error?.error || '提交失败')
     }
   }
 
@@ -269,7 +279,7 @@ function ExpenseList() {
       fetchExpenses(pagination.current, pagination.pageSize)
       fetchStats()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '审批失败')
+      message.error(error?.error || '审批失败')
     }
   }
 
@@ -281,7 +291,7 @@ function ExpenseList() {
       fetchExpenses(pagination.current, pagination.pageSize)
       fetchStats()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '重新提交失败')
+      message.error(error?.error || '重新提交失败')
     }
   }
 
@@ -293,7 +303,7 @@ function ExpenseList() {
       fetchExpenses(pagination.current, pagination.pageSize)
       fetchStats()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '操作失败')
+      message.error(error?.error || '操作失败')
     }
   }
 

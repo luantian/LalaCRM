@@ -16,40 +16,40 @@ const logFormat = winston.format.combine(
   })
 )
 
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: logFormat,
-  transports: [
-    // 控制台输出
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        logFormat
-      )
-    }),
-    // 所有日志文件
-    new winston.transports.File({
-      filename: path.join(__dirname, '../../logs/error.log'),
-      level: 'error',
-      maxsize: 5242880, // 5MB
-      maxFiles: 5
-    }),
-    new winston.transports.File({
-      filename: path.join(__dirname, '../../logs/combined.log'),
-      maxsize: 5242880, // 5MB
-      maxFiles: 5
-    })
-  ]
-})
+const transports: winston.transport[] = [
+  // 文件日志（始终启用）
+  new winston.transports.File({
+    filename: path.join(__dirname, '../../logs/error.log'),
+    level: 'error',
+    maxsize: 5242880, // 5MB
+    maxFiles: 5
+  }),
+  new winston.transports.File({
+    filename: path.join(__dirname, '../../logs/combined.log'),
+    maxsize: 5242880, // 5MB
+    maxFiles: 5
+  })
+]
 
-// 开发环境下使用彩色输出
+// 开发环境：控制台彩色输出（只添加一次）
 if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
+  transports.push(new winston.transports.Console({
     format: winston.format.combine(
       winston.format.colorize(),
       logFormat
     )
   }))
+} else {
+  // 生产环境：控制台简单输出
+  transports.push(new winston.transports.Console({
+    format: logFormat
+  }))
 }
+
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: logFormat,
+  transports
+})
 
 export default logger

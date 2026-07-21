@@ -1,6 +1,7 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 
 // 确保上传目录存在
 const uploadDir = path.join(__dirname, '../uploads');
@@ -27,8 +28,8 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     // 解码文件名
     const decodedName = decodeFileName(file.originalname);
-    // 使用时间戳和随机数生成唯一文件名
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    // 使用 crypto.randomUUID 确保唯一性
+    const uniqueSuffix = crypto.randomUUID();
     const ext = path.extname(decodedName);
     // 保存解码后的文件名到 req 中
     (req as any).decodedFileName = decodedName;

@@ -45,10 +45,10 @@ function DictManagement() {
   const fetchTypes = async () => {
     setLoadingTypes(true)
     try {
-      const response = await api.get('/dicts/types')
+      const response = await api.get('/dicts/types') as any
       setTypes(response || [])
     } catch (error: any) {
-      message.error(error.response?.data?.error || '获取字典类型列表失败')
+      message.error(error?.error || '获取字典类型列表失败')
     } finally {
       setLoadingTypes(false)
     }
@@ -58,10 +58,10 @@ function DictManagement() {
   const fetchItems = async (typeId: number) => {
     setLoadingItems(true)
     try {
-      const response = await api.get('/dicts/types/' + typeId + '/data')
+      const response = await api.get('/dicts/types/' + typeId + '/data') as any
       setItems(response || [])
     } catch (error: any) {
-      message.error(error.response?.data?.error || '获取字典项列表失败')
+      message.error(error?.error || '获取字典项列表失败')
     } finally {
       setLoadingItems(false)
     }
@@ -105,7 +105,7 @@ function DictManagement() {
       }
       fetchTypes()
     } catch (error: any) {
-      message.error(error.response?.data?.error || '删除字典类型失败')
+      message.error(error?.error || '删除字典类型失败')
     }
   }
 
@@ -126,8 +126,8 @@ function DictManagement() {
       setTypeModalVisible(false)
       fetchTypes()
     } catch (error: any) {
-      if (error.response?.data?.error) {
-        message.error(error.response.data.error)
+      if (error?.error) {
+        message.error(error?.error)
       } else if (error.errorFields) {
         // 表单校验失败
       } else {
@@ -167,7 +167,7 @@ function DictManagement() {
       message.success('字典项删除成功')
       if (selectedType) fetchItems(selectedType.id)
     } catch (error: any) {
-      message.error(error.response?.data?.error || '删除字典项失败')
+      message.error(error?.error || '删除字典项失败')
     }
   }
 
@@ -186,8 +186,8 @@ function DictManagement() {
       fetchItems(selectedType.id)
       fetchTypes()
     } catch (error: any) {
-      if (error.response?.data?.error) {
-        message.error(error.response.data.error)
+      if (error?.error) {
+        message.error(error?.error)
       } else if (error.errorFields) {
         // 表单校验失败
       } else {

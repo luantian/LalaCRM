@@ -34,6 +34,19 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 router.put('/:id/read', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id as string)
+    if (isNaN(id)) {
+      return res.status(400).json({ error: '无效的ID' })
+    }
+
+    const notification = await prisma.notification.findFirst({ where: { id, deletedAt: null } })
+    if (!notification) {
+      return res.status(404).json({ error: '通知不存在' })
+    }
+
+    if (notification.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此通知' })
+    }
+
     await prisma.notification.update({
       where: { id },
       data: { isRead: true }

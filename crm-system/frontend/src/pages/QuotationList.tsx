@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicker, message, Tag, Row, Col, Statistic, Space, Dropdown } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, MoreOutlined, SendOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, submitQuotation, approveQuotation, rejectQuotation, getOpportunities, getCustomers } from '../services/api'
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, submitQuotation, approveQuotation, rejectQuotation, getOpportunities, getCustomers, getQuotationDetail } from '../services/api'
 
 const { Option } = Select
 
@@ -30,14 +30,7 @@ const QuotationList: React.FC = () => {
   const [customers, setCustomers] = useState<any[]>([])
   const [items, setItems] = useState<any[]>([])
 
-  useEffect(() => {
-    fetchQuotations()
-    fetchStats()
-    fetchOpportunities()
-    fetchCustomers()
-  }, [pagination.current, pagination.pageSize, filters])
-
-  const fetchQuotations = async () => {
+  const fetchQuotations = useCallback(async () => {
     setLoading(true)
     try {
       const response: any = await getQuotations({ page: pagination.current, pageSize: pagination.pageSize, ...filters })
@@ -45,11 +38,11 @@ const QuotationList: React.FC = () => {
       setPagination(prev => ({ ...prev, total: response.pagination?.total || 0 }))
     } catch { message.error('获取报价单列表失败') }
     setLoading(false)
-  }
+  }, [pagination.current, pagination.pageSize, filters])
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try { const res: any = await getQuotationStats(); setStats(res) } catch {}
-  }
+  }, [])
 
   const fetchOpportunities = async () => {
     try {
@@ -64,6 +57,13 @@ const QuotationList: React.FC = () => {
       setCustomers(res.data || [])
     } catch {}
   }
+
+  useEffect(() => {
+    fetchQuotations()
+    fetchStats()
+    fetchOpportunities()
+    fetchCustomers()
+  }, [fetchQuotations, fetchStats]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreate = () => {
     setEditingQuotation(null)

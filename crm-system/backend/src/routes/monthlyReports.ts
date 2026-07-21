@@ -2,23 +2,23 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
+import { clampPagination } from '../middleware/validation'
 import logger from '../utils/logger'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 // 获取月报列表
-router.get('/', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('view_reports'), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const { userId, year, page = '1', pageSize = '10' } = req.query
 
     const where: any = { deletedAt: null }
-    if (userId) {
+    // 非管理员/经理只能查看自己的月报（忽略 userId 参数）
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
+      where.userId = req.user!.id
+    } else if (userId) {
       where.userId = parseInt(userId as string)
-    } else {
-      if (req.user?.role !== 'ADMIN') {
-        where.userId = req.user!.id
-      }
     }
 
     if (year) {
@@ -72,7 +72,7 @@ router.get('/:id', authenticateToken, checkPermission('view_reports'), async (re
       return res.status(404).json({ error: '月报不存在' })
     }
 
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
       return res.status(403).json({ error: '没有权限查看此月报' })
     }
 

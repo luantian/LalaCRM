@@ -75,6 +75,11 @@ router.put('/:id', authenticateToken, logOperation('合同订货', 'UPDATE'), as
     const parsedUnitPrice = unitPrice ? Number(unitPrice) : undefined
     const parsedQuantity = quantity ? Number(quantity) : undefined
 
+    const existing = await prisma.contractOrderItem.findFirst({ where: { id, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '订货明细不存在' })
+    }
+
     const item = await prisma.contractOrderItem.update({
       where: { id },
       data: {
@@ -229,6 +234,12 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('合同订�
 router.delete('/:id', authenticateToken, logOperation('合同订货', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+
+    const existing = await prisma.contractOrderItem.findFirst({ where: { id, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '订货明细不存在' })
+    }
+
     // 软删除订货明细
     await prisma.contractOrderItem.update({ where: { id }, data: { deletedAt: new Date() } })
     // 级联软删除关联文件

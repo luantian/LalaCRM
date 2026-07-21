@@ -16,7 +16,12 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
     const where: any = { deletedAt: null }
     if (customerId) where.customerId = parseInt(customerId as string)
-    if (userId) where.userId = parseInt(userId as string)
+    // 非管理员只能查看自己的跟进记录
+    if (req.user?.role !== 'ADMIN') {
+      where.userId = req.user!.id
+    } else if (userId) {
+      where.userId = parseInt(userId as string)
+    }
     if (type) where.type = type as string
 
     const [total, records] = await Promise.all([
@@ -83,7 +88,12 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) 
     const { customerId, userId } = req.query
     const where: any = { deletedAt: null }
     if (customerId) where.customerId = parseInt(customerId as string)
-    if (userId) where.userId = parseInt(userId as string)
+    // 非管理员只能查看自己的统计
+    if (req.user?.role !== 'ADMIN') {
+      where.userId = req.user!.id
+    } else if (userId) {
+      where.userId = parseInt(userId as string)
+    }
 
     const [total, typeStats] = await Promise.all([
       prisma.customerFollowUp.count({ where }),
@@ -157,6 +167,16 @@ router.put('/:id', authenticateToken, logOperation('客户跟进', 'UPDATE'), as
   try {
     const id = parseInt(req.params.id as string)
     const { type, content, nextPlan, nextDate, result, attachments } = req.body
+
+    const existing = await prisma.customerFollowUp.findFirst({ where: { id, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '记录不存在' })
+    }
+
+    // 只能更新自己的记录（管理员除外）
+    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此记录' })
+    }
 
     const record = await prisma.customerFollowUp.update({
       where: { id },

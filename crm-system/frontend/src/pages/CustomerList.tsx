@@ -1,16 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Table, Button, Modal, Form, Input, Select, message, Space,
-  Popconfirm, Card, Row, Col, Tag, Dropdown, Empty
+  Table, Button, Modal, Form, Input, message, Space,
+  Card, Row, Col, Tag, Dropdown, Empty
 } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined,
-  DownloadOutlined, ReloadOutlined, EyeOutlined, MoreOutlined
+  ReloadOutlined, EyeOutlined, MoreOutlined
 } from '@ant-design/icons'
 import {
   getCustomers, createCustomer, updateCustomer, deleteCustomer,
-  batchDeleteCustomers, exportCustomers
+  batchDeleteCustomers
 } from '../services/api'
 
 function CustomerList() {
@@ -27,8 +27,11 @@ function CustomerList() {
   })
   const [searchText, setSearchText] = useState('')
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const searchTextRef = useRef(searchText)
+  useEffect(() => { searchTextRef.current = searchText }, [searchText])
 
-  const fetchCustomers = async (page = 1, pageSize = 10) => {
+  const fetchCustomers = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
     try {
       const params: any = {
@@ -37,7 +40,7 @@ function CustomerList() {
         sortBy: 'createdAt',
         sortOrder: 'desc'
       }
-      if (searchText) params.search = searchText
+      if (searchTextRef.current) params.search = searchTextRef.current
 
       const response: any = await getCustomers(params)
       setCustomers(response.data)
@@ -51,11 +54,11 @@ function CustomerList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchCustomers()
-  }, [])
+  }, [refreshTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = () => {
     fetchCustomers(1, pagination.pageSize)
@@ -63,7 +66,7 @@ function CustomerList() {
 
   const handleReset = () => {
     setSearchText('')
-    fetchCustomers(1, pagination.pageSize)
+    setRefreshTrigger(prev => prev + 1)
   }
 
   const handleTableChange = (page: number, pageSize: number) => {
@@ -114,21 +117,6 @@ function CustomerList() {
     })
   }
 
-  const handleExport = async () => {
-    try {
-      const response = await exportCustomers()
-      const blob = new Blob([response as any], { type: 'text/csv;charset=utf-8' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `客户列表_${new Date().toISOString().slice(0, 10)}.csv`
-      link.click()
-      window.URL.revokeObjectURL(url)
-      message.success('导出成功')
-    } catch (error) {
-      message.error('导出失败')
-    }
-  }
 
   const handleSubmit = async () => {
     try {

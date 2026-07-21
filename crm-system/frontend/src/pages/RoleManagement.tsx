@@ -99,7 +99,7 @@ function RoleManagement() {
   const fetchRoles = async () => {
     setLoading(true)
     try {
-      const response = await api.get('/roles')
+      const response = await api.get('/roles') as any
       setRoles(response)
     } catch (error: any) {
       message.error('获取角色列表失败')
@@ -110,7 +110,7 @@ function RoleManagement() {
 
   const fetchAllMenus = async () => {
     try {
-      const response = await api.get('/menus')
+      const response = await api.get('/menus') as any
       setAllMenus(response)
     } catch (error: any) {
       console.error('获取菜单列表失败:', error)
@@ -369,7 +369,7 @@ function RoleManagement() {
             checkable
             defaultExpandAll
             checkedKeys={checkedMenuIds}
-            onCheck={(keys: any) => setCheckedMenuIds(keys as number[])}
+            onCheck={(checked: any) => setCheckedMenuIds(Array.isArray(checked) ? checked : checked.checked)}
             treeData={buildTreeData(menusWithChildren)}
             style={{ maxHeight: 400, overflow: 'auto' }}
           />

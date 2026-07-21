@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest, checkPermission } from '../middleware/a
 import { upload } from '../middleware/upload'
 import { applyDataScope } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
+import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import fs from 'fs'
 import path from 'path'
@@ -12,7 +13,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取报价单列表（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('view_quotations'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('view_quotations'), applyDataScope('ownerId'), sortValidation(['name', 'version', 'totalAmount', 'status', 'validUntil', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -73,20 +74,21 @@ router.get('/', authenticateToken, checkPermission('view_quotations'), applyData
 })
 
 // 报价单统计
-router.get('/stats/overview', authenticateToken, checkPermission('view_quotations'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('view_quotations'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const [total, draft, submitted, approved, rejected, won, lost] = await Promise.all([
-      prisma.quotation.count({ where: { deletedAt: null } }),
-      prisma.quotation.count({ where: { deletedAt: null, status: 'DRAFT' } }),
-      prisma.quotation.count({ where: { deletedAt: null, status: 'SUBMITTED' } }),
-      prisma.quotation.count({ where: { deletedAt: null, status: 'APPROVED' } }),
-      prisma.quotation.count({ where: { deletedAt: null, status: 'REJECTED' } }),
-      prisma.quotation.count({ where: { deletedAt: null, status: 'WON' } }),
-      prisma.quotation.count({ where: { deletedAt: null, status: 'LOST' } })
+      prisma.quotation.count({ where: { deletedAt: null, ...dataScopeWhere } }),
+      prisma.quotation.count({ where: { deletedAt: null, status: 'DRAFT', ...dataScopeWhere } }),
+      prisma.quotation.count({ where: { deletedAt: null, status: 'SUBMITTED', ...dataScopeWhere } }),
+      prisma.quotation.count({ where: { deletedAt: null, status: 'APPROVED', ...dataScopeWhere } }),
+      prisma.quotation.count({ where: { deletedAt: null, status: 'REJECTED', ...dataScopeWhere } }),
+      prisma.quotation.count({ where: { deletedAt: null, status: 'WON', ...dataScopeWhere } }),
+      prisma.quotation.count({ where: { deletedAt: null, status: 'LOST', ...dataScopeWhere } })
     ])
 
     const quotations = await prisma.quotation.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...dataScopeWhere },
       select: { totalAmount: true }
     })
     const totalAmount = quotations.reduce((sum, q) => sum + Number(q.totalAmount), 0)
@@ -160,21 +162,24 @@ router.post('/', authenticateToken, checkPermission('edit_quotations'), logOpera
       return res.status(404).json({ error: '商机不存在' })
     }
 
-    // 查询该商机当前最大版本号
-    const maxVersion = await prisma.quotation.findFirst({
-      where: { opportunityId: parseInt(opportunityId), deletedAt: null },
-      orderBy: { version: 'desc' },
-      select: { version: true }
+    // 查询该商机当前最大版本号（使用事务保证原子性）
+    const nextVersion = await prisma.$transaction(async (tx) => {
+      const maxVersion = await tx.quotation.findFirst({
+        where: { opportunityId: parseInt(opportunityId), deletedAt: null },
+        orderBy: { version: 'desc' },
+        select: { version: true }
+      })
+      return (maxVersion?.version || 0) + 1
     })
-    const nextVersion = (maxVersion?.version || 0) + 1
 
-    // 计算总额
+    // 计算总额（使用 Math.round 避免浮点精度问题）
+    const roundMoney = (v: number) => Math.round(v * 100) / 100
     const itemList = items || []
-    const totalAmount = itemList.reduce((sum: number, item: any) => {
+    const totalAmount = roundMoney(itemList.reduce((sum: number, item: any) => {
       const qty = Number(item.quantity) || 0
       const price = Number(item.unitPrice) || 0
       return sum + (item.totalPrice ? Number(item.totalPrice) : qty * price)
-    }, 0)
+    }, 0))
 
     const quotation = await prisma.quotation.create({
       data: {
@@ -193,7 +198,7 @@ router.post('/', authenticateToken, checkPermission('edit_quotations'), logOpera
             quantity: Number(item.quantity) || 0,
             unit: item.unit || '套',
             unitPrice: Number(item.unitPrice) || 0,
-            totalPrice: Number(item.totalPrice) || (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0),
+            totalPrice: roundMoney(Number(item.totalPrice) || (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)),
             remarks: item.remarks
           }))
         } : undefined
@@ -229,11 +234,12 @@ router.put('/:id', authenticateToken, checkPermission('edit_quotations'), logOpe
     // 先删除旧明细，再创建新明细
     if (items) {
       await prisma.quotationItem.updateMany({ where: { quotationId: id }, data: { deletedAt: new Date() } })
-      const totalAmount = items.reduce((sum: number, item: any) => {
+      const roundMoney = (v: number) => Math.round(v * 100) / 100
+      const totalAmount = roundMoney(items.reduce((sum: number, item: any) => {
         const qty = Number(item.quantity) || 0
         const price = Number(item.unitPrice) || 0
         return sum + (item.totalPrice ? Number(item.totalPrice) : qty * price)
-      }, 0)
+      }, 0))
 
       const quotation = await prisma.quotation.update({
         where: { id },
@@ -249,7 +255,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_quotations'), logOpe
               quantity: Number(item.quantity) || 0,
               unit: item.unit || '套',
               unitPrice: Number(item.unitPrice) || 0,
-              totalPrice: Number(item.totalPrice) || (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0),
+              totalPrice: roundMoney(Number(item.totalPrice) || (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)),
               remarks: item.remarks
             }))
           }
@@ -322,6 +328,11 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_quotatio
     if (!existing) return res.status(404).json({ error: '报价单不存在' })
     if (existing.status !== 'SUBMITTED') {
       return res.status(400).json({ error: '只有已提交状态可以审批' })
+    }
+
+    // 防止自审批（管理员除外）
+    if (existing.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '不能审批自己提交的报价单' })
     }
 
     const quotation = await prisma.quotation.update({

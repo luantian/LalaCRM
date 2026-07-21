@@ -62,19 +62,6 @@ const collectAllKeys = (depts: Department[]): number[] => {
   return keys
 }
 
-// 递归展平部门列表
-const flattenDepts = (depts: Department[]): FlatDepartment[] => {
-  const result: FlatDepartment[] = []
-  const walk = (list: Department[]) => {
-    for (const d of list) {
-      result.push({ id: d.id, name: d.name })
-      if (d.children) walk(d.children)
-    }
-  }
-  walk(depts)
-  return result
-}
-
 // 递归统计子部门下用户数（后端未提供，此处仅展示子部门数量）
 const countChildren = (dept: Department): number => {
   if (!dept.children) return 0
@@ -100,14 +87,14 @@ function DepartmentManagement() {
     setLoading(true)
     try {
       const [treeRes, flatRes] = await Promise.all([
-        api.get('/departments/tree'),
-        api.get('/departments'),
+        api.get('/departments/tree') as any,
+        api.get('/departments') as any,
       ])
       setTreeData(treeRes || [])
       const flat = (flatRes || []).map((d: any) => ({ id: d.id, name: d.name }))
       setFlatList(flat)
     } catch (error: any) {
-      message.error(error.response?.data?.error || '获取部门列表失败')
+      message.error(error?.error || '获取部门列表失败')
     } finally {
       setLoading(false)
     }
@@ -142,7 +129,7 @@ function DepartmentManagement() {
   }
 
   // 树节点选择
-  const handleTreeSelect = (keys: any, info: any) => {
+  const handleTreeSelect = (keys: any) => {
     const id = keys[0]
     if (id === undefined) {
       setSelectedDept(null)
@@ -190,7 +177,7 @@ function DepartmentManagement() {
       }
       fetchDepartments()
     } catch (error: any) {
-      message.error(error.response?.data?.error || '删除部门失败')
+      message.error(error?.error || '删除部门失败')
     }
   }
 
@@ -213,8 +200,8 @@ function DepartmentManagement() {
       setModalVisible(false)
       fetchDepartments()
     } catch (error: any) {
-      if (error.response?.data?.error) {
-        message.error(error.response.data.error)
+      if (error?.error) {
+        message.error(error?.error)
       } else if (error.errorFields) {
         // 表单校验失败
       } else {

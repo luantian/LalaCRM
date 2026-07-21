@@ -10,6 +10,27 @@ import path from 'path';
 const router = Router();
 const prisma = new PrismaClient();
 
+// 检查用户是否有权限访问项目
+async function checkProjectAccess(projectId: number, userId: number, role?: string): Promise<boolean> {
+  // 管理员和经理可以访问所有项目
+  if (role === 'ADMIN' || role === 'MANAGER') return true;
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null },
+    select: { ownerId: true }
+  });
+  if (!project) return false;
+
+  // 项目负责人可以访问
+  if (project.ownerId === userId) return true;
+
+  // 项目团队成员可以访问
+  const member = await prisma.projectTeamMember.findFirst({
+    where: { projectId, userId, deletedAt: null }
+  });
+  return !!member;
+}
+
 // GET /notes?projectId=x&noteType=x - List notes for a project
 router.get('/notes', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -19,7 +40,15 @@ router.get('/notes', authenticateToken, async (req: AuthRequest, res: Response) 
       return res.status(400).json({ error: 'projectId is required' });
     }
 
-    const where: any = { deletedAt: null, projectId: Number(projectId) };
+    const pid = Number(projectId);
+
+    // 检查用户是否有权限访问此项目
+    const hasAccess = await checkProjectAccess(pid, req.user!.id, req.user?.role);
+    if (!hasAccess) {
+      return res.status(403).json({ error: '无权访问此项目的备注' });
+    }
+
+    const where: any = { deletedAt: null, projectId: pid };
     if (noteType) {
       where.noteType = noteType;
     }
@@ -54,9 +83,17 @@ router.post('/notes', authenticateToken, logOperation('项目备注', 'CREATE'),
       return res.status(400).json({ error: 'projectId and title are required' });
     }
 
+    const pid = Number(projectId);
+
+    // 检查用户是否有权限访问此项目
+    const hasAccess = await checkProjectAccess(pid, req.user!.id, req.user?.role);
+    if (!hasAccess) {
+      return res.status(403).json({ error: '无权访问此项目' });
+    }
+
     const note = await prisma.projectNote.create({
       data: {
-        projectId: Number(projectId),
+        projectId: pid,
         title,
         content,
         noteType: noteType || 'GENERAL',
@@ -85,6 +122,17 @@ router.put('/notes/:id', authenticateToken, logOperation('项目备注', 'UPDATE
     const existing = await prisma.projectNote.findFirst({ where: { id: Number(id), deletedAt: null } });
     if (!existing) {
       return res.status(404).json({ error: 'Note not found' });
+    }
+
+    // 检查用户是否有权限访问此项目
+    const hasAccess = await checkProjectAccess(existing.projectId, req.user!.id, req.user?.role);
+    if (!hasAccess) {
+      return res.status(403).json({ error: '无权操作此项目的备注' });
+    }
+
+    // 只能修改自己的备注（管理员除外）
+    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权修改他人的备注' });
     }
 
     const note = await prisma.projectNote.update({
@@ -118,6 +166,17 @@ router.delete('/notes/:id', authenticateToken, logOperation('项目备注', 'DEL
       return res.status(404).json({ error: 'Note not found' });
     }
 
+    // 检查用户是否有权限访问此项目
+    const hasAccess = await checkProjectAccess(existing.projectId, req.user!.id, req.user?.role);
+    if (!hasAccess) {
+      return res.status(403).json({ error: '无权操作此项目的备注' });
+    }
+
+    // 只能删除自己的备注（管理员除外）
+    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权删除他人的备注' });
+    }
+
     // 删除关联附件（磁盘文件 + 软删除记录）
     const files = await prisma.projectNoteFile.findMany({ where: { noteId: Number(id), deletedAt: null } });
     for (const file of files) {
@@ -143,8 +202,16 @@ router.get('/versions', authenticateToken, async (req: AuthRequest, res: Respons
       return res.status(400).json({ error: 'projectId is required' });
     }
 
+    const pid = Number(projectId);
+
+    // 检查用户是否有权限访问此项目
+    const hasAccess = await checkProjectAccess(pid, req.user!.id, req.user?.role);
+    if (!hasAccess) {
+      return res.status(403).json({ error: '无权访问此项目的版本记录' });
+    }
+
     const versions = await prisma.projectVersion.findMany({
-      where: { deletedAt: null, projectId: Number(projectId) },
+      where: { deletedAt: null, projectId: pid },
       include: {
         user: {
           select: { id: true, name: true },
@@ -169,9 +236,17 @@ router.post('/versions', authenticateToken, logOperation('项目备注', 'CREATE
       return res.status(400).json({ error: 'projectId, version, and title are required' });
     }
 
+    const pid = Number(projectId);
+
+    // 检查用户是否有权限访问此项目
+    const hasAccess = await checkProjectAccess(pid, req.user!.id, req.user?.role);
+    if (!hasAccess) {
+      return res.status(403).json({ error: '无权访问此项目' });
+    }
+
     const ver = await prisma.projectVersion.create({
       data: {
-        projectId: Number(projectId),
+        projectId: pid,
         version,
         title,
         content,
@@ -201,6 +276,17 @@ router.put('/versions/:id', authenticateToken, logOperation('项目备注', 'UPD
     const existing = await prisma.projectVersion.findFirst({ where: { id: Number(id), deletedAt: null } });
     if (!existing) {
       return res.status(404).json({ error: 'Version not found' });
+    }
+
+    // 检查用户是否有权限访问此项目
+    const hasAccess = await checkProjectAccess(existing.projectId, req.user!.id, req.user?.role);
+    if (!hasAccess) {
+      return res.status(403).json({ error: '无权操作此项目的版本记录' });
+    }
+
+    // 只能修改自己的版本记录（管理员除外）
+    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权修改他人的版本记录' });
     }
 
     const ver = await prisma.projectVersion.update({
@@ -233,6 +319,17 @@ router.delete('/versions/:id', authenticateToken, logOperation('项目备注', '
     const existing = await prisma.projectVersion.findFirst({ where: { id: Number(id), deletedAt: null } });
     if (!existing) {
       return res.status(404).json({ error: 'Version not found' });
+    }
+
+    // 检查用户是否有权限访问此项目
+    const hasAccess = await checkProjectAccess(existing.projectId, req.user!.id, req.user?.role);
+    if (!hasAccess) {
+      return res.status(403).json({ error: '无权操作此项目的版本记录' });
+    }
+
+    // 只能删除自己的版本记录（管理员除外）
+    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权删除他人的版本记录' });
     }
 
     await prisma.projectVersion.update({ where: { id: Number(id) }, data: { deletedAt: new Date() } });

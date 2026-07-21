@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
-import { paginationValidation, idValidation, createCustomerValidation, updateCustomerValidation, validate } from '../middleware/validation'
+import { paginationValidation, idValidation, createCustomerValidation, updateCustomerValidation, validate, sortValidation } from '../middleware/validation'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
 import logger from '../utils/logger'
@@ -10,7 +10,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有客户（支持分页、搜索、筛选）
-router.get('/', authenticateToken, applyDataScope('ownerId'), paginationValidation, validate, async (req: AuthRequest, res: Response) => {
+router.get('/', authenticateToken, applyDataScope('ownerId'), paginationValidation, sortValidation(['name', 'companyName', 'status', 'createdAt', 'updatedAt']), validate, async (req: AuthRequest, res: Response) => {
   try {
     const {
       page = '1',
@@ -83,16 +83,25 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), paginationValidati
 })
 
 // 导出客户数据
-router.get('/export/csv', authenticateToken, logOperation('客户管理', 'EXPORT'), async (req: AuthRequest, res: Response) => {
+router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), logOperation('客户管理', 'EXPORT'), async (req: AuthRequest, res: Response) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const customers = await prisma.customer.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...dataScopeWhere },
       include: {
         owner: { select: { name: true } }
       }
     })
 
     const headers = ['客户名称', '公司名称', '电话', '邮箱', '地址', '负责人', '创建时间']
+    // CSV安全：转义双引号，并用单引号前缀公式触发字符，防止CSV注入
+    const escapeCsvCell = (value: string) => {
+      const escaped = value.replace(/"/g, '""')
+      if (/^[=+\-@]/.test(escaped)) {
+        return "'" + escaped
+      }
+      return escaped
+    }
     const rows = customers.map(c => [
       c.name,
       c.companyName || '',
@@ -104,7 +113,7 @@ router.get('/export/csv', authenticateToken, logOperation('客户管理', 'EXPOR
     ])
 
     const csv = [headers, ...rows]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .map(row => row.map(cell => `"${escapeCsvCell(String(cell))}"`).join(','))
       .join('\n')
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
@@ -117,13 +126,14 @@ router.get('/export/csv', authenticateToken, logOperation('客户管理', 'EXPOR
 })
 
 // 客户统计（按状态分组）
-router.get('/stats/overview', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.get('/stats/overview', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res: Response) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const [total, statusCounts] = await Promise.all([
-      prisma.customer.count({ where: { deletedAt: null } }),
+      prisma.customer.count({ where: { deletedAt: null, ...dataScopeWhere } }),
       prisma.customer.groupBy({
         by: ['status'],
-        where: { deletedAt: null },
+        where: { deletedAt: null, ...dataScopeWhere },
         _count: { id: true }
       })
     ])
@@ -237,7 +247,12 @@ router.put('/:id', authenticateToken, updateCustomerValidation, logOperation('�
     const id = parseInt(req.params.id as string)
     const { name, companyName, phone, email, address, status, notes } = req.body
 
-    const customer = await prisma.customer.update({
+    const customer = await prisma.customer.findFirst({ where: { id, deletedAt: null } })
+    if (!customer) {
+      return res.status(404).json({ error: '客户不存在' })
+    }
+
+    const updated = await prisma.customer.update({
       where: { id },
       data: { name, companyName, phone, email, address, status, notes },
       include: {
@@ -245,8 +260,8 @@ router.put('/:id', authenticateToken, updateCustomerValidation, logOperation('�
       }
     })
 
-    logger.info(`Customer updated: ${customer.name} by user ${req.user?.username}`)
-    res.json(customer)
+    logger.info(`Customer updated: ${updated.name} by user ${req.user?.username}`)
+    res.json(updated)
   } catch (error) {
     logger.error('Update customer error:', error)
     res.status(500).json({ error: '更新客户失败' })
@@ -258,8 +273,14 @@ router.delete('/:id', authenticateToken, idValidation, validate, logOperation('�
   try {
     const id = parseInt(req.params.id as string)
 
+    // 检查客户是否存在且未被软删除
+    const customer = await prisma.customer.findFirst({ where: { id, deletedAt: null } })
+    if (!customer) {
+      return res.status(404).json({ error: '客户不存在' })
+    }
+
     // 软删除：设置 deletedAt
-    const customer = await prisma.customer.update({
+    const deleted = await prisma.customer.update({
       where: { id },
       data: { deletedAt: new Date() }
     })
@@ -268,7 +289,7 @@ router.delete('/:id', authenticateToken, idValidation, validate, logOperation('�
     await prisma.customerFollowUp.updateMany({ where: { customerId: id }, data: { deletedAt: new Date() } })
     await prisma.customerContact.updateMany({ where: { customerId: id }, data: { deletedAt: new Date() } })
 
-    logger.info(`Customer soft-deleted: ${customer.name} by user ${req.user?.username}`)
+    logger.info(`Customer soft-deleted: ${deleted.name} by user ${req.user?.username}`)
     res.json({ message: '客户已删除' })
   } catch (error) {
     logger.error('Delete customer error:', error)

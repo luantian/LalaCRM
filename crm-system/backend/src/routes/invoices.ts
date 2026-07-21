@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest, checkPermission } from '../middleware/a
 import { upload } from '../middleware/upload'
 import { applyDataScope } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
+import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import fs from 'fs'
 import path from 'path'
@@ -12,7 +13,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取发票列表（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('view_invoices'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('view_invoices'), applyDataScope('ownerId'), sortValidation(['invoiceNo', 'amount', 'totalAmount', 'invoiceDate', 'status', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -87,20 +88,21 @@ router.get('/', authenticateToken, checkPermission('view_invoices'), applyDataSc
 })
 
 // 发票统计
-router.get('/stats/overview', authenticateToken, checkPermission('view_invoices'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('view_invoices'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const [total, incomeCount, expenseCount, pendingCount, issuedCount, confirmedCount] = await Promise.all([
-      prisma.invoice.count({ where: { deletedAt: null } }),
-      prisma.invoice.count({ where: { deletedAt: null, invoiceType: 'INCOME' } }),
-      prisma.invoice.count({ where: { deletedAt: null, invoiceType: 'EXPENSE' } }),
-      prisma.invoice.count({ where: { deletedAt: null, status: 'PENDING' } }),
-      prisma.invoice.count({ where: { deletedAt: null, status: 'ISSUED' } }),
-      prisma.invoice.count({ where: { deletedAt: null, status: 'CONFIRMED' } })
+      prisma.invoice.count({ where: { deletedAt: null, ...dataScopeWhere } }),
+      prisma.invoice.count({ where: { deletedAt: null, invoiceType: 'INCOME', ...dataScopeWhere } }),
+      prisma.invoice.count({ where: { deletedAt: null, invoiceType: 'EXPENSE', ...dataScopeWhere } }),
+      prisma.invoice.count({ where: { deletedAt: null, status: 'PENDING', ...dataScopeWhere } }),
+      prisma.invoice.count({ where: { deletedAt: null, status: 'ISSUED', ...dataScopeWhere } }),
+      prisma.invoice.count({ where: { deletedAt: null, status: 'CONFIRMED', ...dataScopeWhere } })
     ])
 
     // 出项发票汇总
     const incomeInvoices = await prisma.invoice.findMany({
-      where: { invoiceType: 'INCOME', deletedAt: null },
+      where: { invoiceType: 'INCOME', deletedAt: null, ...dataScopeWhere },
       select: { amount: true, taxAmount: true, totalAmount: true }
     })
     const incomeTotal = incomeInvoices.reduce((sum, i) => sum + Number(i.totalAmount), 0)
@@ -108,7 +110,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_invoices'
 
     // 进项发票汇总
     const expenseInvoices = await prisma.invoice.findMany({
-      where: { invoiceType: 'EXPENSE', deletedAt: null },
+      where: { invoiceType: 'EXPENSE', deletedAt: null, ...dataScopeWhere },
       select: { amount: true, taxAmount: true, totalAmount: true }
     })
     const expenseTotal = expenseInvoices.reduce((sum, i) => sum + Number(i.totalAmount), 0)
@@ -135,11 +137,12 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_invoices'
 })
 
 // 对账统计（按项目维度汇总进销项）
-router.get('/stats/reconciliation', authenticateToken, checkPermission('view_invoices'), async (req: AuthRequest, res) => {
+router.get('/stats/reconciliation', authenticateToken, checkPermission('view_invoices'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const { projectId = '' } = req.query
 
-    const where: any = { deletedAt: null, status: { not: 'CANCELLED' } }
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, status: { not: 'CANCELLED' }, ...dataScopeWhere }
     if (projectId) where.projectId = parseInt(projectId as string)
 
     const invoices = await prisma.invoice.findMany({
@@ -244,11 +247,11 @@ router.post('/', authenticateToken, checkPermission('edit_invoices'), logOperati
       return res.status(400).json({ error: '发票号、发票类型和金额不能为空' })
     }
 
-    // 自动计算税额和价税合计
+    // 自动计算税额和价税合计（使用 toFixed 避免浮点精度问题）
     const amountNum = parseFloat(amount)
     const taxRateNum = parseFloat(taxRate) || 0
     const taxAmount = parseFloat((amountNum * taxRateNum / 100).toFixed(2))
-    const totalAmount = amountNum + taxAmount
+    const totalAmount = parseFloat((amountNum + taxAmount).toFixed(2))
 
     const invoice = await prisma.invoice.create({
       data: {
@@ -293,11 +296,11 @@ router.put('/:id', authenticateToken, checkPermission('edit_invoices'), logOpera
       partyName, partyTaxNo, remarks
     } = req.body
 
-    // 重新计算税额
+    // 重新计算税额（使用 toFixed 避免浮点精度问题）
     const amountNum = parseFloat(amount) || 0
     const taxRateNum = parseFloat(taxRate) || 0
     const taxAmount = parseFloat((amountNum * taxRateNum / 100).toFixed(2))
-    const totalAmount = amountNum + taxAmount
+    const totalAmount = parseFloat((amountNum + taxAmount).toFixed(2))
 
     const invoice = await prisma.invoice.update({
       where: { id },

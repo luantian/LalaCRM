@@ -10,8 +10,8 @@ const prisma = new PrismaClient()
 // 获取提醒设置
 router.get('/settings', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    const reminder = await prisma.dailyReportReminder.findUnique({
-      where: { userId: req.user!.id }
+    const reminder = await prisma.dailyReportReminder.findFirst({
+      where: { userId: req.user!.id, deletedAt: null }
     })
 
     // 如果没有设置，返回默认值

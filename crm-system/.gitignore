@@ -4,3 +4,6 @@ dist/
 *.log
 .DS_Store
 postgres_data/
+uploads/
+backend/logs/
+nul

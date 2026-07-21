@@ -3,13 +3,14 @@ import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
+import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有销售记录（支持分页、筛选）
-router.get('/', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['amount', 'type', 'date', 'category', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -73,9 +74,10 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), async (req: AuthRe
 })
 
 // 销售统计
-router.get('/stats/overview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
-    const sales = await prisma.sale.findMany({ where: { deletedAt: null } })
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const sales = await prisma.sale.findMany({ where: { deletedAt: null, ...dataScopeWhere } })
 
     const totalIncome = sales
       .filter(s => s.type === 'IN')
@@ -122,10 +124,11 @@ router.get('/stats/overview', authenticateToken, async (req: AuthRequest, res) =
 })
 
 // 导出销售数据
-router.get('/export/csv', authenticateToken, logOperation('销售管理', 'EXPORT'), async (req: AuthRequest, res) => {
+router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), logOperation('销售管理', 'EXPORT'), async (req: AuthRequest, res) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const sales = await prisma.sale.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...dataScopeWhere },
       include: {
         customer: { select: { name: true } },
         owner: { select: { name: true } }
@@ -133,6 +136,14 @@ router.get('/export/csv', authenticateToken, logOperation('销售管理', 'EXPOR
     })
 
     const headers = ['类型', '金额', '客户', '描述', '日期', '负责人']
+    // CSV安全：转义双引号，并用单引号前缀公式触发字符，防止CSV注入
+    const escapeCsvCell = (value: string) => {
+      const escaped = value.replace(/"/g, '""')
+      if (/^[=+\-@]/.test(escaped)) {
+        return "'" + escaped
+      }
+      return escaped
+    }
     const rows = sales.map(s => [
       s.type === 'IN' ? '收入' : '支出',
       s.amount.toString(),
@@ -143,7 +154,7 @@ router.get('/export/csv', authenticateToken, logOperation('销售管理', 'EXPOR
     ])
 
     const csv = [headers, ...rows]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .map(row => row.map(cell => `"${escapeCsvCell(String(cell))}"`).join(','))
       .join('\n')
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
@@ -216,6 +227,11 @@ router.put('/:id', authenticateToken, logOperation('销售管理', 'UPDATE'), as
     const id = req.params.id as string
     const { customerId, projectId, contractId, type, category, amount, description, date } = req.body
 
+    const existing = await prisma.sale.findFirst({ where: { id: parseInt(id), deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '销售记录不存在' })
+    }
+
     const sale = await prisma.sale.update({
       where: { id: parseInt(id) },
       data: {
@@ -241,8 +257,15 @@ router.put('/:id', authenticateToken, logOperation('销售管理', 'UPDATE'), as
 router.delete('/:id', authenticateToken, logOperation('销售管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
+    const numericId = parseInt(id)
+
+    const existing = await prisma.sale.findFirst({ where: { id: numericId, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '销售记录不存在' })
+    }
+
     await prisma.sale.update({
-      where: { id: parseInt(id) },
+      where: { id: numericId },
       data: { deletedAt: new Date() }
     })
 

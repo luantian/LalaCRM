@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicker, message, Tag, Row, Col, Statistic, Space, Dropdown } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, MoreOutlined, FileTextOutlined, DashboardOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, MoreOutlined, FileTextOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { getInvoices, createInvoice, updateInvoice, deleteInvoice, getInvoiceStats, getProjects, getCustomers, getProcurements } from '../services/api'
+import { getInvoices, createInvoice, updateInvoice, deleteInvoice, getInvoiceStats, getProjects } from '../services/api'
 
 const { Option } = Select
 
@@ -60,16 +60,8 @@ const InvoiceList: React.FC = () => {
   const [filters, setFilters] = useState<any>({})
   const [stats, setStats] = useState<any>({})
   const [projects, setProjects] = useState<any[]>([])
-  const [customers, setCustomers] = useState<any[]>([])
 
-  useEffect(() => {
-    fetchInvoices()
-    fetchStats()
-    fetchProjects()
-    fetchCustomers()
-  }, [pagination.current, pagination.pageSize, filters])
-
-  const fetchInvoices = async () => {
+  const fetchInvoices = useCallback(async () => {
     setLoading(true)
     try {
       const response: any = await getInvoices({
@@ -81,14 +73,14 @@ const InvoiceList: React.FC = () => {
       setPagination(prev => ({ ...prev, total: response.pagination?.total || 0 }))
     } catch { message.error('获取发票列表失败') }
     setLoading(false)
-  }
+  }, [pagination.current, pagination.pageSize, filters])
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const response: any = await getInvoiceStats()
       setStats(response)
     } catch {}
-  }
+  }, [])
 
   const fetchProjects = async () => {
     try {
@@ -97,12 +89,11 @@ const InvoiceList: React.FC = () => {
     } catch {}
   }
 
-  const fetchCustomers = async () => {
-    try {
-      const response: any = await getCustomers({ pageSize: 1000 })
-      setCustomers(response.data || [])
-    } catch {}
-  }
+  useEffect(() => {
+    fetchInvoices()
+    fetchStats()
+    fetchProjects()
+  }, [fetchInvoices, fetchStats]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreate = () => {
     setEditingInvoice(null)

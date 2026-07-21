@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Empty, List, Badge, Popconfirm, Space, Tooltip, Divider, App as AntApp } from 'antd'
+import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Empty, List, Badge, Popconfirm, Tooltip, App as AntApp } from 'antd'
 import {
-  UserOutlined, DollarOutlined, ProjectOutlined, FileTextOutlined,
+  UserOutlined, ProjectOutlined, FileTextOutlined,
   CheckCircleOutlined, ClockCircleOutlined, FundOutlined,
-  CarOutlined, AccountBookOutlined, TeamOutlined, SendOutlined,
+  CarOutlined, AccountBookOutlined, SendOutlined,
   DashboardOutlined, PlusOutlined, CheckOutlined, PlayCircleOutlined,
-  DeleteOutlined, ExclamationCircleOutlined, EditOutlined, StopOutlined,
-  RollbackOutlined
+  DeleteOutlined, ExclamationCircleOutlined, EditOutlined, StopOutlined
 } from '@ant-design/icons'
-import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn } from '../services/api'
+import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
 function Dashboard() {
@@ -24,8 +23,8 @@ function Dashboard() {
   const [users, setUsers] = useState<any[]>([])
   const [todayCheckIn, setTodayCheckIn] = useState<any>(null)
 
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
-  const userPermissions = JSON.parse(localStorage.getItem('permissions') || '[]')
+  const user = safeJsonParse(localStorage.getItem('user'), {})
+  const userPermissions = safeJsonParse(localStorage.getItem('permissions'), [])
 
   // 快捷操作权限映射
   const quickActions = [
@@ -79,7 +78,7 @@ function Dashboard() {
       message.success(typeMessages[result.type] || '打卡成功！')
       fetchTodayCheckIn()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '打卡失败')
+      message.error(error?.error || '打卡失败')
     }
   }
 

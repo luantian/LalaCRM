@@ -16,6 +16,80 @@ export const validate = (req: Request, res: Response, next: NextFunction) => {
   next()
 }
 
+/**
+ * 排序字段白名单验证中间件
+ * 防止排序字段注入攻击
+ */
+export function sortValidation(allowedFields: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const sortBy = (req.query.sortBy as string) || 'createdAt'
+    const sortOrder = (req.query.sortOrder as string) || 'desc'
+
+    if (!allowedFields.includes(sortBy)) {
+      return res.status(400).json({
+        error: `不支持的排序字段: ${sortBy}，允许的字段: ${allowedFields.join(', ')}`
+      })
+    }
+
+    if (!['asc', 'desc', 'ASC', 'DESC'].includes(sortOrder)) {
+      return res.status(400).json({
+        error: `排序方向必须是 asc 或 desc`
+      })
+    }
+
+    next()
+  }
+}
+
+/**
+ * 安全解析整数，带 NaN 检查和范围限制
+ */
+export function safeParseInt(value: any, min: number = 1, fallback?: number): number | undefined {
+  const num = parseInt(value)
+  if (isNaN(num)) return fallback
+  if (num < min) return fallback
+  return num
+}
+
+/**
+ * 分页参数钳制中间件
+ * 确保 page >= 1, 1 <= pageSize <= 200
+ */
+export function clampPagination() {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1)
+    const pageSize = Math.min(200, Math.max(1, parseInt(req.query.pageSize as string) || 10))
+    req.query.page = String(page)
+    req.query.pageSize = String(pageSize)
+    next()
+  }
+}
+
+/**
+ * 验证日期字符串有效性
+ */
+export function isValidDate(value: any): boolean {
+  if (!value) return true // 可选字段
+  const d = new Date(value)
+  return !isNaN(d.getTime())
+}
+
+/**
+ * 日期验证中间件
+ * 检查指定 body 字段是否为有效日期
+ */
+export function dateValidation(...fields: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    for (const field of fields) {
+      const value = req.body[field]
+      if (value && !isValidDate(value)) {
+        return res.status(400).json({ error: `无效的日期格式: ${field}` })
+      }
+    }
+    next()
+  }
+}
+
 // 通用验证规则
 export const paginationValidation = [
   query('page').optional().isInt({ min: 1 }).withMessage('页码必须是正整数'),

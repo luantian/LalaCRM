@@ -104,9 +104,15 @@ export async function getDataScopeWhere(
 }
 
 /**
- * 递归获取部门及所有下级部门ID
+ * 递归获取部门及所有下级部门ID（带深度限制防止栈溢出）
  */
-async function getSubDepartmentIds(deptId: number): Promise<number[]> {
+async function getSubDepartmentIds(deptId: number, depth: number = 0): Promise<number[]> {
+  const MAX_DEPTH = 20
+  if (depth > MAX_DEPTH) {
+    logger.warn(`Department tree exceeds max depth (${MAX_DEPTH}), stopping recursion at deptId=${deptId}`)
+    return [deptId]
+  }
+
   const ids = [deptId]
   const children = await prisma.department.findMany({
     where: { parentId: deptId },
@@ -114,7 +120,7 @@ async function getSubDepartmentIds(deptId: number): Promise<number[]> {
   })
 
   for (const child of children) {
-    const subIds = await getSubDepartmentIds(child.id)
+    const subIds = await getSubDepartmentIds(child.id, depth + 1)
     ids.push(...subIds)
   }
 

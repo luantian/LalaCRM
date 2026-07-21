@@ -2,6 +2,16 @@ import { useEffect, useRef, useCallback } from 'react'
 
 type MessageHandler = (data: any) => void
 
+function safeGetUser(): { id?: number } {
+  try {
+    const raw = localStorage.getItem('user')
+    if (!raw) return {}
+    return JSON.parse(raw)
+  } catch {
+    return {}
+  }
+}
+
 export function useWebSocket(onMessage: MessageHandler, enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimerRef = useRef<any>(null)
@@ -14,7 +24,7 @@ export function useWebSocket(onMessage: MessageHandler, enabled: boolean = true)
     if (!enabled) return
 
     const token = localStorage.getItem('token')
-    const user = JSON.parse(localStorage.getItem('user') || '{}')
+    const user = safeGetUser()
 
     if (!token || !user.id) {
       console.log('WebSocket: No token or user ID, skipping connection')
@@ -23,12 +33,16 @@ export function useWebSocket(onMessage: MessageHandler, enabled: boolean = true)
 
     // 使用 ws:// 或 wss:// 根据当前协议
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.hostname}:5000/ws?userId=${user.id}`
+    // 开发环境连接后端 WebSocket 端口，生产环境通过 nginx 代理
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    const wsHost = isDev ? `${window.location.hostname}:5000` : window.location.hostname
+    const wsUrl = `${protocol}//${wsHost}/ws?userId=${user.id}`
 
-    console.log('WebSocket: Connecting to', wsUrl)
+    console.log('WebSocket: Connecting (token via Sec-WebSocket-Protocol header)')
 
     try {
-      const ws = new WebSocket(wsUrl)
+      // 通过 Sec-WebSocket-Protocol 安全传递 token（不会出现在 URL/日志中）
+      const ws = new WebSocket(wsUrl, ['auth.' + token])
       wsRef.current = ws
 
       ws.onopen = () => {

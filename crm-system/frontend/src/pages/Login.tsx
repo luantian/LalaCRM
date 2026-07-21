@@ -26,7 +26,7 @@ function Login() {
       message.success('登录成功')
       navigate('/')
     } catch (error: any) {
-      message.error(error.message || '登录失败')
+      message.error(error?.error || error?.message || '登录失败')
     } finally {
       setLoading(false)
     }

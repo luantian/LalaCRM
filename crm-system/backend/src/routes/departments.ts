@@ -75,6 +75,10 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 // 创建部门
 router.post('/', authenticateToken, logOperation('部门管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
+    if (req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '只有管理员才能执行此操作' })
+    }
+
     const { name, parentId, order, leader, phone, email, status } = req.body
 
     if (!name) {
@@ -113,6 +117,10 @@ router.post('/', authenticateToken, logOperation('部门管理', 'CREATE'), asyn
 // 更新部门
 router.put('/:id', authenticateToken, logOperation('部门管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
+    if (req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '只有管理员才能执行此操作' })
+    }
+
     const id = parseInt(req.params.id as string)
     const { name, parentId, order, leader, phone, email, status } = req.body
 
@@ -154,6 +162,10 @@ router.put('/:id', authenticateToken, logOperation('部门管理', 'UPDATE'), as
 // 删除部门
 router.delete('/:id', authenticateToken, logOperation('部门管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
+    if (req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '只有管理员才能执行此操作' })
+    }
+
     const id = parseInt(req.params.id as string)
 
     // 检查部门是否存在

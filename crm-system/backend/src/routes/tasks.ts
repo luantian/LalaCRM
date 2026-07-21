@@ -49,6 +49,9 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id as string)
+    if (isNaN(id)) {
+      return res.status(400).json({ error: '无效的ID' })
+    }
     const task = await prisma.task.findFirst({
       where: { id, deletedAt: null },
       include: {
@@ -59,6 +62,14 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     if (!task) {
       return res.status(404).json({ error: '任务不存在' })
     }
+
+    // 检查用户是委派人或被指派人
+    const isAssigner = task.assignerId === req.user!.id
+    const isAssignee = task.assignees.some((a: any) => a.id === req.user!.id)
+    if (!isAssigner && !isAssignee) {
+      return res.status(403).json({ error: '无权查看此任务' })
+    }
+
     res.json(task)
   } catch (error) {
     logger.error('Get task detail error:', error)
@@ -116,6 +127,9 @@ router.post('/', authenticateToken, logOperation('任务管理', 'CREATE'), asyn
 router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id as string)
+    if (isNaN(id)) {
+      return res.status(400).json({ error: '无效的ID' })
+    }
     const { title, description, assigneeIds, priority, dueDate, status } = req.body
 
     // 先获取原任务信息
@@ -129,6 +143,13 @@ router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), as
 
     if (!existingTask) {
       return res.status(404).json({ error: '任务不存在' })
+    }
+
+    // 检查用户是委派人或被指派人
+    const isAssigner = existingTask.assignerId === req.user!.id
+    const isAssignee = existingTask.assignees.some((a: any) => a.id === req.user!.id)
+    if (!isAssigner && !isAssignee) {
+      return res.status(403).json({ error: '无权操作此任务' })
     }
 
     // 构建更新数据
@@ -226,6 +247,20 @@ router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), as
 router.delete('/:id', authenticateToken, logOperation('任务管理', 'DELETE'), async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id as string)
+    if (isNaN(id)) {
+      return res.status(400).json({ error: '无效的ID' })
+    }
+
+    const existingTask = await prisma.task.findFirst({ where: { id, deletedAt: null } })
+    if (!existingTask) {
+      return res.status(404).json({ error: '任务不存在' })
+    }
+
+    // 只有委派人才可以删除
+    if (existingTask.assignerId !== req.user!.id) {
+      return res.status(403).json({ error: '只有任务发起人才能删除任务' })
+    }
+
     await prisma.task.update({ where: { id }, data: { deletedAt: new Date() } })
     res.json({ message: '删除成功' })
   } catch (error) {

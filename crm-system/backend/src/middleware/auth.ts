@@ -19,7 +19,10 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
   }
 
   try {
-    const secret = process.env.JWT_SECRET || 'default-secret'
+    const secret = process.env.JWT_SECRET
+    if (!secret) {
+      throw new Error('JWT_SECRET environment variable is not set')
+    }
     const decoded = jwt.verify(token, secret) as any
     req.user = decoded
     next()

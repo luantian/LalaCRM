@@ -9,12 +9,13 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // GET /stats/overview - Stats (before /:id)
-router.get('/stats/overview', authenticateToken, checkPermission('view_procurements'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('view_procurements'), applyDataScope('assignedTo'), async (req: AuthRequest, res) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const [total, byStatus, amountResult] = await Promise.all([
-      prisma.procurement.count({ where: { deletedAt: null } }),
-      prisma.procurement.groupBy({ by: ['status'], where: { deletedAt: null }, _count: true }),
-      prisma.procurement.aggregate({ where: { deletedAt: null }, _sum: { totalAmount: true } })
+      prisma.procurement.count({ where: { deletedAt: null, ...dataScopeWhere } }),
+      prisma.procurement.groupBy({ by: ['status'], where: { deletedAt: null, ...dataScopeWhere }, _count: true }),
+      prisma.procurement.aggregate({ where: { deletedAt: null, ...dataScopeWhere }, _sum: { totalAmount: true } })
     ])
     const statusCounts: Record<string, number> = {}
     byStatus.forEach(item => { statusCounts[item.status] = item._count })

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, Empty } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Empty } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, MoreOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { getOpportunities, createOpportunity, updateOpportunity, deleteOpportunity, getOpportunityStats, getCustomers, convertOpportunity } from '../services/api'
 import dayjs from 'dayjs'
@@ -21,13 +21,16 @@ function OpportunityList() {
   const [stats, setStats] = useState<any>(null)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [searchText, setSearchText] = useState('')
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const searchTextRef = useRef(searchText)
+  useEffect(() => { searchTextRef.current = searchText }, [searchText])
 
-  const fetchOpportunities = async (page = 1, pageSize = 10) => {
+  const fetchOpportunities = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
     try {
       const params: any = { page, pageSize, sortBy: 'createdAt', sortOrder: 'desc', converted: 'false' }
-      if (searchText.trim()) {
-        params.search = searchText.trim()
+      if (searchTextRef.current.trim()) {
+        params.search = searchTextRef.current.trim()
       }
       const response: any = await getOpportunities(params)
       setOpportunities(response.data || [])
@@ -41,7 +44,7 @@ function OpportunityList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   const fetchCustomers = async () => {
     try {
@@ -62,10 +65,13 @@ function OpportunityList() {
   }
 
   useEffect(() => {
-    fetchOpportunities()
     fetchCustomers()
     fetchStats()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetchOpportunities()
+  }, [refreshTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = () => {
     fetchOpportunities(1, pagination.pageSize)
@@ -73,7 +79,7 @@ function OpportunityList() {
 
   const handleReset = () => {
     setSearchText('')
-    setTimeout(() => fetchOpportunities(1, pagination.pageSize), 0)
+    setRefreshTrigger(prev => prev + 1)
   }
 
   const handleTableChange = (page: number, pageSize: number) => {

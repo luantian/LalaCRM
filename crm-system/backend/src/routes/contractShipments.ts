@@ -64,6 +64,11 @@ router.put('/:id', authenticateToken, logOperation('合同发货', 'UPDATE'), as
     const id = parseInt(req.params.id as string)
     const { shipDate, logisticsNo, logisticsCompany, content, quantity, status, receiveDate, receiver, remarks } = req.body
 
+    const existing = await prisma.contractShipment.findFirst({ where: { id, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '发货记录不存在' })
+    }
+
     const shipment = await prisma.contractShipment.update({
       where: { id },
       data: {
@@ -90,6 +95,10 @@ router.put('/:id', authenticateToken, logOperation('合同发货', 'UPDATE'), as
 router.delete('/:id', authenticateToken, logOperation('合同发货', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+    const existing = await prisma.contractShipment.findFirst({ where: { id, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '发货记录不存在' })
+    }
     await prisma.contractShipment.update({ where: { id }, data: { deletedAt: new Date() } })
     res.json({ message: '删除成功' })
   } catch (error) {

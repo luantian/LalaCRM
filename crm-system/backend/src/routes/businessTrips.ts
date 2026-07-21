@@ -3,13 +3,14 @@ import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
+import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有出差记录
-router.get('/', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, applyDataScope('ownerId'), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const { page = '1', pageSize = '10', status = '', search = '' } = req.query
 
@@ -75,9 +76,10 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), async (req: AuthRe
 })
 
 // 出差统计
-router.get('/stats/overview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
-    const trips = await prisma.businessTrip.findMany({ where: { deletedAt: null } })
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const trips = await prisma.businessTrip.findMany({ where: { deletedAt: null, ...dataScopeWhere } })
 
     const totalTrips = trips.length
     const totalDays = trips.reduce((sum, t) => sum + t.days, 0)
@@ -138,7 +140,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 创建出差记录（默认为草稿）
-router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), dateValidation('startDate', 'endDate'), async (req: AuthRequest, res) => {
   try {
     const {
       title,
@@ -156,11 +158,11 @@ router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), asyn
       notes
     } = req.body
 
-    // 计算总费用
-    const totalAmount = (parseFloat(accommodation || 0) +
+    // 计算总费用（使用 toFixed 避免浮点精度问题）
+    const totalAmount = parseFloat((parseFloat(accommodation || 0) +
                         parseFloat(transportation || 0) +
                         parseFloat(meals || 0) +
-                        parseFloat(otherExpenses || 0))
+                        parseFloat(otherExpenses || 0)).toFixed(2))
 
     const trip = await prisma.businessTrip.create({
       data: {
@@ -237,6 +239,11 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_business
 
     if (trip.status !== 'SUBMITTED') {
       return res.status(400).json({ error: '只有待审批状态可以审批' })
+    }
+
+    // 防止自审批（管理员除外）
+    if (trip.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '不能审批自己提交的申请' })
     }
 
     const approverName = req.user?.username || '审批人'
@@ -405,10 +412,10 @@ router.put('/:id', authenticateToken, logOperation('出差管理', 'UPDATE'), as
       return res.status(403).json({ error: '只能编辑自己的出差记录' })
     }
 
-    const totalAmount = (parseFloat(accommodation || 0) +
+    const totalAmount = parseFloat((parseFloat(accommodation || 0) +
                         parseFloat(transportation || 0) +
                         parseFloat(meals || 0) +
-                        parseFloat(otherExpenses || 0))
+                        parseFloat(otherExpenses || 0)).toFixed(2))
 
     const trip = await prisma.businessTrip.update({
       where: { id },

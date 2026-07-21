@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, message, Dropdown, Checkbox } from 'antd'
-import { ArrowLeftOutlined, EditOutlined, StarOutlined, PlusOutlined, MoreOutlined, DeleteOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, EditOutlined, StarOutlined, PlusOutlined, MoreOutlined } from '@ant-design/icons'
 import { getCustomerDetail, updateCustomer, getCustomerContacts, createCustomerContact, updateCustomerContact, deleteCustomerContact, setPrimaryContact } from '../services/api'
 import dayjs from 'dayjs'
 
@@ -24,7 +24,7 @@ function CustomerDetail() {
   useEffect(() => {
     const fetchDetail = async () => {
       try {
-        const data = await getCustomerDetail(parseInt(id!))
+        const data = await getCustomerDetail(parseInt(id!)) as any
         setCustomer(data)
       } catch (error) {
         console.error('获取客户详情失败:', error)
@@ -37,7 +37,7 @@ function CustomerDetail() {
 
   const fetchContacts = async () => {
     try {
-      const data = await getCustomerContacts(parseInt(id!))
+      const data = await getCustomerContacts(parseInt(id!)) as any
       setContacts(data)
     } catch (error) {
       console.error('获取联系人失败:', error)
@@ -97,7 +97,7 @@ function CustomerDetail() {
         await updateCustomerContact(editingContact.id, values)
         message.success('联系人更新成功')
       } else {
-        await createCustomerContact(parseInt(id!), values)
+        await createCustomerContact(values)
         message.success('联系人创建成功')
       }
       setContactModalVisible(false)

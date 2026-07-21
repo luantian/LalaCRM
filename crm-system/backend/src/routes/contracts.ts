@@ -6,13 +6,14 @@ import { upload } from '../middleware/upload'
 import { applyDataScope } from '../middleware/dataScope'
 import fs from 'fs'
 import path from 'path'
+import { sortValidation, clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有合同（支持分页、筛选）
-router.get('/', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['name', 'amount', 'signDate', 'startDate', 'endDate', 'status', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -74,22 +75,23 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), async (req: AuthRe
 })
 
 // 合同统计
-router.get('/stats/overview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     // 使用聚合查询，不加载所有数据到内存
     const [total, totalAmount, activeAmount, statusCounts] = await Promise.all([
-      prisma.contract.count({ where: { deletedAt: null } }),
+      prisma.contract.count({ where: { deletedAt: null, ...dataScopeWhere } }),
       prisma.contract.aggregate({
         _sum: { amount: true },
-        where: { deletedAt: null }
+        where: { deletedAt: null, ...dataScopeWhere }
       }),
       prisma.contract.aggregate({
         _sum: { amount: true },
-        where: { deletedAt: null, status: 'ACTIVE' }
+        where: { deletedAt: null, status: 'ACTIVE', ...dataScopeWhere }
       }),
       prisma.contract.groupBy({
         by: ['status'],
-        where: { deletedAt: null },
+        where: { deletedAt: null, ...dataScopeWhere },
         _count: { id: true }
       })
     ])
@@ -166,7 +168,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 创建合同
-router.post('/', authenticateToken, logOperation('合同管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, logOperation('合同管理', 'CREATE'), dateValidation('signDate', 'startDate', 'endDate'), async (req: AuthRequest, res) => {
   try {
     const { name, customerId, projectId, opportunityId, amount, signDate, startDate, endDate, status, content } = req.body
 
@@ -220,7 +222,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
       return res.status(400).json({ error: '状态不能为空' })
     }
 
-    const contract = await prisma.contract.findUnique({ where: { id } })
+    const contract = await prisma.contract.findFirst({ where: { id, deletedAt: null } })
     if (!contract) {
       return res.status(404).json({ error: '合同不存在' })
     }
@@ -231,6 +233,11 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
         error: `合同状态不能从 ${contract.status} 变更为 ${status}`,
         allowedTransitions: allowedNext
       })
+    }
+
+    // 防止自审批：从 PENDING 到 ACTIVE 时，审批人不能是提交者本人（管理员除外）
+    if (contract.status === 'PENDING' && status === 'ACTIVE' && contract.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '不能审批自己提交的合同' })
     }
 
     const updatedContract = await prisma.contract.update({
@@ -245,16 +252,14 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
 
     // 流程联动：合同变为 ACTIVE 时，如果关联了商机且没有项目，自动创建项目
     if (status === 'ACTIVE' && updatedContract.opportunityId && !updatedContract.projectId) {
-      const existingProject = await prisma.project.findUnique({
-        where: { opportunityId: updatedContract.opportunityId }
-      })
-      if (!existingProject && updatedContract.opportunity) {
+      try {
+        // 利用 Project.opportunityId 的 @unique 约束，catch P2002 处理并发
         const newProject = await prisma.project.create({
           data: {
-            name: updatedContract.opportunity.name,
+            name: updatedContract.opportunity!.name,
             customerId: updatedContract.customerId,
-            budget: updatedContract.opportunity.budget,
-            ownerId: updatedContract.opportunity.ownerId,
+            budget: updatedContract.opportunity!.budget,
+            ownerId: updatedContract.opportunity!.ownerId,
             opportunityId: updatedContract.opportunityId,
             status: 'PENDING',
             description: `由合同"${updatedContract.name}"自动创建`
@@ -266,6 +271,22 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
           data: { projectId: newProject.id }
         })
         logger.info(`Auto-created project ${newProject.id} for contract ${id} from opportunity ${updatedContract.opportunityId}`)
+      } catch (err: any) {
+        if (err?.code === 'P2002') {
+          // 并发创建：项目已存在，只更新合同的 projectId
+          const existingProject = await prisma.project.findFirst({
+            where: { opportunityId: updatedContract.opportunityId, deletedAt: null }
+          })
+          if (existingProject) {
+            await prisma.contract.update({
+              where: { id },
+              data: { projectId: existingProject.id }
+            })
+          }
+          logger.info(`Project already exists for opportunity ${updatedContract.opportunityId}, linked contract ${id}`)
+        } else {
+          throw err
+        }
       }
     }
 
@@ -284,7 +305,7 @@ router.put('/:id', authenticateToken, logOperation('合同管理', 'UPDATE'), as
     const { name, customerId, projectId, amount, signDate, startDate, endDate, status, content } = req.body
 
     // 检查当前状态，不允许通过 PUT 直接修改状态
-    const currentContract = await prisma.contract.findUnique({ where: { id: parseInt(id) } })
+    const currentContract = await prisma.contract.findFirst({ where: { id: parseInt(id), deletedAt: null } })
     if (!currentContract) {
       return res.status(404).json({ error: '合同不存在' })
     }
@@ -319,6 +340,13 @@ router.delete('/:id', authenticateToken, logOperation('合同管理', 'DELETE'),
   try {
     const id = req.params.id as string
     const numericId = parseInt(id)
+
+    // 检查合同是否存在且未被软删除
+    const existing = await prisma.contract.findFirst({ where: { id: numericId, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '合同不存在' })
+    }
+
     // 软删除合同
     await prisma.contract.update({
       where: { id: numericId },

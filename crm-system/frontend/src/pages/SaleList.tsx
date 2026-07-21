@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, Tabs, Button, message, Space, Tag, Card, Input, Row, Col, Statistic, Empty, Tooltip } from 'antd'
-import { ReloadOutlined, SearchOutlined, InboxOutlined, EyeOutlined, ProjectOutlined, ClockCircleOutlined, CheckCircleOutlined, DollarOutlined, SwapOutlined, FundOutlined } from '@ant-design/icons'
+import { ReloadOutlined, SearchOutlined, InboxOutlined, EyeOutlined, ProjectOutlined, ClockCircleOutlined, CheckCircleOutlined, SwapOutlined, FundOutlined } from '@ant-design/icons'
 import { getOpportunities, getProjects, convertOpportunity, getOpportunityStats } from '../services/api'
 import dayjs from 'dayjs'
 
@@ -86,7 +86,7 @@ function ProjectArchive() {
       fetchData(pagination.current, pagination.pageSize)
       fetchStats()
     } catch (error: any) {
-      message.error(error?.response?.data?.error || '转化失败')
+      message.error(error?.error || '转化失败')
     }
   }
 

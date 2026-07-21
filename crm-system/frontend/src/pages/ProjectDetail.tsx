@@ -1,9 +1,8 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Dropdown, Slider, Progress, Tooltip, Upload, Avatar, Empty, Image } from 'antd'
-import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, MoreOutlined, ShoppingOutlined, EyeOutlined } from '@ant-design/icons'
-import { getProjectDetail, createContract, updateContract, deleteContract, uploadProjectFiles, getProjectFiles, deleteProjectFile, updateProject, getCustomers, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, getShipments, createShipment, updateShipment, deleteShipment, getProcurements, createProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectVersions, createProjectVersion, updateProjectVersion, deleteProjectVersion, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getInvoices, createInvoice } from '../services/api'
-import { getUsers } from '../services/api'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Dropdown, Slider, Progress, Avatar, Empty, Image } from 'antd'
+import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, MoreOutlined, EyeOutlined } from '@ant-design/icons'
+import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getCustomers, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, getShipments, createShipment, updateShipment, deleteShipment, getProcurements, createProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getInvoices, createInvoice, getUsers, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
 const { TextArea } = Input
@@ -14,7 +13,7 @@ function ProjectDetail() {
   const navigate = useNavigate()
   const [project, setProject] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const user = safeJsonParse(localStorage.getItem('user'), {})
 
   // 合同管理状态
   const [contractModalVisible, setContractModalVisible] = useState(false)
@@ -45,9 +44,8 @@ function ProjectDetail() {
   const [shipmentContractId, setShipmentContractId] = useState<number | null>(null)
 
   // 文件管理状态
-  const [files, setFiles] = useState<any[]>([])
-  const [uploading, setUploading] = useState(false)
-  const [currentPhase, setCurrentPhase] = useState<string>('PRE_SALES')
+  const [, setFiles] = useState<any[]>([])
+  const currentPhase = 'PRE_SALES'
 
   // 采购管理状态
   const [procurements, setProcurements] = useState<any[]>([])
@@ -67,11 +65,7 @@ function ProjectDetail() {
   const [projectForm] = Form.useForm()
   const [customers, setCustomers] = useState<any[]>([])
 
-  // 项目备注状态
-  const [notes, setNotes] = useState<any[]>([])
-  const [noteModalVisible, setNoteModalVisible] = useState(false)
-  const [editingNote, setEditingNote] = useState<any>(null)
-  const [noteForm] = Form.useForm()
+  // 项目备注状态 (removed - notes/versions UI removed)
 
   // 基本信息-信息记录状态
   const [infoRecords, setInfoRecords] = useState<any[]>([])
@@ -81,11 +75,7 @@ function ProjectDetail() {
   const [infoSubmitting, setInfoSubmitting] = useState(false)
   const [editingInfoRecord, setEditingInfoRecord] = useState<any>(null)
 
-  // 版本记录状态
-  const [versions, setVersions] = useState<any[]>([])
-  const [versionModalVisible, setVersionModalVisible] = useState(false)
-  const [editingVersion, setEditingVersion] = useState<any>(null)
-  const [versionForm] = Form.useForm()
+  // 版本记录状态 (removed - versions UI removed)
 
   // 项目团队状态
   const [teamMembers, setTeamMembers] = useState<any[]>([])
@@ -238,7 +228,7 @@ function ProjectDetail() {
   const handleOrderFileUpload = async (orderItemId: number, fileList: FileList) => {
     setOrderUploading(prev => ({ ...prev, [orderItemId]: true }))
     try { await uploadOrderItemFiles(orderItemId, fileList); message.success('上传成功'); if (orderContractId) fetchOrderItems(orderContractId) }
-    catch (e: any) { message.error(e?.message || '上传失败') } finally { setOrderUploading(prev => ({ ...prev, [orderItemId]: false })) }
+    catch (e: any) { message.error(e?.error || e?.message || '上传失败') } finally { setOrderUploading(prev => ({ ...prev, [orderItemId]: false })) }
   }
   const handleOrderFileDelete = async (orderItemId: number, fileId: number) => {
     try { await deleteOrderItemFile(orderItemId, fileId); message.success('删除成功'); if (orderContractId) fetchOrderItems(orderContractId) }
@@ -273,31 +263,12 @@ function ProjectDetail() {
     } catch (error) { message.error('操作失败') }
   }
 
-  // ===== 文件管理 =====
-  const handleUpload = async (fileList: FileList) => {
-    setUploading(true)
-    try { await uploadProjectFiles(parseInt(id!), fileList, currentPhase); message.success('上传成功'); fetchFiles() }
-    catch (e: any) { message.error(e?.message || '上传失败') } finally { setUploading(false) }
-  }
-  const handleDeleteFile = async (fileId: number) => { await deleteProjectFile(parseInt(id!), fileId); message.success('删除成功'); fetchFiles() }
-  const handleDownload = (fileId: number, fileName: string) => {
-    const token = localStorage.getItem('token')
-    fetch(`${import.meta.env.VITE_API_URL || '/api'}/projects/files/${fileId}/download`, { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(r => r.blob()).then(blob => { const a = document.createElement('a'); a.href = window.URL.createObjectURL(blob); a.download = fileName; a.click() })
-      .catch(() => message.error('下载失败'))
-  }
-  const formatFileSize = (b: number) => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(2) + ' KB' : (b / 1048576).toFixed(2) + ' MB'
+  // ===== 采购管理 =====
 
   // 判断文件是否可预览
   const isPreviewableFile = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase()
     return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf'].includes(ext || '')
-  }
-
-  // 获取文件预览URL
-  const getFilePreviewUrl = (fileId: number) => {
-    const token = localStorage.getItem('token')
-    return `${import.meta.env.VITE_API_URL || '/api'}/projects/files/${fileId}/preview?token=${token}`
   }
 
   // 打开文件预览
@@ -312,6 +283,7 @@ function ProjectDetail() {
       .then(blob => {
         const previewUrl = window.URL.createObjectURL(blob)
         const ext = fileName.split('.').pop()?.toLowerCase()
+        if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url)
         setPreviewFile({ url: previewUrl, name: fileName, type: ext || '' })
         setPreviewVisible(true)
       })
@@ -330,6 +302,7 @@ function ProjectDetail() {
       .then(blob => {
         const previewUrl = window.URL.createObjectURL(blob)
         const ext = fileName.split('.').pop()?.toLowerCase()
+        if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url)
         setPreviewFile({ url: previewUrl, name: fileName, type: ext || '' })
         setPreviewVisible(true)
       })
@@ -412,39 +385,6 @@ function ProjectDetail() {
     } catch (e) { console.error(e) }
   }
 
-  // ===== 项目备注 =====
-  const fetchNotes = async () => {
-    try {
-      const res: any = await getProjectNotes(parseInt(id!))
-      setNotes(Array.isArray(res) ? res : res.data || [])
-    } catch (e) { console.error('获取备注失败:', e) }
-  }
-  const handleAddNote = () => { setEditingNote(null); noteForm.resetFields(); setNoteModalVisible(true) }
-  const handleEditNote = (note: any) => {
-    setEditingNote(note)
-    noteForm.setFieldsValue({ title: note.title, noteType: note.noteType || 'GENERAL', content: note.content })
-    setNoteModalVisible(true)
-  }
-  const handleDeleteNote = async (noteId: number) => {
-    await deleteProjectNote(noteId)
-    message.success('删除成功')
-    fetchNotes()
-  }
-  const handleNoteSubmit = async () => {
-    try {
-      const values = await noteForm.validateFields()
-      if (editingNote) {
-        await updateProjectNote(editingNote.id, { ...values, projectId: parseInt(id!) })
-        message.success('更新成功')
-      } else {
-        await createProjectNote({ ...values, projectId: parseInt(id!) })
-        message.success('创建成功')
-      }
-      setNoteModalVisible(false)
-      fetchNotes()
-    } catch (error) { message.error('操作失败') }
-  }
-
   // ===== 基本信息-信息记录 =====
   const handleInfoSubmit = async () => {
     try {
@@ -484,45 +424,6 @@ function ProjectDetail() {
   const handleDeleteInfoRecord = async (noteId: number) => {
     try { await deleteProjectNote(noteId); message.success('删除成功'); fetchInfoRecords() }
     catch (e) { message.error('删除失败') }
-  }
-
-  // ===== 版本记录 =====
-  const fetchVersions = async () => {
-    try {
-      const res: any = await getProjectVersions(parseInt(id!))
-      setVersions(Array.isArray(res) ? res : res.data || [])
-    } catch (e) { console.error('获取版本记录失败:', e) }
-  }
-  const handleAddVersion = () => { setEditingVersion(null); versionForm.resetFields(); setVersionModalVisible(true) }
-  const handleEditVersion = (ver: any) => {
-    setEditingVersion(ver)
-    versionForm.setFieldsValue({
-      version: ver.version,
-      title: ver.title,
-      content: ver.content,
-      releaseDate: ver.releaseDate ? dayjs(ver.releaseDate) : null
-    })
-    setVersionModalVisible(true)
-  }
-  const handleDeleteVersion = async (verId: number) => {
-    await deleteProjectVersion(verId)
-    message.success('删除成功')
-    fetchVersions()
-  }
-  const handleVersionSubmit = async () => {
-    try {
-      const values = await versionForm.validateFields()
-      const data = { ...values, projectId: parseInt(id!), releaseDate: values.releaseDate ? values.releaseDate.toDate() : null }
-      if (editingVersion) {
-        await updateProjectVersion(editingVersion.id, data)
-        message.success('更新成功')
-      } else {
-        await createProjectVersion(data)
-        message.success('创建成功')
-      }
-      setVersionModalVisible(false)
-      fetchVersions()
-    } catch (error) { message.error('操作失败') }
   }
 
   // ===== 项目团队 =====
@@ -619,7 +520,6 @@ function ProjectDetail() {
     setProcurementItems(items || [])
     fetchProcPayments(proc.id)
   }
-  const handleAddProcItem = () => { procItemForm.resetFields(); setProcItemModalVisible(true) }
   const handleProcItemSubmit = async () => {
     try {
       const values = await procItemForm.validateFields()
@@ -650,51 +550,6 @@ function ProjectDetail() {
       fetchProcPayments(currentProcurement.id)
     } catch (e) { message.error('操作失败') }
   }
-
-  const phaseConfig: Record<string, string> = { PRE_SALES: '售前阶段', IN_PROGRESS: '执行阶段', ACCEPTANCE: '验收阶段' }
-
-  // ===== 备注表格列 =====
-  const noteColumns = [
-    { title: '标题', dataIndex: 'title', key: 'title' },
-    {
-      title: '类型', dataIndex: 'noteType', key: 'noteType',
-      render: (t: string) => {
-        const cfg: Record<string, { text: string; color: string }> = {
-          GENERAL: { text: '一般备注', color: 'default' },
-          DEVELOPMENT: { text: '开发记录', color: 'blue' },
-          IMPROVEMENT: { text: '改进记录', color: 'green' },
-          ISSUE: { text: '问题记录', color: 'red' },
-          MEETING: { text: '会议记录', color: 'purple' },
-        }
-        const c = cfg[t] || { text: t || '一般备注', color: 'default' }
-        return <Tag color={c.color}>{c.text}</Tag>
-      }
-    },
-    { title: '创建人', dataIndex: 'author', key: 'author', render: (a: any) => a?.name || '-' },
-    { title: '时间', dataIndex: 'createdAt', key: 'createdAt', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD HH:mm') : '-' },
-    { title: '操作', key: 'action', width: 60, render: (_: any, r: any) => (
-      <Dropdown menu={{ items: [
-        { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => handleEditNote(r) },
-        { type: 'divider' },
-        { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => handleDeleteNote(r.id) },
-      ]}}><Button type="text" icon={<MoreOutlined />} /></Dropdown>
-    )}
-  ]
-
-  // ===== 版本记录表格列 =====
-  const versionColumns = [
-    { title: '版本号', dataIndex: 'version', key: 'version', render: (v: string) => <Tag color="processing">{v}</Tag> },
-    { title: '标题', dataIndex: 'title', key: 'title' },
-    { title: '发布日期', dataIndex: 'releaseDate', key: 'releaseDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
-    { title: '更新内容', dataIndex: 'content', key: 'content', ellipsis: true, render: (v: string) => v || '-' },
-    { title: '操作', key: 'action', width: 60, render: (_: any, r: any) => (
-      <Dropdown menu={{ items: [
-        { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => handleEditVersion(r) },
-        { type: 'divider' },
-        { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => handleDeleteVersion(r.id) },
-      ]}}><Button type="text" icon={<MoreOutlined />} /></Dropdown>
-    )}
-  ]
 
   // ===== Tab 项 =====
   const tabItems = [
@@ -790,7 +645,7 @@ function ProjectDetail() {
           pagination={false}
           locale={{ emptyText: '暂无合同' }}
           expandable={{
-            expandedRowRender: (record: any) => (
+            expandedRowRender: (_record: any) => (
               <Tabs
                 defaultActiveKey="orders"
                 items={[
@@ -1170,23 +1025,6 @@ function ProjectDetail() {
         </Form>
       </Modal>
 
-      {/* 项目备注 Modal */}
-      <Modal title={editingNote ? '编辑备注' : '新增备注'} open={noteModalVisible} onOk={handleNoteSubmit} onCancel={() => setNoteModalVisible(false)} width={600}>
-        <Form form={noteForm} layout="vertical">
-          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}><Input /></Form.Item>
-          <Form.Item name="noteType" label="类型" initialValue="GENERAL">
-            <Select>
-              <Select.Option value="GENERAL">一般备注</Select.Option>
-              <Select.Option value="DEVELOPMENT">开发记录</Select.Option>
-              <Select.Option value="IMPROVEMENT">改进记录</Select.Option>
-              <Select.Option value="ISSUE">问题记录</Select.Option>
-              <Select.Option value="MEETING">会议记录</Select.Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="content" label="内容" rules={[{ required: true, message: '请输入内容' }]}><TextArea rows={4} /></Form.Item>
-        </Form>
-      </Modal>
-
       {/* 基本信息-添加/编辑信息 Modal */}
       <Modal title={editingInfoRecord ? "编辑信息" : "添加信息"} open={infoModalVisible} onOk={handleInfoSubmit} onCancel={() => { setInfoModalVisible(false); setInfoFiles([]); setEditingInfoRecord(null); infoForm.resetFields() }} width={500} confirmLoading={infoSubmitting}>
         <Form form={infoForm} layout="vertical">
@@ -1253,18 +1091,6 @@ function ProjectDetail() {
               </div>
             )}
           </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* 版本记录 Modal */}
-      <Modal title={editingVersion ? '编辑版本' : '新增版本'} open={versionModalVisible} onOk={handleVersionSubmit} onCancel={() => setVersionModalVisible(false)} width={600}>
-        <Form form={versionForm} layout="vertical">
-          <Row gutter={16}>
-            <Col span={8}><Form.Item name="version" label="版本号" rules={[{ required: true, message: '请输入版本号' }]}><Input placeholder="例如 v1.0.0" /></Form.Item></Col>
-            <Col span={16}><Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}><Input /></Form.Item></Col>
-          </Row>
-          <Form.Item name="releaseDate" label="发布日期"><DatePicker style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="content" label="更新内容"><TextArea rows={4} placeholder="描述本次版本的更新内容..." /></Form.Item>
         </Form>
       </Modal>
 
@@ -1335,9 +1161,9 @@ function ProjectDetail() {
       <Modal
         title={previewFile?.name || '文件预览'}
         open={previewVisible}
-        onCancel={() => { setPreviewVisible(false); setPreviewFile(null) }}
+        onCancel={() => { if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url); setPreviewVisible(false); setPreviewFile(null) }}
         footer={[
-          <Button key="close" onClick={() => { setPreviewVisible(false); setPreviewFile(null) }}>关闭</Button>
+          <Button key="close" onClick={() => { if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url); setPreviewVisible(false); setPreviewFile(null) }}>关闭</Button>
         ]}
         width="80%"
         style={{ top: 20 }}

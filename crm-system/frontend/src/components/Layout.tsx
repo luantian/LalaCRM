@@ -1,28 +1,13 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Layout as AntLayout, Menu, Button, Spin, Avatar, Dropdown, Space, Badge, Empty, Modal, Tag, Tooltip, Popconfirm, App as AntApp } from 'antd'
+import { Layout as AntLayout, Menu, Button, Spin, Avatar, Dropdown, Space, Badge, Empty, Modal, Tag, Popconfirm, App as AntApp } from 'antd'
 import {
-  DashboardOutlined,
   UserOutlined,
-  DollarOutlined,
-  ProjectOutlined,
-  FileTextOutlined,
   LogoutOutlined,
-  CarOutlined,
-  AccountBookOutlined,
-  TeamOutlined,
   SafetyOutlined,
-  SettingOutlined,
-  MenuOutlined,
-  FundOutlined,
-  ScheduleOutlined,
-  BookOutlined,
-  FileSearchOutlined,
-  LoginOutlined,
-  AuditOutlined,
+  TeamOutlined,
   BarChartOutlined,
   BellOutlined,
   CheckOutlined,
-  PlayCircleOutlined,
   StopOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
@@ -33,7 +18,7 @@ import { useEffect, useState, useCallback } from 'react'
 import api from '../services/api'
 import * as Icons from '@ant-design/icons'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { getNotifications, markNotificationRead, markAllNotificationsRead, getTasks, updateTask } from '../services/api'
+import { getNotifications, markNotificationRead, markAllNotificationsRead, getTasks, updateTask, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
 const { Header, Sider, Content } = AntLayout
@@ -62,7 +47,7 @@ function Layout() {
   const { message } = AntApp.useApp()
   const navigate = useNavigate()
   const location = useLocation()
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const user = safeJsonParse(localStorage.getItem('user'), {})
   const [menus, setMenus] = useState<MenuItem[]>([])
   const [loading, setLoading] = useState(true)
   const [notifications, setNotifications] = useState<any[]>([])

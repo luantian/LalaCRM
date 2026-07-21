@@ -2,24 +2,23 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
+import { clampPagination } from '../middleware/validation'
 import logger from '../utils/logger'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 // 获取周报列表
-router.get('/', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('view_reports'), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const { userId, year, page = '1', pageSize = '10' } = req.query
 
     const where: any = { deletedAt: null }
-    if (userId) {
+    // 非管理员/经理只能查看自己的周报（忽略 userId 参数）
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
+      where.userId = req.user!.id
+    } else if (userId) {
       where.userId = parseInt(userId as string)
-    } else {
-      // 默认只看自己的周报（管理员可以看所有人的）
-      if (req.user?.role !== 'ADMIN') {
-        where.userId = req.user!.id
-      }
     }
 
     if (year) {
@@ -78,7 +77,7 @@ router.get('/:id', authenticateToken, checkPermission('view_reports'), async (re
     }
 
     // 检查权限
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
       return res.status(403).json({ error: '没有权限查看此周报' })
     }
 

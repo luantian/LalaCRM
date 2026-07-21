@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Tooltip, Descriptions, List, Divider, Popconfirm, TimePicker } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, MoreOutlined, DownloadOutlined, EyeOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, exportDailyReports, getDailyReportItems, createDailyReportItem, updateDailyReportItem, deleteDailyReportItem } from '../services/api'
@@ -24,6 +24,13 @@ function DailyReportList() {
   const [searchText, setSearchText] = useState('')
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null)
   const [filterProjectId, setFilterProjectId] = useState<number | undefined>(undefined)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const searchTextRef = useRef(searchText)
+  const dateRangeRef = useRef(dateRange)
+  const filterProjectIdRef = useRef(filterProjectId)
+  useEffect(() => { searchTextRef.current = searchText }, [searchText])
+  useEffect(() => { dateRangeRef.current = dateRange }, [dateRange])
+  useEffect(() => { filterProjectIdRef.current = filterProjectId }, [filterProjectId])
 
   // 工作条目相关状态
   const [items, setItems] = useState<any[]>([])
@@ -47,19 +54,20 @@ function DailyReportList() {
     OTHER: { text: '其他', color: 'default' }
   }
 
-  const fetchReports = async (page = 1, pageSize = 10) => {
+  const fetchReports = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
     try {
       const params: any = { page, pageSize }
-      if (searchText.trim()) {
-        params.search = searchText.trim()
+      if (searchTextRef.current.trim()) {
+        params.search = searchTextRef.current.trim()
       }
-      if (dateRange && dateRange[0] && dateRange[1]) {
-        params.startDate = dateRange[0].format('YYYY-MM-DD')
-        params.endDate = dateRange[1].format('YYYY-MM-DD')
+      const range = dateRangeRef.current
+      if (range && range[0] && range[1]) {
+        params.startDate = range[0].format('YYYY-MM-DD')
+        params.endDate = range[1].format('YYYY-MM-DD')
       }
-      if (filterProjectId) {
-        params.projectId = filterProjectId
+      if (filterProjectIdRef.current) {
+        params.projectId = filterProjectIdRef.current
       }
       const response: any = await getDailyReports(params)
       setReports(response.data || [])
@@ -73,7 +81,7 @@ function DailyReportList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   const fetchProjects = async () => {
     try {
@@ -94,10 +102,13 @@ function DailyReportList() {
   }
 
   useEffect(() => {
-    fetchReports()
     fetchProjects()
     fetchStats()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetchReports()
+  }, [refreshTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = () => {
     fetchReports(1, pagination.pageSize)
@@ -107,7 +118,7 @@ function DailyReportList() {
     setSearchText('')
     setDateRange(null)
     setFilterProjectId(undefined)
-    setTimeout(() => fetchReports(1, pagination.pageSize), 0)
+    setRefreshTrigger(prev => prev + 1)
   }
 
   const handleTableChange = (page: number, pageSize: number) => {
@@ -216,7 +227,10 @@ function DailyReportList() {
       const a = document.createElement('a')
       a.href = url
       a.download = `日报_${dayjs().format('YYYY-MM-DD')}.csv`
+      document.body.appendChild(a)
       a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
     } catch (error) { message.error('导出失败') }
   }
 
