@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Layout as AntLayout, Menu, Button, Spin, Avatar, Dropdown, Space, Badge, Empty, Modal, Tag, Popconfirm, App as AntApp } from 'antd'
+import { Layout as AntLayout, Menu, Button, Spin, Avatar, Dropdown, Badge, Empty, Modal, Tag, Popconfirm, App as AntApp } from 'antd'
 import {
   UserOutlined,
   LogoutOutlined,
@@ -11,7 +11,9 @@ import {
   StopOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  LoginOutlined,
+  MailOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useEffect, useState, useCallback } from 'react'
@@ -23,7 +25,6 @@ import dayjs from 'dayjs'
 
 const { Header, Sider, Content } = AntLayout
 
-// 动态渲染图标
 const renderIcon = (iconName: string) => {
   const IconComp = (Icons as any)[iconName]
   return IconComp ? <IconComp /> : null
@@ -69,24 +70,20 @@ function Layout() {
     CANCELLED: { text: '已取消', color: 'warning' },
   }
 
-  // 获取用户有权限的菜单
   const fetchMenus = async () => {
     try {
       setLoading(true)
-      // 优先从localStorage读取（登录时已存储）
       const cached = localStorage.getItem('menus')
       if (cached) {
         setMenus(JSON.parse(cached))
         setLoading(false)
       }
-      // 同时从后端刷新（确保最新）
       const response: any = await api.get('/auth/menus')
       const menuList = response.menus || response || []
       setMenus(menuList)
       localStorage.setItem('menus', JSON.stringify(menuList))
     } catch (error: any) {
       console.error('获取菜单失败:', error)
-      // 如果API失败，尝试用旧的缓存
       const cached = localStorage.getItem('menus')
       if (cached) {
         setMenus(JSON.parse(cached))
@@ -98,17 +95,14 @@ function Layout() {
     }
   }
 
-  // 无 token 直接跳转登录
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (!token) {
       navigate('/login', { replace: true })
       return
     }
-    // 有 token 才获取菜单和通知
     fetchMenus()
     fetchNotifications()
-    // 每 30 秒轮询通知
     const timer = setInterval(fetchNotifications, 30000)
     return () => clearInterval(timer)
   }, [])
@@ -121,12 +115,9 @@ function Layout() {
     } catch (e) { /* ignore */ }
   }
 
-  // WebSocket 实时消息处理
   const handleWebSocketMessage = useCallback((data: any) => {
-    // 收到任何任务相关事件，刷新通知列表
     if (['TASK_ASSIGNED', 'TASK_SUBMITTED', 'TASK_COMPLETED', 'TASK_REJECTED'].includes(data.type)) {
       fetchNotifications()
-      // 显示提示消息
       const msgMap: Record<string, string> = {
         TASK_ASSIGNED: `📋 新任务：${data.title}`,
         TASK_SUBMITTED: `✅ 任务已提交确认：${data.title}`,
@@ -139,7 +130,6 @@ function Layout() {
     }
   }, [])
 
-  // 连接 WebSocket（仅登录后）
   const token = localStorage.getItem('token')
   useWebSocket(handleWebSocketMessage, !!token)
 
@@ -164,13 +154,10 @@ function Layout() {
     } catch (e) { message.error('操作失败') }
   }
 
-  // 将数据库菜单转换为 Ant Design Menu 格式（若依动态菜单）
   const buildMenuItems = (menuList: MenuItem[]): MenuProps['items'] => {
     return menuList
       .filter(menu => {
-        // 按钮类型不显示在菜单中
         if (menu.menuType === 'BUTTON') return false
-        // 合同模块已合并到项目中，不再独立显示
         if (menu.key === 'contracts') return false
         return menu.isVisible
       })
@@ -212,14 +199,17 @@ function Layout() {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        height: '100vh'
+        height: '100vh',
+        background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)',
       }}>
-        <Spin size="large" />
+        <div style={{ textAlign: 'center' }}>
+          <Spin size="large" />
+          <div style={{ marginTop: 16, color: '#94a3b8', fontSize: 14 }}>加载中...</div>
+        </div>
       </div>
     )
   }
 
-  // 用户下拉菜单
   const userMenuItems: MenuProps['items'] = [
     { key: 'profile', icon: <UserOutlined />, label: user.name || user.username || '用户' },
     { key: 'role', icon: <SafetyOutlined />, label: user.role || '普通用户' },
@@ -231,51 +221,115 @@ function Layout() {
     if (key === 'logout') handleLogout()
   }
 
+  // Role badge color
+  const roleColor = user.role === 'ADMIN' ? '#4f46e5' : '#6b7280'
+  const roleLabel = user.role === 'ADMIN' ? '管理员' : (user.role || '用户')
+
   return (
     <AntLayout style={{ minHeight: '100vh', background: '#f1f5f9' }}>
-      {/* 左侧导航栏 */}
+      {/* ====== Sidebar ====== */}
       <Sider
         theme="light"
         width={220}
+        className="ly-sidebar"
         style={{
           position: 'fixed',
           left: 0,
           top: 0,
           bottom: 0,
           overflow: 'auto',
+          overflowX: 'hidden',
           zIndex: 100,
-          boxShadow: '2px 0 8px rgba(0,0,0,0.06)'
+          boxShadow: '2px 0 12px rgba(0,0,0,0.04)',
+          paddingBottom: 80,
         }}
       >
-        {/* Logo区域 */}
-        <div style={{
-          height: 64,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-          color: '#fff',
-          fontWeight: 700,
-          fontSize: 20,
-          letterSpacing: 1,
-        }}>
-          <BarChartOutlined style={{ marginRight: 8, fontSize: 22 }} />
-          CRM 管理系统
+        {/* Logo Area */}
+        <div className="ly-logo-area">
+          <BarChartOutlined style={{ marginRight: 10, fontSize: 20 }} />
+          <span style={{ position: 'relative', zIndex: 1 }}>CRM 管理系统</span>
         </div>
 
-        {/* 导航菜单 */}
+        {/* Navigation Menu */}
         <Menu
           mode="inline"
           items={menuItems}
           onClick={handleMenuClick}
           selectedKeys={[location.pathname]}
-          style={{ borderRight: 0, marginTop: 8, fontSize: 14 }}
+          style={{
+            borderRight: 0,
+            marginTop: 8,
+            fontSize: 14,
+            background: 'transparent',
+          }}
         />
+
+        {/* User Info Section at Bottom */}
+        <div className="ly-sidebar-user">
+          <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="topLeft">
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '8px 10px',
+              borderRadius: 10,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              background: '#fafbff',
+              border: '1px solid #f1f5f9',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#f0f0ff'; e.currentTarget.style.borderColor = '#e0e7ff' }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#fafbff'; e.currentTarget.style.borderColor = '#f1f5f9' }}
+            >
+              <div style={{ position: 'relative' }}>
+                <Avatar size={36} style={{ backgroundColor: '#4f46e5', fontWeight: 600 }} icon={<UserOutlined />}>
+                  {(user.name || user.username || 'U')[0]}
+                </Avatar>
+                <div style={{
+                  position: 'absolute',
+                  bottom: -1,
+                  right: -1,
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: '#22c55e',
+                  border: '2px solid #fff',
+                }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: '#1e293b',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  lineHeight: 1.3,
+                }}>
+                  {user.name || user.username || '用户'}
+                </div>
+                <div style={{
+                  fontSize: 11,
+                  color: roleColor,
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  lineHeight: 1.3,
+                }}>
+                  <SafetyOutlined style={{ fontSize: 10 }} />
+                  {roleLabel}
+                </div>
+              </div>
+              <LoginOutlined style={{ color: '#94a3b8', fontSize: 12 }} />
+            </div>
+          </Dropdown>
+        </div>
       </Sider>
 
-      {/* 右侧内容区域 */}
+      {/* ====== Right Content Area ====== */}
       <AntLayout style={{ marginLeft: 220, background: '#f1f5f9' }}>
-        {/* 顶部状态栏 */}
+        {/* ====== Header ====== */}
         <Header
           style={{
             position: 'fixed',
@@ -284,98 +338,201 @@ function Layout() {
             left: 220,
             height: 56,
             lineHeight: '56px',
-            background: '#fff',
+            background: 'rgba(255,255,255,0.9)',
+            backdropFilter: 'blur(8px)',
             padding: '0 24px',
             display: 'flex',
             justifyContent: 'flex-end',
             alignItems: 'center',
             zIndex: 99,
-            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-            borderBottom: '1px solid #f1f5f9'
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            borderBottom: '1px solid rgba(241,245,249,0.8)',
           }}
         >
-          {/* 通知铃铛 */}
+          {/* Notification Bell */}
           <Dropdown
             trigger={['click']}
             placement="bottomRight"
             popupRender={() => (
-              <div style={{ width: 360, maxHeight: 420, overflow: 'auto', background: '#fff', borderRadius: 8, boxShadow: '0 6px 16px rgba(0,0,0,0.12)', padding: '8px 0' }}>
-                <div style={{ padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f0f0f0' }}>
-                  <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    通知
-                    {unreadCount > 0 && <Badge count={unreadCount} size="small" style={{ marginLeft: 0 }} />}
+              <div
+                className="ly-notif-dropdown"
+                style={{ width: 380, maxHeight: 440, overflow: 'auto', background: '#fff', borderRadius: 12, padding: '0' }}
+              >
+                {/* Header */}
+                <div style={{
+                  padding: '14px 18px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderBottom: '1px solid #f1f5f9',
+                  background: 'linear-gradient(to bottom, #fafbff, #fff)',
+                }}>
+                  <span style={{ fontWeight: 700, fontSize: 15, color: '#1e293b', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <BellOutlined style={{ color: '#4f46e5' }} />
+                    通知中心
+                    {unreadCount > 0 && (
+                      <span style={{
+                        fontSize: 11,
+                        padding: '1px 8px',
+                        borderRadius: 10,
+                        background: '#eef2ff',
+                        color: '#4f46e5',
+                        fontWeight: 600,
+                      }}>
+                        {unreadCount} 条未读
+                      </span>
+                    )}
                   </span>
                   {unreadCount > 0 && (
-                    <a onClick={async () => { await markAllNotificationsRead(); fetchNotifications(); message.success('全部已读') }} style={{ fontSize: 12 }}>全部已读</a>
+                    <a
+                      onClick={async () => { await markAllNotificationsRead(); fetchNotifications(); message.success('全部已读') }}
+                      style={{ fontSize: 12, color: '#4f46e5', fontWeight: 500 }}
+                    >
+                      全部已读
+                    </a>
                   )}
                 </div>
+                {/* Notification List */}
                 {notifications.length === 0 ? (
-                  <Empty description="暂无通知" style={{ padding: '30px 0' }} />
+                  <div style={{ padding: '40px 0' }}>
+                    <Empty
+                      description={
+                        <span style={{ color: '#94a3b8' }}>暂无通知</span>
+                      }
+                      image={<MailOutlined style={{ fontSize: 48, color: '#c7d2fe' }} />}
+                    />
+                  </div>
                 ) : (
-                  notifications.slice(0, 10).map((n: any) => (
-                    <div key={n.id}
-                      onClick={() => handleNotificationClick(n)}
-                      style={{ padding: '10px 16px', cursor: 'pointer', background: n.isRead ? '#fff' : '#f6f8ff', borderBottom: '1px solid #f5f5f5', transition: 'background 0.2s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
-                      onMouseLeave={e => (e.currentTarget.style.background = n.isRead ? '#fff' : '#f6f8ff')}
-                    >
-                      <div style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>
-                        {!n.isRead && <Badge status="processing" style={{ marginRight: 6 }} />}
-                        {n.message}
+                  <div>
+                    {notifications.slice(0, 10).map((n: any) => (
+                      <div
+                        key={n.id}
+                        className={`ly-notif-item${!n.isRead ? ' unread' : ''}`}
+                        onClick={() => handleNotificationClick(n)}
+                        style={{
+                          padding: `12px 18px 12px ${!n.isRead ? '24px' : '18px'}`,
+                          cursor: 'pointer',
+                          background: !n.isRead ? '#fafbff' : '#fff',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#f8f9ff')}
+                        onMouseLeave={e => (e.currentTarget.style.background = !n.isRead ? '#fafbff' : '#fff')}
+                      >
+                        <div style={{ fontSize: 13, color: '#1f2937', lineHeight: 1.5, fontWeight: !n.isRead ? 500 : 400 }}>
+                          {n.message}
+                        </div>
+                        <div style={{
+                          fontSize: 11,
+                          color: '#94a3b8',
+                          marginTop: 6,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}>
+                          <span style={{
+                            padding: '1px 6px',
+                            borderRadius: 4,
+                            background: n.type === 'TASK_ASSIGNED' ? '#eef2ff' : n.type === 'TASK_COMPLETED' ? '#ecfdf5' : '#f5f3ff',
+                            color: n.type === 'TASK_ASSIGNED' ? '#4f46e5' : n.type === 'TASK_COMPLETED' ? '#059669' : '#7c3aed',
+                            fontSize: 10,
+                            fontWeight: 500,
+                          }}>
+                            {n.type === 'TASK_ASSIGNED' ? '📋 新任务' : n.type === 'TASK_SUBMITTED' ? '✅ 已提交' : n.type === 'TASK_COMPLETED' ? '🎉 已完成' : n.type === 'TASK_REJECTED' ? '↩️ 驳回' : n.type}
+                          </span>
+                          <ClockCircleOutlined style={{ fontSize: 10 }} />
+                          {dayjs(n.createdAt).format('MM-DD HH:mm')}
+                        </div>
                       </div>
-                      <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-                        {n.type === 'TASK_ASSIGNED' ? '📋 新任务' : n.type === 'TASK_COMPLETED' ? '✅ 已完成' : n.type}
-                        {' · '}{dayjs(n.createdAt).format('MM-DD HH:mm')}
-                      </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
             )}
           >
-            <Badge count={unreadCount} size="small" offset={[-15, 0]}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginRight: 16, transition: 'all 0.2s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#f5f5f5' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-              >
-                <BellOutlined style={{ fontSize: 18 }} />
-              </div>
-            </Badge>
+            <div
+              className="ly-notif-badge"
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                marginRight: 16,
+                transition: 'all 0.25s ease',
+                background: unreadCount > 0 ? '#eef2ff' : 'transparent',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#f0f0ff'; e.currentTarget.style.transform = 'scale(1.05)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = unreadCount > 0 ? '#eef2ff' : 'transparent'; e.currentTarget.style.transform = 'scale(1)' }}
+            >
+              <Badge count={unreadCount} size="small" offset={[-8, 4]}>
+                <BellOutlined style={{ fontSize: 18, color: unreadCount > 0 ? '#4f46e5' : '#64748b' }} />
+              </Badge>
+            </div>
           </Dropdown>
 
+          {/* User Avatar with Status Indicator */}
           <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="bottomRight">
-            <Space style={{ cursor: 'pointer' }}>
-              <Avatar size="small" style={{ backgroundColor: '#4f46e5' }} icon={<UserOutlined />} />
-              <span style={{ fontSize: 14, color: '#374151' }}>{user.name || user.username}</span>
-            </Space>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                cursor: 'pointer',
+                padding: '4px 10px 4px 4px',
+                borderRadius: 24,
+                transition: 'all 0.2s ease',
+                border: '1px solid transparent',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#e2e8f0' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent' }}
+            >
+              <div className="ly-avatar-wrapper">
+                <Avatar
+                  size={32}
+                  style={{
+                    backgroundColor: '#4f46e5',
+                    fontWeight: 600,
+                    fontSize: 13,
+                  }}
+                  icon={<UserOutlined />}
+                >
+                  {(user.name || user.username || 'U')[0]}
+                </Avatar>
+                <div className="ly-avatar-status" />
+              </div>
+              <span style={{ fontSize: 14, color: '#374151', fontWeight: 500 }}>{user.name || user.username}</span>
+            </div>
           </Dropdown>
         </Header>
 
-        {/* 内容区域 */}
+        {/* ====== Content Area ====== */}
         <Content
+          className="ly-content-area"
           style={{
             marginTop: 56,
             margin: '56px 20px 20px',
             padding: 24,
             background: '#fff',
-            borderRadius: 12,
+            borderRadius: 16,
             minHeight: 'calc(100vh - 96px)',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+            boxShadow: '0 1px 3px rgba(0,0,0,0.03), 0 0 0 1px rgba(241,245,249,0.8)',
           }}
         >
           <Outlet />
         </Content>
       </AntLayout>
 
-      {/* 任务详情弹窗 */}
+      {/* ====== Task Detail Modal ====== */}
       <Modal
         title={taskDetail ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>任务详情</span>
-            <Tag color={(priorityMap[taskDetail.priority] || priorityMap.MEDIUM).color}>
+            <span style={{ fontWeight: 600 }}>任务详情</span>
+            <Tag color={(priorityMap[taskDetail.priority] || priorityMap.MEDIUM).color} style={{ borderRadius: 4 }}>
               {(priorityMap[taskDetail.priority] || priorityMap.MEDIUM).text}
             </Tag>
-            <Tag color={(statusMap[taskDetail.status] || statusMap.PENDING).color}>
+            <Tag color={(statusMap[taskDetail.status] || statusMap.PENDING).color} style={{ borderRadius: 4 }}>
               {(statusMap[taskDetail.status] || statusMap.PENDING).text}
             </Tag>
           </div>
@@ -383,75 +540,121 @@ function Layout() {
         open={taskDetailVisible}
         onCancel={() => { setTaskDetailVisible(false); setTaskDetail(null) }}
         footer={taskDetail && taskDetail.status !== 'COMPLETED' && taskDetail.status !== 'CANCELLED' ? (() => {
-          // 判断当前用户是指派人还是执行人
           const isAssigner = taskDetail.assignerId === user.id
           const isAssignee = taskDetail.assignees?.some((a: any) => a.id === user.id)
 
           return (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              {/* 执行人：可以提交完成或取消 */}
               {isAssignee && (taskDetail.status === 'PENDING' || taskDetail.status === 'IN_PROGRESS') && (
-                <Button type="primary" icon={<CheckOutlined />} style={{ background: '#52c41a', borderColor: '#52c41a' }} onClick={() => handleTaskAction('SUBMITTED')}>提交完成</Button>
+                <Button type="primary" icon={<CheckOutlined />} style={{ background: '#059669', borderColor: '#059669', borderRadius: 8 }} onClick={() => handleTaskAction('SUBMITTED')}>提交完成</Button>
               )}
               {isAssignee && (taskDetail.status === 'PENDING' || taskDetail.status === 'IN_PROGRESS') && (
                 <Popconfirm title="确定取消此任务？" onConfirm={() => handleTaskAction('CANCELLED')}>
-                  <Button danger icon={<StopOutlined />}>取消任务</Button>
+                  <Button danger icon={<StopOutlined />} style={{ borderRadius: 8 }}>取消任务</Button>
                 </Popconfirm>
               )}
 
-              {/* 指派人：可以确认完成或驳回 */}
               {isAssigner && taskDetail.status === 'SUBMITTED' && (
                 <>
-                  <Button type="primary" icon={<CheckOutlined />} style={{ background: '#52c41a', borderColor: '#52c41a' }} onClick={() => handleTaskAction('COMPLETED')}>确认完成</Button>
-                  <Button danger icon={<StopOutlined />} onClick={() => handleTaskAction('IN_PROGRESS')}>驳回</Button>
+                  <Button type="primary" icon={<CheckOutlined />} style={{ background: '#059669', borderColor: '#059669', borderRadius: 8 }} onClick={() => handleTaskAction('COMPLETED')}>确认完成</Button>
+                  <Button danger icon={<StopOutlined />} style={{ borderRadius: 8 }} onClick={() => handleTaskAction('IN_PROGRESS')}>驳回</Button>
                 </>
               )}
 
-              {/* 指派人：可以取消任务 */}
               {isAssigner && (taskDetail.status === 'PENDING' || taskDetail.status === 'IN_PROGRESS') && (
                 <Popconfirm title="确定取消此任务？" onConfirm={() => handleTaskAction('CANCELLED')}>
-                  <Button danger icon={<StopOutlined />}>取消任务</Button>
+                  <Button danger icon={<StopOutlined />} style={{ borderRadius: 8 }}>取消任务</Button>
                 </Popconfirm>
               )}
 
-              {/* 执行人：已提交时显示等待状态 */}
               {isAssignee && taskDetail.status === 'SUBMITTED' && (
-                <span style={{ fontSize: 13, color: '#faad14', padding: '4px 12px' }}>
+                <span style={{ fontSize: 13, color: '#d97706', padding: '4px 12px', background: '#fffbeb', borderRadius: 6 }}>
                   <ClockCircleOutlined style={{ marginRight: 6 }} />等待指派人确认
                 </span>
               )}
             </div>
           )
         })() : null}
-        width={520}
+        width={540}
+        styles={{ body: { paddingTop: 16 } }}
       >
         {taskDetail && (
           <div>
-            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 12, textDecoration: taskDetail.status === 'COMPLETED' ? 'line-through' : 'none' }}>
+            <div style={{
+              fontSize: 18,
+              fontWeight: 700,
+              marginBottom: 16,
+              color: '#1e293b',
+              textDecoration: taskDetail.status === 'COMPLETED' ? 'line-through' : 'none',
+              lineHeight: 1.4,
+            }}>
               {taskDetail.title}
             </div>
             {taskDetail.description && (
-              <div style={{ color: '#555', marginBottom: 16, padding: '12px', background: '#fafafa', borderRadius: 8, whiteSpace: 'pre-wrap' }}>
+              <div style={{
+                color: '#475569',
+                marginBottom: 20,
+                padding: '14px 16px',
+                background: '#f8fafc',
+                borderRadius: 10,
+                whiteSpace: 'pre-wrap',
+                border: '1px solid #f1f5f9',
+                fontSize: 14,
+                lineHeight: 1.6,
+              }}>
                 {taskDetail.description}
               </div>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: '#666' }}>
-              <div><UserOutlined style={{ marginRight: 8, color: '#1890ff' }} />委派人：<strong>{taskDetail.assigner?.name || '-'}</strong></div>
-              <div><TeamOutlined style={{ marginRight: 8, color: '#722ed1' }} />执行人：<strong>{(taskDetail.assignees || []).map((a: any) => a.name).join('、') || '-'}</strong></div>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              fontSize: 13,
+              color: '#64748b',
+              padding: '16px',
+              background: '#fafbff',
+              borderRadius: 10,
+              border: '1px solid #f1f5f9',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <UserOutlined style={{ marginRight: 10, color: '#4f46e5', fontSize: 14 }} />
+                <span>委派人：</span>
+                <strong style={{ color: '#1e293b', marginLeft: 4 }}>{taskDetail.assigner?.name || '-'}</strong>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <TeamOutlined style={{ marginRight: 10, color: '#7c3aed', fontSize: 14 }} />
+                <span>执行人：</span>
+                <strong style={{ color: '#1e293b', marginLeft: 4 }}>{(taskDetail.assignees || []).map((a: any) => a.name).join('、') || '-'}</strong>
+              </div>
               {taskDetail.dueDate && (
-                <div>
-                  <ClockCircleOutlined style={{ marginRight: 8, color: taskDetail.status !== 'COMPLETED' && dayjs(taskDetail.dueDate).isBefore(dayjs(), 'day') ? '#f5222d' : '#faad14' }} />
-                  截止日期：<strong style={{ color: taskDetail.status !== 'COMPLETED' && dayjs(taskDetail.dueDate).isBefore(dayjs(), 'day') ? '#f5222d' : 'inherit' }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <ClockCircleOutlined style={{
+                    marginRight: 10,
+                    fontSize: 14,
+                    color: taskDetail.status !== 'COMPLETED' && dayjs(taskDetail.dueDate).isBefore(dayjs(), 'day') ? '#ef4444' : '#d97706'
+                  }} />
+                  <span>截止日期：</span>
+                  <strong style={{
+                    color: taskDetail.status !== 'COMPLETED' && dayjs(taskDetail.dueDate).isBefore(dayjs(), 'day') ? '#ef4444' : '#1e293b',
+                    marginLeft: 4,
+                  }}>
                     {dayjs(taskDetail.dueDate).format('YYYY-MM-DD')}
                     {taskDetail.status !== 'COMPLETED' && dayjs(taskDetail.dueDate).isBefore(dayjs(), 'day') && ' (已逾期)'}
                   </strong>
                 </div>
               )}
               {taskDetail.status === 'COMPLETED' && taskDetail.completedAt && (
-                <div><CheckCircleOutlined style={{ marginRight: 8, color: '#52c41a' }} />完成于：<strong style={{ color: '#52c41a' }}>{dayjs(taskDetail.completedAt).format('YYYY-MM-DD HH:mm')}</strong></div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <CheckCircleOutlined style={{ marginRight: 10, color: '#059669', fontSize: 14 }} />
+                  <span>完成于：</span>
+                  <strong style={{ color: '#059669', marginLeft: 4 }}>{dayjs(taskDetail.completedAt).format('YYYY-MM-DD HH:mm')}</strong>
+                </div>
               )}
               {taskDetail.status === 'CANCELLED' && (
-                <div><ExclamationCircleOutlined style={{ marginRight: 8, color: '#faad14' }} /><strong style={{ color: '#faad14' }}>已取消</strong></div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <ExclamationCircleOutlined style={{ marginRight: 10, color: '#d97706', fontSize: 14 }} />
+                  <strong style={{ color: '#d97706' }}>已取消</strong>
+                </div>
               )}
             </div>
           </div>

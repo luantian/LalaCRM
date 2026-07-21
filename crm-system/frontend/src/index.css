@@ -4,19 +4,51 @@
   box-sizing: border-box;
 }
 
+/* ========================================
+   Global Typography & Base
+   ======================================== */
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   background: #f1f5f9;
   color: #1e293b;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+  line-height: 1.65;
+  letter-spacing: -0.01em;
+  text-rendering: optimizeLegibility;
 }
 
 #root {
   min-height: 100vh;
+  animation: rootFadeIn 0.4s ease-out;
 }
 
-/* 滚动条美化 */
+@keyframes rootFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Improved heading typography */
+h1, h2, h3, h4, h5, h6 {
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+h1 { font-size: 28px; font-weight: 800; }
+h2 { font-size: 22px; font-weight: 700; }
+h3 { font-size: 18px; font-weight: 600; }
+h4 { font-size: 16px; font-weight: 600; }
+
+p {
+  line-height: 1.7;
+  color: #475569;
+}
+
+/* ========================================
+   Scrollbar Styling
+   ======================================== */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -25,51 +57,89 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: #cbd5e1;
   border-radius: 3px;
+  transition: background 0.2s;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: #94a3b8;
 }
 
-/* 页面标题 */
+/* Horizontal scrollbar */
+::-webkit-scrollbar-thumb:horizontal {
+  background: #cbd5e1;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+
+/* ========================================
+   Page Header
+   ======================================== */
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  animation: slideDownFade 0.4s ease-out;
 }
+
+@keyframes slideDownFade {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .page-header h2 {
   font-size: 22px;
   font-weight: 700;
   color: #1e293b;
   margin: 0;
+  letter-spacing: -0.3px;
 }
 
-/* 统计卡片通用样式 */
+
+/* ========================================
+   Stat Card Base
+   ======================================== */
 .stat-card {
   border-radius: 12px;
   border: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
-/* 表格卡片 */
+
+/* ========================================
+   Table Card
+   ======================================== */
 .table-card {
   border-radius: 12px;
   border: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.3s ease;
 }
+
+.table-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
 .table-card .ant-card-head {
   border-bottom: 1px solid #f1f5f9;
   min-height: 48px;
 }
 
-/* 搜索栏卡片 */
+
+/* ========================================
+   Filter Card
+   ======================================== */
 .filter-card {
   border-radius: 12px;
   border: none;
@@ -77,24 +147,407 @@ body {
   box-shadow: none;
 }
 
-/* Ant Design 表格圆角 */
+
+/* ========================================
+   Ant Design Table - Rounded
+   ======================================== */
 .ant-table-wrapper {
   border-radius: 8px;
   overflow: hidden;
 }
 
-/* 渐变背景 */
-.gradient-bg-1 { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.gradient-bg-2 { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
-.gradient-bg-3 { background: linear-gradient(135deg, #ee9ca7 0%, #ffdde1 100%); }
-.gradient-bg-4 { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
 
-/* 过渡动画 */
-.ant-card, .ant-btn, .ant-tag, .ant-input, .ant-select {
+/* ========================================
+   Ant Design Card - Hover Lift Effect
+   ======================================== */
+.ant-card {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ant-card-hoverable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1) !important;
+}
+
+
+/* ========================================
+   Ant Design Button - Press Effect
+   ======================================== */
+.ant-btn {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.ant-btn:active {
+  transform: scale(0.97);
+}
+
+.ant-btn-primary:active {
+  transform: scale(0.97);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+}
+
+.ant-btn-primary {
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.2);
+}
+
+.ant-btn-primary:hover {
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+}
+
+/* Button ripple effect */
+.ant-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.ant-btn:active::after {
+  opacity: 1;
+  transition: opacity 0s;
+}
+
+
+/* ========================================
+   Ant Design Input - Focus Glow
+   ======================================== */
+.ant-input,
+.ant-input-affix-wrapper {
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  border-radius: 8px;
+}
+
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-affix-wrapper-focused {
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+
+/* ========================================
+   Ant Design Tag - Status Improvements
+   ======================================== */
+.ant-tag {
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 12px;
+  padding: 2px 10px;
+  line-height: 1.6;
   transition: all 0.2s ease;
 }
 
-/* 空状态美化 */
+.ant-tag:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+/* Status tag colors */
+.ant-tag-success {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+
+.ant-tag-processing {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e40af;
+}
+
+.ant-tag-warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.ant-tag-error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.ant-tag-default {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+
+
+/* ========================================
+   Ant Design Modal - Animations
+   ======================================== */
+.ant-modal .ant-modal-content {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+.ant-modal .ant-modal-header {
+  border-radius: 16px 16px 0 0;
+  padding: 20px 24px;
+}
+
+.ant-modal .ant-modal-close {
+  transition: all 0.2s ease;
+  border-radius: 50%;
+}
+
+.ant-modal .ant-modal-close:hover {
+  background: #f1f5f9;
+  transform: rotate(90deg);
+}
+
+/* Modal entrance animation */
+.ant-modal.zoom-enter,
+.ant-modal.fade-enter {
+  animation: modalEnter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Modal backdrop animation */
+.ant-modal-mask {
+  animation: modalMaskEnter 0.25s ease;
+}
+
+@keyframes modalMaskEnter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+
+/* ========================================
+   Ant Design Select - Better Focus
+   ======================================== */
+.ant-select-selector {
+  transition: border-color 0.25s ease, box-shadow 0.25s ease !important;
+  border-radius: 8px !important;
+}
+
+.ant-select-focused .ant-select-selector {
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1) !important;
+  border-color: #4f46e5 !important;
+}
+
+
+/* ========================================
+   Transitions for common elements
+   ======================================== */
+.ant-card, .ant-btn, .ant-tag, .ant-input, .ant-select, .ant-badge {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+
+/* ========================================
+   Empty State Base
+   ======================================== */
 .ant-empty-description {
   color: #94a3b8;
+  font-size: 14px;
+}
+
+
+/* ========================================
+   Page Transition Effects
+   ======================================== */
+.page-transition-enter {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.page-transition-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.page-transition-exit {
+  opacity: 1;
+}
+
+.page-transition-exit-active {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+
+/* ========================================
+   Ant Design Table - Smooth Row Hover
+   ======================================== */
+.ant-table-tbody > tr {
+  transition: background-color 0.25s ease, transform 0.2s ease;
+}
+
+.ant-table-tbody > tr > td {
+  transition: background-color 0.25s ease;
+}
+
+
+/* ========================================
+   Ant Design Drawer
+   ======================================== */
+.ant-drawer .ant-drawer-content {
+  border-radius: 16px 0 0 16px;
+  overflow: hidden;
+}
+
+
+/* ========================================
+   Ant Design Tooltip
+   ======================================== */
+.ant-tooltip .ant-tooltip-inner {
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+
+/* ========================================
+   Ant Design Message
+   ======================================== */
+.ant-message-notice-content {
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  animation: messageSlideIn 0.3s ease;
+}
+
+@keyframes messageSlideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+
+/* ========================================
+   Ant Design Breadcrumb
+   ======================================== */
+.ant-breadcrumb a {
+  transition: color 0.2s ease;
+}
+
+.ant-breadcrumb a:hover {
+  color: #4f46e5;
+}
+
+
+/* ========================================
+   Ant Design Pagination
+   ======================================== */
+.ant-pagination-item {
+  border-radius: 8px !important;
+  transition: all 0.2s ease;
+}
+
+.ant-pagination-item:hover {
+  border-color: #4f46e5;
+  transform: translateY(-1px);
+}
+
+.ant-pagination-item-active {
+  background: #4f46e5;
+  border-color: #4f46e5;
+}
+
+
+/* ========================================
+   Utility - Smooth Scroll
+   ======================================== */
+html {
+  scroll-behavior: smooth;
+}
+
+
+/* ========================================
+   Print-Friendly Styles
+   ======================================== */
+@media print {
+  body {
+    background: white !important;
+    color: #000 !important;
+    font-size: 12pt;
+    line-height: 1.5;
+  }
+
+  /* Hide non-printable elements */
+  .ant-layout-sider,
+  .ant-layout-header,
+  .ant-pagination,
+  .ant-btn,
+  .ant-breadcrumb,
+  .no-print,
+  .login-page .login-left-panel {
+    display: none !important;
+  }
+
+  /* Remove shadows and unnecessary decorations */
+  .ant-card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    break-inside: avoid;
+  }
+
+  .ant-table {
+    break-inside: avoid;
+  }
+
+  /* Make links visible */
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 10pt;
+    color: #666;
+  }
+
+  /* Remove animations */
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* Ensure proper page breaks */
+  h1, h2, h3, h4 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  img {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Print header for each page */
+  @page {
+    margin: 2cm;
+    size: A4;
+  }
+
+  /* Table printing */
+  .ant-table-thead > tr > th {
+    background: #f5f5f5 !important;
+    border: 1px solid #ddd !important;
+  }
+
+  .ant-table-tbody > tr > td {
+    border: 1px solid #ddd !important;
+  }
+
+  /* Page header */
+  .page-header {
+    border-bottom: 2px solid #000;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+  }
 }

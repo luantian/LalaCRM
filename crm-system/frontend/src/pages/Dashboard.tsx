@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Empty, List, Badge, Popconfirm, Tooltip, App as AntApp } from 'antd'
+import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, Tooltip, App as AntApp } from 'antd'
 import {
   UserOutlined, ProjectOutlined, FileTextOutlined,
   CheckCircleOutlined, ClockCircleOutlined, FundOutlined,
   CarOutlined, AccountBookOutlined, SendOutlined,
   DashboardOutlined, PlusOutlined, CheckOutlined, PlayCircleOutlined,
-  DeleteOutlined, ExclamationCircleOutlined, EditOutlined, StopOutlined
+  DeleteOutlined, ExclamationCircleOutlined, EditOutlined, StopOutlined,
+  InboxOutlined, CalendarOutlined, FieldTimeOutlined
 } from '@ant-design/icons'
 import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
@@ -22,30 +23,33 @@ function Dashboard() {
   const [taskType, setTaskType] = useState<'assigned' | 'delegated'>('assigned')
   const [users, setUsers] = useState<any[]>([])
   const [todayCheckIn, setTodayCheckIn] = useState<any>(null)
+  const [currentTime, setCurrentTime] = useState(dayjs())
 
   const user = safeJsonParse(localStorage.getItem('user'), {})
   const userPermissions = safeJsonParse(localStorage.getItem('permissions'), [])
 
-  // 快捷操作权限映射
+  // Update time every minute for display
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(dayjs()), 60000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // 快捷操作
   const quickActions = [
-    { label: '新增客户', icon: <UserOutlined />, path: '/customers', color: '#1890ff', bg: '#e6f7ff', perm: 'edit_customers' },
-    { label: '新建商机', icon: <FundOutlined />, path: '/opportunities', color: '#722ed1', bg: '#f9f0ff', perm: 'edit_opportunities' },
-    { label: '新建项目', icon: <ProjectOutlined />, path: '/projects', color: '#13c2c2', bg: '#e6fffb', perm: 'create_projects' },
-    { label: '查看报价', icon: <FileTextOutlined />, path: '/quotations', color: '#52c41a', bg: '#f6ffed', perm: 'view_quotations' },
-    { label: '填写日报', icon: <SendOutlined />, path: '/daily-reports', color: '#fa8c16', bg: '#fff7e6', perm: 'create_reports' },
-    { label: '申请出差', icon: <CarOutlined />, path: '/business-trips', color: '#eb2f96', bg: '#fff0f6', perm: 'submit_trips' },
-    { label: '申请报销', icon: <AccountBookOutlined />, path: '/expenses', color: '#f5222d', bg: '#fff1f0', perm: 'submit_expenses' },
+    { label: '新增客户', icon: <UserOutlined />, path: '/customers', color: '#4f46e5', bg: '#eef2ff', perm: 'edit_customers' },
+    { label: '新建商机', icon: <FundOutlined />, path: '/opportunities', color: '#7c3aed', bg: '#f5f3ff', perm: 'edit_opportunities' },
+    { label: '新建项目', icon: <ProjectOutlined />, path: '/projects', color: '#0891b2', bg: '#ecfeff', perm: 'create_projects' },
+    { label: '查看报价', icon: <FileTextOutlined />, path: '/quotations', color: '#059669', bg: '#ecfdf5', perm: 'view_quotations' },
+    { label: '填写日报', icon: <SendOutlined />, path: '/daily-reports', color: '#d97706', bg: '#fffbeb', perm: 'create_reports' },
+    { label: '申请出差', icon: <CarOutlined />, path: '/business-trips', color: '#db2777', bg: '#fdf2f8', perm: 'submit_trips' },
+    { label: '申请报销', icon: <AccountBookOutlined />, path: '/expenses', color: '#dc2626', bg: '#fef2f2', perm: 'submit_expenses' },
   ]
 
-  // 根据权限过滤快捷操作
   const filteredQuickActions = quickActions.filter(action => {
-    // 管理员拥有所有权限
     if (user.role === 'ADMIN') return true
-    // 检查用户是否有该权限
     return userPermissions.includes(action.perm)
   })
 
-  // 获取今日打卡状态
   const fetchTodayCheckIn = async () => {
     try {
       const data: any = await getTodayCheckIn()
@@ -55,26 +59,18 @@ function Dashboard() {
     }
   }
 
-  // 快速打卡
   const handleQuickCheckIn = async () => {
     try {
       const now = dayjs()
       const hour = now.hour()
-
-      // 根据时间判断是上班打卡还是下班打卡
-      // 12点前认为是上班打卡，12点后认为是下班打卡
       const period = hour < 12 ? 'MORNING' : 'EVENING'
-
       const result: any = await checkIn({ period })
-
-      // 根据打卡类型显示不同的消息
       const typeMessages: Record<string, string> = {
         NORMAL: '打卡成功！',
         LATE: '打卡成功（迟到）',
         EARLY_LEAVE: '打卡成功（早退）',
         AUTO: '出差打卡成功！'
       }
-
       message.success(typeMessages[result.type] || '打卡成功！')
       fetchTodayCheckIn()
     } catch (error: any) {
@@ -100,11 +96,11 @@ function Dashboard() {
     } catch (e) { /* ignore */ }
   }
 
-  const priorityMap: Record<string, { text: string; color: string }> = {
-    LOW: { text: '低', color: 'default' },
-    MEDIUM: { text: '中', color: 'blue' },
-    HIGH: { text: '高', color: 'orange' },
-    URGENT: { text: '紧急', color: 'red' },
+  const priorityMap: Record<string, { text: string; color: string; hex: string }> = {
+    LOW: { text: '低', color: 'default', hex: '#94a3b8' },
+    MEDIUM: { text: '中', color: 'blue', hex: '#3b82f6' },
+    HIGH: { text: '高', color: 'orange', hex: '#f59e0b' },
+    URGENT: { text: '紧急', color: 'red', hex: '#ef4444' },
   }
   const statusMap: Record<string, { text: string; color: string }> = {
     PENDING: { text: '待处理', color: 'default' },
@@ -180,8 +176,8 @@ function Dashboard() {
   // 时段问候
   const hour = dayjs().hour()
   const greeting = hour < 6 ? '夜深了' : hour < 9 ? '早上好' : hour < 12 ? '上午好' : hour < 14 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
+  const greetingIcon = hour < 6 ? '🌙' : hour < 9 ? '🌅' : hour < 12 ? '☀️' : hour < 14 ? '🌤️' : hour < 18 ? '🌇' : '🌙'
 
-  // 任务分组：未完成在前，已完成在后
   const sortTasks = (list: any[]) => {
     const active = list.filter(t => t.status !== 'COMPLETED' && t.status !== 'CANCELLED')
     const done = list.filter(t => t.status === 'COMPLETED' || t.status === 'CANCELLED')
@@ -191,274 +187,391 @@ function Dashboard() {
   const activeTasks = tasks.filter(t => t.status !== 'COMPLETED' && t.status !== 'CANCELLED')
   const activeDelegated = delegatedTasks.filter(t => t.status !== 'COMPLETED' && t.status !== 'CANCELLED')
 
-  return (
-    <div>
-      {/* 问候语 */}
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 22 }}>{greeting}，{user.name || user.username || ''} 👋</h2>
-        <div style={{ color: '#999', fontSize: 13, marginTop: 4 }}>
-          {dayjs().format('YYYY年M月D日 dddd')}
+  // Check-in card state computation
+  const morningChecked = todayCheckIn?.morningCheckedIn
+  const eveningChecked = todayCheckIn?.eveningCheckedIn
+  const isAllChecked = morningChecked && eveningChecked
+
+  let checkinLabel = '快速打卡'
+  let checkinIcon = <ClockCircleOutlined />
+  let checkinColor = '#4f46e5'
+  let checkinDisabled = false
+  let checkinStatusText = ''
+
+  if (hour < 12) {
+    if (morningChecked) {
+      checkinLabel = '上班已打卡'
+      checkinIcon = <CheckCircleOutlined />
+      checkinColor = '#059669'
+      checkinDisabled = true
+      checkinStatusText = `✓ ${todayCheckIn?.morningTime ? dayjs(todayCheckIn.morningTime).format('HH:mm') : ''} 已签到`
+    } else if (hour >= 9) {
+      checkinLabel = '上班打卡 (迟到)'
+      checkinColor = '#d97706'
+      checkinStatusText = '⚠ 已超过 09:00'
+    } else {
+      checkinStatusText = '✦ 请在 09:00 前打卡'
+    }
+  } else {
+    if (eveningChecked) {
+      checkinLabel = '下班已打卡'
+      checkinIcon = <CheckCircleOutlined />
+      checkinColor = '#059669'
+      checkinDisabled = true
+      checkinStatusText = `✓ ${todayCheckIn?.eveningTime ? dayjs(todayCheckIn.eveningTime).format('HH:mm') : ''} 已签退`
+    } else if (hour < 17 || (hour === 17 && currentTime.minute() < 30)) {
+      checkinLabel = '下班打卡 (早退)'
+      checkinColor = '#d97706'
+      checkinStatusText = '⚠ 未到 17:30'
+    } else {
+      checkinStatusText = '✦ 可以下班打卡了'
+    }
+  }
+
+  // Empty state component
+  const renderEmpty = (icon: React.ReactNode, text: string, sub: string) => (
+    <div className="bd-empty-state">
+      <div className="bd-empty-state-icon">{icon}</div>
+      <div className="bd-empty-state-text">{text}</div>
+      <div className="bd-empty-state-sub">{sub}</div>
+    </div>
+  )
+
+  // Task list item renderer
+  const renderTaskItem = (task: any, isDelegated: boolean) => {
+    const p = priorityMap[task.priority] || priorityMap.MEDIUM
+    const s = statusMap[task.status] || statusMap.PENDING
+    const isOverdue = task.dueDate && dayjs(task.dueDate).isBefore(dayjs(), 'day') && !['COMPLETED', 'CANCELLED', 'SUBMITTED'].includes(task.status)
+    const isDone = task.status === 'COMPLETED' || task.status === 'CANCELLED'
+    const isSubmitted = task.status === 'SUBMITTED'
+
+    return (
+      <div
+        className={`bd-task-item${isDone ? ' done' : ''}`}
+        style={{ borderLeftColor: p.hex }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Title row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6, textDecoration: isDone ? 'line-through' : 'none' }}>
+              <span style={{ fontSize: 14, fontWeight: 500, color: '#1f2937' }}>{task.title}</span>
+              <Tag color={p.color} style={{ fontSize: 11, margin: 0, borderRadius: 4 }}>{p.text}</Tag>
+              <Tag color={s.color} style={{ fontSize: 11, margin: 0, borderRadius: 4 }}>{s.text}</Tag>
+              {isOverdue && <Tag color="error" style={{ fontSize: 11, margin: 0, borderRadius: 4 }}><ExclamationCircleOutlined /> 逾期</Tag>}
+            </div>
+            {/* Description row */}
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
+              {isDelegated ? '指派给：' : '委派人：'}
+              <span style={{ color: '#374151', fontWeight: 500 }}>
+                {isDelegated
+                  ? (task.assignees || []).map((a: any) => a.name).join('、') || '-'
+                  : (task.assigner?.name || '-')
+                }
+              </span>
+              {task.dueDate && (
+                <span style={{ marginLeft: 12, color: isOverdue ? '#ef4444' : '#6b7280' }}>
+                  <ClockCircleOutlined style={{ marginRight: 3 }} />
+                  截止：{dayjs(task.dueDate).format('YYYY-MM-DD')}
+                </span>
+              )}
+              {task.status === 'COMPLETED' && task.completedAt && (
+                <span style={{ marginLeft: 12, color: '#059669' }}>
+                  <CheckCircleOutlined style={{ marginRight: 3 }} />
+                  完成于 {dayjs(task.completedAt).format('MM-DD HH:mm')}
+                </span>
+              )}
+            </div>
+            {task.description && (
+              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {task.description}
+              </div>
+            )}
+          </div>
+          {/* Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+            {!isDelegated && !isDone && !isSubmitted && task.status === 'PENDING' && (
+              <Tooltip title="开始">
+                <Button size="small" type="text" icon={<PlayCircleOutlined />} style={{ color: '#4f46e5' }} onClick={() => handleUpdateTask(task.id, 'IN_PROGRESS')} />
+              </Tooltip>
+            )}
+            {!isDelegated && !isDone && !isSubmitted && (
+              <Tooltip title="提交完成">
+                <Button size="small" type="text" icon={<CheckOutlined />} style={{ color: '#059669' }} onClick={() => handleUpdateTask(task.id, 'SUBMITTED')} />
+              </Tooltip>
+            )}
+            {isDelegated && isSubmitted && (
+              <Popconfirm title="确认此任务已完成？" onConfirm={() => handleUpdateTask(task.id, 'COMPLETED')}>
+                <Button size="small" type="primary" icon={<CheckCircleOutlined />} style={{ background: '#059669', borderColor: '#059669', borderRadius: 6, fontSize: 12 }}>确认</Button>
+              </Popconfirm>
+            )}
+            {isDelegated && isSubmitted && (
+              <Popconfirm title="确定驳回此任务？" onConfirm={() => handleUpdateTask(task.id, 'IN_PROGRESS')}>
+                <Button size="small" danger style={{ borderRadius: 6, fontSize: 12 }}>驳回</Button>
+              </Popconfirm>
+            )}
+            {!isDelegated && isSubmitted && (
+              <span style={{ fontSize: 12, color: '#d97706', padding: '2px 8px', background: '#fffbeb', borderRadius: 4 }}>
+                <ClockCircleOutlined style={{ marginRight: 4 }} />等待确认
+              </span>
+            )}
+            {!isDone && !isSubmitted && (
+              <Popconfirm title="确定取消此任务？" onConfirm={() => handleUpdateTask(task.id, 'CANCELLED')}>
+                <Tooltip title="取消"><Button size="small" type="text" icon={<StopOutlined />} danger /></Tooltip>
+              </Popconfirm>
+            )}
+            <Tooltip title="编辑"><Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEditTask(task)} /></Tooltip>
+            <Popconfirm title="确定删除此任务？" onConfirm={() => handleDeleteTask(task.id)}>
+              <Tooltip title="删除"><Button size="small" type="text" icon={<DeleteOutlined />} danger /></Tooltip>
+            </Popconfirm>
+          </div>
         </div>
       </div>
+    )
+  }
 
-      {/* 快捷操作 */}
-      <Card size="small" style={{ marginBottom: 16, borderRadius: 12, background: '#fafafa', border: '1px solid #f0f0f0' }}
-        styles={{ body: { padding: '12px 16px' } }}>
-        <div style={{ fontSize: 12, color: '#999', marginBottom: 8 }}>快捷操作</div>
-        <Row gutter={[12, 12]}>
-          {filteredQuickActions.map(item => (
-            <Col xs={6} sm={6} md={3} key={item.label}>
-              <div
-                onClick={() => navigate(item.path)}
-                style={{
-                  textAlign: 'center',
-                  padding: '10px 4px',
-                  borderRadius: 8,
-                  background: item.bg,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none' }}
-              >
-                <div style={{ fontSize: 20, color: item.color, marginBottom: 4 }}>{item.icon}</div>
-                <div style={{ fontSize: 12, color: '#333', fontWeight: 500 }}>{item.label}</div>
+  return (
+    <div className="bd-page-enter">
+      {/* ====== Greeting Section ====== */}
+      <div className="bd-page-enter" style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: '#1e293b', lineHeight: 1.3 }}>
+            {greetingIcon}{' '}
+            <span>{greeting}，</span>
+            <span className="bd-greeting-name">{user.name || user.username || ''}</span>
+          </h2>
+          <div style={{ color: '#94a3b8', fontSize: 14, marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CalendarOutlined />
+            <span>{dayjs().format('YYYY年M月D日 dddd')}</span>
+            <span style={{ color: '#cbd5e1' }}>·</span>
+            <FieldTimeOutlined />
+            <span>{currentTime.format('HH:mm')}</span>
+          </div>
+        </div>
+        {activeTasks.length > 0 && (
+          <div style={{
+            padding: '8px 16px',
+            background: 'linear-gradient(135deg, #eef2ff, #f5f3ff)',
+            borderRadius: 10,
+            border: '1px solid #e0e7ff',
+            fontSize: 13,
+            color: '#4f46e5',
+            fontWeight: 500,
+          }}>
+            📋 待办 <strong>{activeTasks.length}</strong> 项
+          </div>
+        )}
+      </div>
+
+      {/* ====== Quick Action Cards + Check-in Card ====== */}
+      <Row gutter={[16, 16]} className="bd-page-enter-d1" style={{ marginBottom: 24 }}>
+        {/* Quick Action Cards */}
+        {filteredQuickActions.map((item, idx) => (
+          <Col xs={8} sm={8} md={6} lg={3} key={item.label}>
+            <div
+              className="bd-quick-action"
+              onClick={() => navigate(item.path)}
+              style={{ '--qa-color': item.color } as React.CSSProperties}
+            >
+              <style>{`.bd-quick-action:nth-child(${idx + 1})::before { background: ${item.color}; }`}</style>
+              <div className="bd-qa-icon-circle" style={{ background: item.bg, color: item.color }}>
+                {item.icon}
               </div>
-            </Col>
-          ))}
-
-          {/* 快速打卡按钮 */}
-          <Col xs={6} sm={6} md={3}>
-            {(() => {
-              const now = dayjs()
-              const hour = now.hour()
-              const morningChecked = todayCheckIn?.morningCheckedIn
-              const eveningChecked = todayCheckIn?.eveningCheckedIn
-
-              // 判断当前应该显示什么状态
-              let label = '快速打卡'
-              let icon = <ClockCircleOutlined />
-              let color = '#52c41a'
-              let bg = '#f6ffed'
-              let disabled = false
-
-              if (hour < 12) {
-                // 上午：显示上班打卡状态
-                if (morningChecked) {
-                  label = '已上班打卡'
-                  icon = <CheckCircleOutlined />
-                  color = '#52c41a'
-                  bg = '#f6ffed'
-                  disabled = true
-                } else if (hour >= 9) {
-                  label = '上班打卡(迟到)'
-                  icon = <ClockCircleOutlined />
-                  color = '#fa8c16'
-                  bg = '#fff7e6'
-                }
-              } else {
-                // 下午：显示下班打卡状态
-                if (eveningChecked) {
-                  label = '已下班打卡'
-                  icon = <CheckCircleOutlined />
-                  color = '#52c41a'
-                  bg = '#f6ffed'
-                  disabled = true
-                } else if (hour < 17 || (hour === 17 && now.minute() < 30)) {
-                  label = '下班打卡(早退)'
-                  icon = <ClockCircleOutlined />
-                  color = '#fa8c16'
-                  bg = '#fff7e6'
-                }
-              }
-
-              return (
-                <div
-                  onClick={disabled ? undefined : handleQuickCheckIn}
-                  style={{
-                    textAlign: 'center',
-                    padding: '10px 4px',
-                    borderRadius: 8,
-                    background: bg,
-                    cursor: disabled ? 'default' : 'pointer',
-                    transition: 'all 0.2s',
-                    opacity: disabled ? 0.8 : 1,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!disabled) {
-                      e.currentTarget.style.transform = 'translateY(-2px)'
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)'
-                    e.currentTarget.style.boxShadow = 'none'
-                  }}
-                >
-                  <div style={{ fontSize: 20, color: color, marginBottom: 4 }}>{icon}</div>
-                  <div style={{ fontSize: 12, color: '#333', fontWeight: 500 }}>{label}</div>
-                </div>
-              )
-            })()}
+              <div style={{ fontSize: 12, color: '#374151', fontWeight: 600, lineHeight: 1.4 }}>{item.label}</div>
+            </div>
           </Col>
-        </Row>
-      </Card>
+        ))}
 
-      {/* 任务管理面板 */}
+        {/* Check-in Card - spans remaining columns */}
+        <Col xs={8} sm={8} md={6} lg={Math.max(3, 12 - filteredQuickActions.length)}>
+          <div className={`bd-checkin-card${isAllChecked || (hour < 12 && morningChecked) || (hour >= 12 && eveningChecked) ? ' checked' : ''}`}>
+            {/* Left: Status info */}
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <CalendarOutlined style={{ fontSize: 14, color: '#059669' }} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#059669', letterSpacing: 0.5 }}>今日考勤</span>
+              </div>
+              {/* Status badges */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <span style={{
+                  fontSize: 11,
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  fontWeight: 500,
+                  background: morningChecked ? '#ecfdf5' : '#f3f4f6',
+                  color: morningChecked ? '#059669' : '#9ca3af',
+                  border: `1px solid ${morningChecked ? '#a7f3d0' : '#e5e7eb'}`,
+                }}>
+                  {morningChecked ? '✓ 上班' : '○ 上班'}
+                </span>
+                <span style={{
+                  fontSize: 11,
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  fontWeight: 500,
+                  background: eveningChecked ? '#ecfdf5' : '#f3f4f6',
+                  color: eveningChecked ? '#059669' : '#9ca3af',
+                  border: `1px solid ${eveningChecked ? '#a7f3d0' : '#e5e7eb'}`,
+                }}>
+                  {eveningChecked ? '✓ 下班' : '○ 下班'}
+                </span>
+              </div>
+              {checkinStatusText && (
+                <div style={{ fontSize: 11, color: '#6b7280' }}>{checkinStatusText}</div>
+              )}
+            </div>
+            {/* Right: Action button */}
+            <div style={{ textAlign: 'center', flexShrink: 0 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#1e293b', marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>
+                {currentTime.format('HH:mm')}
+              </div>
+              <Button
+                type={checkinDisabled ? 'default' : 'primary'}
+                size="small"
+                icon={checkinIcon}
+                disabled={checkinDisabled}
+                onClick={checkinDisabled ? undefined : handleQuickCheckIn}
+                style={{
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  fontSize: 12,
+                  padding: '4px 16px',
+                  height: 'auto',
+                  ...(checkinDisabled ? {} : { background: checkinColor, borderColor: checkinColor }),
+                  boxShadow: checkinDisabled ? 'none' : `0 4px 12px ${checkinColor}33`,
+                }}
+              >
+                {checkinLabel}
+              </Button>
+            </div>
+          </div>
+        </Col>
+      </Row>
+
+      {/* ====== Task Management Panel ====== */}
       <Card
-        style={{ borderRadius: 12, marginBottom: 16 }}
-        styles={{ body: { padding: '12px 16px' } }}
-        title={<span><DashboardOutlined /> 任务管理</span>}
-        extra={<Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setEditingTask(null); taskForm.resetFields(); setTaskModalVisible(true) }}>委派任务</Button>}
+        className="bd-page-enter-d2"
+        style={{ borderRadius: 16, marginBottom: 16, border: '1px solid #f1f5f9', overflow: 'hidden' }}
+        styles={{ body: { padding: '16px 20px' }, header: { padding: '16px 20px 0', borderBottom: 'none' } }}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 8,
+              background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontSize: 16,
+            }}>
+              <DashboardOutlined />
+            </div>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>任务管理</span>
+          </div>
+        }
+        extra={
+          <Button
+            type="primary"
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={() => { setEditingTask(null); taskForm.resetFields(); setTaskModalVisible(true) }}
+            style={{ borderRadius: 8, fontWeight: 600, background: '#4f46e5', boxShadow: '0 2px 8px rgba(79,70,229,0.25)' }}
+          >
+            委派任务
+          </Button>
+        }
       >
+        {/* Gradient divider under header */}
+        <div className="bd-section-divider" style={{ marginBottom: 16 }} />
+
         <Tabs
           activeKey={taskType}
           onChange={(k) => setTaskType(k as 'assigned' | 'delegated')}
           items={[
             {
               key: 'assigned',
-              label: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>我的待办 {activeTasks.length > 0 && <Badge count={activeTasks.length} size="small" style={{ marginLeft: 2, backgroundColor: '#1890ff' }} />}</span>,
+              label: (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                  <span>我的待办</span>
+                  {activeTasks.length > 0 && (
+                    <Badge
+                      count={activeTasks.length}
+                      size="small"
+                      style={{ backgroundColor: '#4f46e5', boxShadow: '0 0 0 2px rgba(79,70,229,0.15)', fontWeight: 600 }}
+                    />
+                  )}
+                </span>
+              ),
               children: tasks.length === 0
-                ? <Empty description="暂无任务" style={{ padding: 20 }} />
+                ? renderEmpty(<InboxOutlined />, '暂无任务', '轻松一刻，没有待办事项需要处理')
                 : (
-                  <List
-                    dataSource={sortTasks(tasks)}
-                    renderItem={(task: any) => {
-                      const p = priorityMap[task.priority] || priorityMap.MEDIUM
-                      const s = statusMap[task.status] || statusMap.PENDING
-                      const isOverdue = task.dueDate && dayjs(task.dueDate).isBefore(dayjs(), 'day') && !['COMPLETED', 'CANCELLED', 'SUBMITTED'].includes(task.status)
-                      const isDone = task.status === 'COMPLETED' || task.status === 'CANCELLED'
-                      const isSubmitted = task.status === 'SUBMITTED'
-                      return (
-                        <List.Item
-                          style={{ padding: '10px 0', opacity: isDone ? 0.6 : 1 }}
-                          actions={[
-                            !isDone && !isSubmitted && task.status === 'PENDING' && (
-                              <Button key="start" size="small" type="link" icon={<PlayCircleOutlined />} onClick={() => handleUpdateTask(task.id, 'IN_PROGRESS')}>开始</Button>
-                            ),
-                            !isDone && !isSubmitted && (
-                              <Button key="submit" size="small" type="link" icon={<CheckOutlined />} style={{ color: '#52c41a' }} onClick={() => handleUpdateTask(task.id, 'SUBMITTED')}>提交完成</Button>
-                            ),
-                            isSubmitted && (
-                              <span key="waiting" style={{ fontSize: 12, color: '#faad14' }}><ClockCircleOutlined /> 等待确认</span>
-                            ),
-                            !isDone && !isSubmitted && (
-                              <Popconfirm key="cancel" title="确定取消此任务？" onConfirm={() => handleUpdateTask(task.id, 'CANCELLED')}>
-                                <Button size="small" type="link" icon={<StopOutlined />} danger>取消</Button>
-                              </Popconfirm>
-                            ),
-                            <Tooltip key="edit" title="编辑"><Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEditTask(task)} /></Tooltip>,
-                            <Popconfirm key="del" title="确定删除此任务？" onConfirm={() => handleDeleteTask(task.id)}>
-                              <Button size="small" type="text" icon={<DeleteOutlined />} danger /></Popconfirm>,
-                          ].filter(Boolean) as any}
-                        >
-                          <List.Item.Meta
-                            title={
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: isDone ? 'line-through' : 'none' }}>
-                                <span style={{ fontSize: 13 }}>{task.title}</span>
-                                <Tag color={p.color} style={{ fontSize: 11 }}>{p.text}</Tag>
-                                <Tag color={s.color} style={{ fontSize: 11 }}>{s.text}</Tag>
-                                {isOverdue && <Tag color="error" style={{ fontSize: 11 }}><ExclamationCircleOutlined /> 逾期</Tag>}
-                              </div>
-                            }
-                            description={
-                              <div>
-                                <span style={{ fontSize: 12, color: '#999' }}>
-                                  委派人：{task.assigner?.name || '-'}
-                                  {task.dueDate && <span style={{ marginLeft: 12, color: isOverdue ? '#f5222d' : '#999' }}>截止：{dayjs(task.dueDate).format('YYYY-MM-DD')}</span>}
-                                  {task.status === 'COMPLETED' && task.completedAt && <span style={{ marginLeft: 12, color: '#52c41a' }}>✓ 完成于 {dayjs(task.completedAt).format('MM-DD HH:mm')}</span>}
-                                </span>
-                                {task.description && <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>{task.description}</div>}
-                              </div>
-                            }
-                          />
-                        </List.Item>
-                      )
-                    }}
-                  />
+                  <div>
+                    {sortTasks(tasks).map((task: any) => (
+                      <div key={task.id}>
+                        {renderTaskItem(task, false)}
+                      </div>
+                    ))}
+                  </div>
                 ),
             },
             {
               key: 'delegated',
-              label: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>我委派的 {activeDelegated.length > 0 && <Badge count={activeDelegated.length} size="small" style={{ marginLeft: 2, backgroundColor: '#722ed1' }} />}</span>,
+              label: (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                  <span>我委派的</span>
+                  {activeDelegated.length > 0 && (
+                    <Badge
+                      count={activeDelegated.length}
+                      size="small"
+                      style={{ backgroundColor: '#7c3aed', boxShadow: '0 0 0 2px rgba(124,58,237,0.15)', fontWeight: 600 }}
+                    />
+                  )}
+                </span>
+              ),
               children: delegatedTasks.length === 0
-                ? <Empty description="暂无委派任务" style={{ padding: 20 }} />
+                ? renderEmpty(<SendOutlined />, '暂无委派任务', '还没有委派给其他人的任务')
                 : (
-                  <List
-                    dataSource={sortTasks(delegatedTasks)}
-                    renderItem={(task: any) => {
-                      const p = priorityMap[task.priority] || priorityMap.MEDIUM
-                      const s = statusMap[task.status] || statusMap.PENDING
-                      const isDone = task.status === 'COMPLETED' || task.status === 'CANCELLED'
-                      const isSubmitted = task.status === 'SUBMITTED'
-                      return (
-                        <List.Item
-                          style={{ padding: '10px 0', opacity: isDone ? 0.6 : 1 }}
-                          actions={[
-                            isSubmitted && (
-                              <Popconfirm key="confirm" title="确认此任务已完成？" onConfirm={() => handleUpdateTask(task.id, 'COMPLETED')}>
-                                <Button size="small" type="primary" icon={<CheckCircleOutlined />} style={{ background: '#52c41a', borderColor: '#52c41a' }}>确认完成</Button>
-                              </Popconfirm>
-                            ),
-                            isSubmitted && (
-                              <Popconfirm key="reject" title="确定驳回此任务？将打回给执行人重新处理" onConfirm={() => handleUpdateTask(task.id, 'IN_PROGRESS')}>
-                                <Button size="small" danger>驳回</Button>
-                              </Popconfirm>
-                            ),
-                            !isDone && !isSubmitted && (
-                              <Popconfirm key="cancel" title="确定取消此任务？" onConfirm={() => handleUpdateTask(task.id, 'CANCELLED')}>
-                                <Button size="small" type="link" icon={<StopOutlined />} danger>取消</Button>
-                              </Popconfirm>
-                            ),
-                            <Tooltip key="edit" title="编辑"><Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEditTask(task)} /></Tooltip>,
-                            <Popconfirm key="del" title="确定删除此任务？" onConfirm={() => handleDeleteTask(task.id)}>
-                              <Button size="small" type="text" icon={<DeleteOutlined />} danger /></Popconfirm>,
-                          ].filter(Boolean) as any}
-                        >
-                          <List.Item.Meta
-                            title={
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: isDone ? 'line-through' : 'none' }}>
-                                <span style={{ fontSize: 13 }}>{task.title}</span>
-                                <Tag color={p.color} style={{ fontSize: 11 }}>{p.text}</Tag>
-                                <Tag color={s.color} style={{ fontSize: 11 }}>{s.text}</Tag>
-                              </div>
-                            }
-                            description={
-                              <div>
-                                <span style={{ fontSize: 12, color: '#999' }}>
-                                  指派给：{(task.assignees || []).map((a: any) => a.name).join('、') || '-'}
-                                  {task.dueDate && <span style={{ marginLeft: 12 }}>截止：{dayjs(task.dueDate).format('YYYY-MM-DD')}</span>}
-                                  {task.status === 'COMPLETED' && task.completedAt && <span style={{ marginLeft: 12, color: '#52c41a' }}>✓ 已完成于 {dayjs(task.completedAt).format('MM-DD HH:mm')}</span>}
-                                </span>
-                                {task.description && <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>{task.description}</div>}
-                              </div>
-                            }
-                          />
-                        </List.Item>
-                      )
-                    }}
-                  />
+                  <div>
+                    {sortTasks(delegatedTasks).map((task: any) => (
+                      <div key={task.id}>
+                        {renderTaskItem(task, true)}
+                      </div>
+                    ))}
+                  </div>
                 ),
             },
           ]}
         />
       </Card>
 
-      {/* 委派/编辑任务弹窗 */}
+      {/* ====== Delegate / Edit Task Modal ====== */}
       <Modal
-        title={editingTask ? '编辑任务' : '委派任务'}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 7,
+              background: editingTask
+                ? 'linear-gradient(135deg, #059669, #10b981)'
+                : 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontSize: 14,
+            }}>
+              {editingTask ? <EditOutlined /> : <PlusOutlined />}
+            </div>
+            <span style={{ fontWeight: 600 }}>{editingTask ? '编辑任务' : '委派任务'}</span>
+          </div>
+        }
         open={taskModalVisible}
         onOk={handleCreateTask}
         onCancel={() => { setTaskModalVisible(false); setEditingTask(null); taskForm.resetFields() }}
         okText={editingTask ? '保存' : '确认'}
         cancelText="取消"
+        okButtonProps={{ style: { background: '#4f46e5', borderColor: '#4f46e5', borderRadius: 8 } }}
+        cancelButtonProps={{ style: { borderRadius: 8 } }}
+        styles={{ body: { paddingTop: 16 } }}
       >
         <Form form={taskForm} layout="vertical">
           <Form.Item name="title" label="任务标题" rules={[{ required: true, message: '请输入任务标题' }]}>
-            <Input placeholder="请输入任务标题" />
+            <Input placeholder="请输入任务标题" style={{ borderRadius: 8 }} />
           </Form.Item>
           <Form.Item name="assigneeIds" label="指派给" rules={[{ required: true, message: '请选择指派人' }]}>
-            <Select mode="multiple" showSearch optionFilterProp="label" placeholder="选择成员（可多选）">
+            <Select mode="multiple" showSearch optionFilterProp="label" placeholder="选择成员（可多选）" style={{ borderRadius: 8 }}>
               {users.filter((u: any) => u.id !== user.id).map((u: any) => (
                 <Select.Option key={u.id} value={u.id} label={u.name}>
                   {u.name} ({u.username})
@@ -467,7 +580,7 @@ function Dashboard() {
             </Select>
           </Form.Item>
           <Form.Item name="description" label="任务描述">
-            <Input.TextArea rows={3} placeholder="描述任务内容（可选）" />
+            <Input.TextArea rows={3} placeholder="描述任务内容（可选）" style={{ borderRadius: 8 }} />
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
