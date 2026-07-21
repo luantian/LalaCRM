@@ -23,6 +23,7 @@ function ProjectArchive() {
   const [search, setSearch] = useState('')
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
   const [oppStats, setOppStats] = useState<any>(null)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
 
   const fetchData = async (page = 1, pageSize = 10) => {
     setLoading(true)
@@ -99,6 +100,32 @@ function ProjectArchive() {
     } catch (error) {
       message.error('删除失败')
     }
+  }
+
+  const handleBatchDelete = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请选择要删除的记录')
+      return
+    }
+    try {
+      for (const id of selectedRowKeys) {
+        if (activeTab === 'pending') {
+          await deleteOpportunity(id as number)
+        } else {
+          await deleteProject(id as number)
+        }
+      }
+      message.success(`批量删除 ${selectedRowKeys.length} 条记录成功`)
+      setSelectedRowKeys([])
+      fetchData(pagination.current, pagination.pageSize)
+    } catch (error) {
+      message.error('批量删除失败')
+    }
+  }
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
   }
 
   // 未完成商机列
@@ -253,7 +280,7 @@ function ProjectArchive() {
         styles={{ body: { padding: '0' } }}>
         <Tabs
           activeKey={activeTab}
-          onChange={(key) => { setActiveTab(key); setSearch('') }}
+          onChange={(key) => { setActiveTab(key); setSearch(''); setSelectedRowKeys([]) }}
           style={{ padding: '0 16px' }}
           items={[
             {
@@ -267,6 +294,11 @@ function ProjectArchive() {
           ]}
           tabBarExtraContent={
             <Space style={{ padding: '4px 0' }}>
+              {selectedRowKeys.length > 0 && (
+                <Popconfirm title={`确定要删除选中的 ${selectedRowKeys.length} 条记录吗?`} onConfirm={handleBatchDelete}>
+                  <Button danger size="small" icon={<DeleteOutlined />}>批量删除 ({selectedRowKeys.length})</Button>
+                </Popconfirm>
+              )}
               <Input
                 placeholder={activeTab === 'pending' ? '搜索商机名称' : '搜索项目名称'}
                 prefix={<SearchOutlined />}
@@ -286,6 +318,7 @@ function ProjectArchive() {
             dataSource={items}
             loading={loading}
             rowKey="id"
+            rowSelection={rowSelection}
             locale={{ emptyText: <Empty description={activeTab === 'pending' ? '没有未转化的商机' : '没有已归档的项目'} /> }}
             pagination={{
               current: pagination.current,
