@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, List } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined, EyeOutlined } from '@ant-design/icons'
 import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getCustomers, getProjects, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
@@ -438,12 +438,13 @@ function ExpenseList() {
 
         return (
           <Space>
+            <Button type="text" icon={<EyeOutlined />} onClick={() => navigate(`/expenses/${record.id}`)} title="查看详情" />
             {canEdit && (
-              <Button type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
+              <Button type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} title="编辑" />
             )}
-            {canEdit && (
+            {(isOwner || user.role === 'ADMIN') && (
               <Popconfirm title="确定要删除这条报销记录吗?" onConfirm={() => handleDelete(record.id)}>
-                <Button type="text" danger icon={<DeleteOutlined />} />
+                <Button type="text" danger icon={<DeleteOutlined />} title="删除" />
               </Popconfirm>
             )}
             <Dropdown menu={{ items: moreItems }}>
