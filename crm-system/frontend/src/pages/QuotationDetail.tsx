@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Row, Col, Modal, Space } from 'antd'
-import { ArrowLeftOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, SendOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
+import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Row, Col, Modal } from 'antd'
+import { ArrowLeftOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { getQuotationDetail, submitQuotation, approveQuotation, rejectQuotation, uploadQuotationFiles, deleteQuotationFile } from '../services/api'
+import { getQuotationDetail, uploadQuotationFiles, deleteQuotationFile } from '../services/api'
 
 const statusConfig: Record<string, { text: string; color: string }> = {
   DRAFT: { text: '草稿', color: 'default' }, SUBMITTED: { text: '已提交', color: 'processing' },
@@ -23,19 +23,6 @@ const QuotationDetail: React.FC = () => {
     try { const data: any = await getQuotationDetail(parseInt(id!)); setQuotation(data) }
     catch { message.error('获取报价单详情失败') }
     setLoading(false)
-  }
-
-  const handleSubmit = async () => {
-    try { await submitQuotation(parseInt(id!)); message.success('已提交'); fetchDetail() }
-    catch (e: any) { message.error(e?.error || '提交失败') }
-  }
-  const handleApprove = async () => {
-    try { await approveQuotation(parseInt(id!)); message.success('已批准'); fetchDetail() }
-    catch (e: any) { message.error(e?.error || '审批失败') }
-  }
-  const handleReject = async () => {
-    try { await rejectQuotation(parseInt(id!)); message.success('已拒绝'); fetchDetail() }
-    catch (e: any) { message.error(e?.error || '操作失败') }
   }
 
   const handleFileUpload = async (file: File) => {
@@ -112,15 +99,7 @@ const QuotationDetail: React.FC = () => {
             </div>
             <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>商机: {quotation.opportunity?.name || '-'} · 客户: {quotation.customer?.name || '-'}</div>
           </Col>
-          <Col flex="none">
-            <Space>
-              {quotation.status === 'DRAFT' && <Button type="primary" icon={<SendOutlined />} onClick={handleSubmit}>提交审批</Button>}
-              {quotation.status === 'SUBMITTED' && (<>
-                <Button type="primary" icon={<CheckOutlined />} onClick={handleApprove}>批准</Button>
-                <Button danger icon={<CloseOutlined />} onClick={handleReject}>拒绝</Button>
-              </>)}
-            </Space>
-          </Col>
+          <Col flex="none" />
         </Row>
       </Card>
 

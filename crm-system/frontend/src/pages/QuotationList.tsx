@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicker, message, Tag, Row, Col, Statistic, Space, Dropdown, Popconfirm } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, MoreOutlined, SendOutlined, CheckOutlined, CloseOutlined, EyeOutlined } from '@ant-design/icons'
+import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicker, message, Tag, Row, Col, Statistic, Space, Popconfirm } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, submitQuotation, approveQuotation, rejectQuotation, getOpportunities, getCustomers, getQuotationDetail } from '../services/api'
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getCustomers, getQuotationDetail } from '../services/api'
 
 const { Option } = Select
 
@@ -97,21 +97,6 @@ const QuotationList: React.FC = () => {
     })
   }
 
-  const handleSubmit = async (id: number) => {
-    try { await submitQuotation(id); message.success('已提交'); fetchQuotations(); fetchStats() }
-    catch (e: any) { message.error(e?.error || '提交失败') }
-  }
-
-  const handleApprove = async (id: number) => {
-    try { await approveQuotation(id); message.success('已批准'); fetchQuotations(); fetchStats() }
-    catch (e: any) { message.error(e?.error || '审批失败') }
-  }
-
-  const handleReject = async (id: number) => {
-    try { await rejectQuotation(id); message.success('已拒绝'); fetchQuotations(); fetchStats() }
-    catch (e: any) { message.error(e?.error || '操作失败') }
-  }
-
   const addItem = () => {
     setItems([...items, { name: '', quantity: 1, unit: '套', unitPrice: 0 }])
   }
@@ -162,31 +147,16 @@ const QuotationList: React.FC = () => {
     },
     { title: '创建人', key: 'owner', render: (_: any, r: any) => r.owner?.name || '-' },
     {
-      title: '操作', key: 'action', width: 300, fixed: 'right' as const,
-      render: (_: any, record: any) => {
-        const workflowItems: any[] = []
-        if (record.status === 'DRAFT') {
-          workflowItems.push({ key: 'submit', icon: <SendOutlined />, label: '提交审批', onClick: () => handleSubmit(record.id) })
-        }
-        if (record.status === 'SUBMITTED') {
-          workflowItems.push({ key: 'approve', icon: <CheckOutlined />, label: '批准', onClick: () => handleApprove(record.id) })
-          workflowItems.push({ key: 'reject', icon: <CloseOutlined />, label: '拒绝', onClick: () => handleReject(record.id) })
-        }
-        return (
-          <Space size={0}>
-            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/quotations/${record.id}`)}>查看</Button>
-            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-            <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-            </Popconfirm>
-            {workflowItems.length > 0 && (
-              <Dropdown menu={{ items: workflowItems }}>
-                <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
-              </Dropdown>
-            )}
-          </Space>
-        )
-      }
+      title: '操作', key: 'action', width: 240, fixed: 'right' as const,
+      render: (_: any, record: any) => (
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/quotations/${record.id}`)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+        </Space>
+      )
     }
   ]
 
@@ -196,8 +166,8 @@ const QuotationList: React.FC = () => {
 
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={6}><Card><Statistic title="报价总额" value={stats.totalAmount || 0} prefix="¥" precision={2} valueStyle={{ color: '#1890ff' }} /></Card></Col>
+        <Col span={6}><Card><Statistic title="总数" value={stats.total || 0} suffix="份" /></Card></Col>
         <Col span={6}><Card><Statistic title="草稿" value={stats.draft || 0} suffix="份" /></Card></Col>
-        <Col span={6}><Card><Statistic title="已批准" value={stats.approved || 0} suffix="份" valueStyle={{ color: '#52c41a' }} /></Card></Col>
         <Col span={6}><Card><Statistic title="中标" value={stats.won || 0} suffix="份" valueStyle={{ color: '#722ed1' }} /></Card></Col>
       </Row>
 

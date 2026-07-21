@@ -309,9 +309,6 @@ export const createQuotation = (data: any) => api.post('/quotations', data)
 export const updateQuotation = (id: number, data: any) => api.put(`/quotations/${id}`, data)
 export const deleteQuotation = (id: number) => api.delete(`/quotations/${id}`)
 export const getQuotationStats = () => api.get('/quotations/stats/overview')
-export const submitQuotation = (id: number) => api.post(`/quotations/${id}/submit`)
-export const approveQuotation = (id: number) => api.post(`/quotations/${id}/approve`)
-export const rejectQuotation = (id: number) => api.post(`/quotations/${id}/reject`)
 export const getQuotationVersions = (oppId: number) => api.get(`/quotations/opportunity/${oppId}/versions`)
 // 报价单附件
 export const uploadQuotationFiles = (id: number, files: FileList) => {
