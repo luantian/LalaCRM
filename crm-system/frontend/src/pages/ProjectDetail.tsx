@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Dropdown, Slider, Progress, Avatar, Empty, Image } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, MoreOutlined, EyeOutlined } from '@ant-design/icons'
-import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getCustomers, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, getShipments, createShipment, updateShipment, deleteShipment, getProcurements, createProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getInvoices, createInvoice, getUsers, safeJsonParse } from '../services/api'
+import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getCustomers, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, getShipments, createShipment, updateShipment, deleteShipment, getProcurements, createProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUsers, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
 const { TextArea } = Input
@@ -84,10 +84,6 @@ function ProjectDetail() {
   const [teamForm] = Form.useForm()
   const [allUsers, setAllUsers] = useState<any[]>([])
 
-  // 项目发票状态
-  const [projectInvoices, setProjectInvoices] = useState<any[]>([])
-  const [invoiceModalVisible, setInvoiceModalVisible] = useState(false)
-  const [invoiceForm] = Form.useForm()
 
   // 文件预览状态
   const [previewVisible, setPreviewVisible] = useState(false)
@@ -483,27 +479,6 @@ function ProjectDetail() {
     })
   }
 
-  // ===== 项目发票 =====
-  const fetchProjectInvoices = async () => {
-    try {
-      const res: any = await getInvoices({ projectId: parseInt(id!), pageSize: 100 })
-      setProjectInvoices(res.data || [])
-    } catch (e) { console.error('获取项目发票失败:', e) }
-  }
-  const handleAddInvoice = () => {
-    invoiceForm.resetFields()
-    invoiceForm.setFieldsValue({ invoiceType: 'EXPENSE', category: 'VAT_SPECIAL', taxRate: 13, status: 'PENDING' })
-    setInvoiceModalVisible(true)
-  }
-  const handleInvoiceSubmit = async () => {
-    try {
-      const values = await invoiceForm.validateFields()
-      await createInvoice({ ...values, projectId: parseInt(id!), invoiceDate: values.invoiceDate ? values.invoiceDate.toDate() : null })
-      message.success('创建成功')
-      setInvoiceModalVisible(false)
-      fetchProjectInvoices()
-    } catch {}
-  }
   const handleAddProcurement = () => { procurementForm.resetFields(); setProcurementModalVisible(true) }
   const handleProcurementSubmit = async () => {
     try {
@@ -847,47 +822,6 @@ function ProjectDetail() {
           locale={{ emptyText: '暂无团队成员，点击"添加成员"开始组建项目团队' }}
         />
       </div>
-    )},
-    { key: 'invoices', label: '发票管理', children: (
-      <div>
-        <div style={{ marginBottom: 16 }}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { handleAddInvoice(); fetchProjectInvoices() }}>新建发票</Button>
-        </div>
-        <Table
-          columns={[
-            { title: '发票号', dataIndex: 'invoiceNo', key: 'invoiceNo' },
-            { title: '类型', dataIndex: 'invoiceType', key: 'invoiceType', width: 80,
-              render: (v: string) => v === 'INCOME' ? <Tag color="blue">出项</Tag> : <Tag color="green">进项</Tag>
-            },
-            { title: '价税合计', dataIndex: 'totalAmount', key: 'totalAmount', render: (v: number) => `¥${Number(v).toLocaleString()}` },
-            { title: '对方单位', dataIndex: 'partyName', key: 'partyName', ellipsis: true },
-            { title: '状态', dataIndex: 'status', key: 'status', width: 100,
-              render: (v: string) => {
-                const map: Record<string, { t: string; c: string }> = { PENDING: { t: '待处理', c: 'default' }, ISSUED: { t: '已处理', c: 'processing' }, CONFIRMED: { t: '已认证', c: 'success' }, CANCELLED: { t: '已作废', c: 'error' } }
-                const s = map[v] || { t: v, c: 'default' }
-                return <Tag color={s.c}>{s.t}</Tag>
-              }
-            },
-            { title: '开票日期', dataIndex: 'invoiceDate', key: 'invoiceDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
-          ]}
-          dataSource={projectInvoices} rowKey="id" pagination={false}
-          locale={{ emptyText: '该项目暂无发票记录' }}
-          summary={() => {
-            const income = projectInvoices.filter((i: any) => i.invoiceType === 'INCOME').reduce((s: number, i: any) => s + Number(i.totalAmount), 0)
-            const expense = projectInvoices.filter((i: any) => i.invoiceType === 'EXPENSE').reduce((s: number, i: any) => s + Number(i.totalAmount), 0)
-            return (
-              <Table.Summary fixed>
-                <Table.Summary.Row>
-                  <Table.Summary.Cell index={0} colSpan={2}><strong>汇总</strong></Table.Summary.Cell>
-                  <Table.Summary.Cell index={1}><Tag color="blue">出项: ¥{income.toLocaleString()}</Tag></Table.Summary.Cell>
-                  <Table.Summary.Cell index={2} colSpan={2}><Tag color="green">进项: ¥{expense.toLocaleString()}</Tag></Table.Summary.Cell>
-                  <Table.Summary.Cell index={3}><strong>差额: ¥{(income - expense).toLocaleString()}</strong></Table.Summary.Cell>
-                </Table.Summary.Row>
-              </Table.Summary>
-            )
-          }}
-        />
-      </div>
     )}
   ]
 
@@ -1126,34 +1060,6 @@ function ProjectDetail() {
             </Select>
           </Form.Item>
           <Form.Item name="responsibility" label="职责描述"><TextArea rows={2} placeholder="描述该成员在项目中的职责" /></Form.Item>
-        </Form>
-      </Modal>
-
-      {/* 发票 Modal */}
-      <Modal title="新建发票" open={invoiceModalVisible} onOk={handleInvoiceSubmit} onCancel={() => setInvoiceModalVisible(false)}>
-        <Form form={invoiceForm} layout="vertical">
-          <Row gutter={16}>
-            <Col span={12}><Form.Item name="invoiceNo" label="发票号码" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="invoiceType" label="类型" rules={[{ required: true }]}>
-              <Select><Select.Option value="INCOME">出项（开给客户）</Select.Option><Select.Option value="EXPENSE">进项（供应商开出）</Select.Option></Select>
-            </Form.Item></Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={8}><Form.Item name="amount" label="不含税金额" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} precision={2} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="taxRate" label="税率(%)"><InputNumber style={{ width: '100%' }} precision={2} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="category" label="类别"><Select>
-              <Select.Option value="VAT_SPECIAL">增值税专票</Select.Option>
-              <Select.Option value="VAT_NORMAL">增值税普票</Select.Option>
-              <Select.Option value="VAT_ELECTRONIC">电子发票</Select.Option>
-              <Select.Option value="RECEIPT">收据</Select.Option>
-              <Select.Option value="OTHER">其他</Select.Option>
-            </Select></Form.Item></Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}><Form.Item name="partyName" label="对方单位"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="invoiceDate" label="开票日期"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
-          </Row>
-          <Form.Item name="remarks" label="备注"><TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
 

@@ -296,24 +296,6 @@ export const getProjectCostSummary = (projectId: number) => api.get(`/project-co
 // 仪表盘
 export const getDashboardStats = () => api.get('/dashboard/stats')
 
-// ==================== 发票管理 ====================
-export const getInvoices = (params?: any) => api.get('/invoices', { params })
-export const getInvoiceDetail = (id: number) => api.get(`/invoices/${id}`)
-export const createInvoice = (data: any) => api.post('/invoices', data)
-export const updateInvoice = (id: number, data: any) => api.put(`/invoices/${id}`, data)
-export const deleteInvoice = (id: number) => api.delete(`/invoices/${id}`)
-export const getInvoiceStats = () => api.get('/invoices/stats/overview')
-export const getInvoiceReconciliation = (params?: any) => api.get('/invoices/stats/reconciliation', { params })
-// 发票附件
-export const uploadInvoiceFiles = (invoiceId: number, files: FileList) => {
-  const formData = new FormData()
-  for (let i = 0; i < files.length; i++) { formData.append('files', files[i]) }
-  return api.post(`/invoices/${invoiceId}/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-}
-export const getInvoiceFiles = (invoiceId: number) => api.get(`/invoices/${invoiceId}/files`)
-export const deleteInvoiceFile = (invoiceId: number, fileId: number) => api.delete(`/invoices/${invoiceId}/files/${fileId}`)
-export const downloadInvoiceFile = (fileId: number) => `${api.defaults.baseURL}/invoices/files/${fileId}/download`
-
 // ==================== 项目团队管理 ====================
 export const getProjectTeam = (projectId: number) => api.get(`/projects/${projectId}/team`)
 export const addProjectTeamMember = (projectId: number, data: any) => api.post(`/projects/${projectId}/team`, data)

@@ -23,23 +23,22 @@ async function main() {
     { id: 2,  key: 'customers',       icon: 'TeamOutlined',         label: '客户管理', order: 4,  menuType: 'MENU',      path: '/customers',      component: 'CustomerList',     perm: 'view_customers' },
     { id: 4,  key: 'projects',        icon: 'ProjectOutlined',      label: '项目管理', order: 5,  menuType: 'MENU',      path: '/projects',       component: 'ProjectList',      perm: 'view_projects' },
     // 财务相关（平铺）
-    { id: 21, key: 'invoices',        icon: 'AuditOutlined',        label: '发票管理', order: 6,  menuType: 'MENU',      path: '/invoices',       component: 'InvoiceList',      perm: 'view_invoices' },
-    { id: 3,  key: 'sales',           icon: 'DollarOutlined',       label: '项目收支', order: 7,  menuType: 'MENU',      path: '/sales',          component: 'SaleList' },
-    { id: 9,  key: 'expenses',        icon: 'MoneyCollectOutlined', label: '费用报销', order: 8,  menuType: 'MENU',      path: '/expenses',       component: 'ExpenseList',      perm: 'view_expenses' },
+    { id: 3,  key: 'sales',           icon: 'DollarOutlined',       label: '项目收支', order: 6,  menuType: 'MENU',      path: '/sales',          component: 'SaleList' },
+    { id: 9,  key: 'expenses',        icon: 'MoneyCollectOutlined', label: '费用报销', order: 7,  menuType: 'MENU',      path: '/expenses',       component: 'ExpenseList',      perm: 'view_expenses' },
     // 日常办公
-    { id: 6,  key: 'office',          icon: 'ScheduleOutlined',     label: '日常办公', order: 9,  menuType: 'DIRECTORY' },
+    { id: 6,  key: 'office',          icon: 'ScheduleOutlined',     label: '日常办公', order: 8,  menuType: 'DIRECTORY' },
     { id: 7,  key: 'daily-reports',   icon: 'FileTextOutlined',     label: '日报管理', order: 1,  menuType: 'MENU',      path: '/daily-reports',  component: 'DailyReportList',  perm: 'view_reports',       parentId: 6 },
     { id: 8,  key: 'business-trips',  icon: 'CarOutlined',          label: '出差管理', order: 2,  menuType: 'MENU',      path: '/business-trips', component: 'BusinessTripList', perm: 'view_business_trips', parentId: 6 },
     { id: 22, key: 'check-ins',       icon: 'ClockCircleOutlined',  label: '考勤打卡', order: 3,  menuType: 'MENU',      path: '/check-ins',      component: 'CheckInList',                                  parentId: 6 },
     // 系统管理
-    { id: 10, key: 'system',          icon: 'SettingOutlined',      label: '系统管理', order: 10, menuType: 'DIRECTORY' },
+    { id: 10, key: 'system',          icon: 'SettingOutlined',      label: '系统管理', order: 9,  menuType: 'DIRECTORY' },
     { id: 11, key: 'users',           icon: 'UserOutlined',         label: '用户管理', order: 1,  menuType: 'MENU',      path: '/users',          component: 'UserManagement',                               parentId: 10 },
     { id: 12, key: 'roles',           icon: 'SafetyOutlined',       label: '角色管理', order: 2,  menuType: 'MENU',      path: '/roles',          component: 'RoleManagement',                                 parentId: 10 },
     { id: 13, key: 'menus',           icon: 'MenuOutlined',         label: '菜单管理', order: 3,  menuType: 'MENU',      path: '/menus',          component: 'MenuManagement',                                 parentId: 10 },
     { id: 14, key: 'departments',     icon: 'ApartmentOutlined',    label: '部门管理', order: 4,  menuType: 'MENU',      path: '/departments',    component: 'DepartmentManagement',                           parentId: 10 },
     { id: 15, key: 'dicts',           icon: 'BookOutlined',         label: '字典管理', order: 5,  menuType: 'MENU',      path: '/dicts',          component: 'DictManagement',                                   parentId: 10 },
     // 日志审计
-    { id: 16, key: 'logs',            icon: 'FileSearchOutlined',   label: '日志审计', order: 11, menuType: 'DIRECTORY' },
+    { id: 16, key: 'logs',            icon: 'FileSearchOutlined',   label: '日志审计', order: 10, menuType: 'DIRECTORY' },
     { id: 17, key: 'operation-logs',  icon: 'FileTextOutlined',     label: '操作日志', order: 1,  menuType: 'MENU',      path: '/operation-logs', component: 'OperationLogList',                               parentId: 16 },
     { id: 18, key: 'login-logs',      icon: 'LoginOutlined',        label: '登录日志', order: 2,  menuType: 'MENU',      path: '/login-logs',     component: 'LoginLogList',                                     parentId: 16 },
   ]

@@ -12,7 +12,6 @@ import {
   ClockCircleOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
-  LoginOutlined,
   MailOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
@@ -221,10 +220,6 @@ function Layout() {
     if (key === 'logout') handleLogout()
   }
 
-  // Role badge color
-  const roleColor = user.role === 'ADMIN' ? '#4f46e5' : '#6b7280'
-  const roleLabel = user.role === 'ADMIN' ? '管理员' : (user.role || '用户')
-
   return (
     <AntLayout style={{ minHeight: '100vh', background: '#f1f5f9' }}>
       {/* ====== Sidebar ====== */}
@@ -263,68 +258,6 @@ function Layout() {
             background: 'transparent',
           }}
         />
-
-        {/* User Info Section at Bottom */}
-        <div className="ly-sidebar-user">
-          <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="topLeft">
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '8px 10px',
-              borderRadius: 10,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              background: '#fafbff',
-              border: '1px solid #f1f5f9',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#f0f0ff'; e.currentTarget.style.borderColor = '#e0e7ff' }}
-              onMouseLeave={e => { e.currentTarget.style.background = '#fafbff'; e.currentTarget.style.borderColor = '#f1f5f9' }}
-            >
-              <div style={{ position: 'relative' }}>
-                <Avatar size={36} style={{ backgroundColor: '#4f46e5', fontWeight: 600 }} icon={<UserOutlined />}>
-                  {(user.name || user.username || 'U')[0]}
-                </Avatar>
-                <div style={{
-                  position: 'absolute',
-                  bottom: -1,
-                  right: -1,
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  background: '#22c55e',
-                  border: '2px solid #fff',
-                }} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: '#1e293b',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  lineHeight: 1.3,
-                }}>
-                  {user.name || user.username || '用户'}
-                </div>
-                <div style={{
-                  fontSize: 11,
-                  color: roleColor,
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  lineHeight: 1.3,
-                }}>
-                  <SafetyOutlined style={{ fontSize: 10 }} />
-                  {roleLabel}
-                </div>
-              </div>
-              <LoginOutlined style={{ color: '#94a3b8', fontSize: 12 }} />
-            </div>
-          </Dropdown>
-        </div>
       </Sider>
 
       {/* ====== Right Content Area ====== */}
