@@ -175,7 +175,7 @@ p {
    Ant Design Button - Press Effect
    ======================================== */
 .ant-btn {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
   position: relative;
   overflow: hidden;
 }
@@ -279,7 +279,7 @@ p {
 
 
 /* ========================================
-   Ant Design Modal - Animations
+   Ant Design Modal - 样式优化
    ======================================== */
 .ant-modal .ant-modal-content {
   border-radius: 16px;
@@ -293,7 +293,7 @@ p {
 }
 
 .ant-modal .ant-modal-close {
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, background 0.2s ease;
   border-radius: 50%;
 }
 
@@ -302,32 +302,7 @@ p {
   transform: rotate(90deg);
 }
 
-/* Modal entrance animation */
-.ant-modal.zoom-enter,
-.ant-modal.fade-enter {
-  animation: modalEnter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes modalEnter {
-  from {
-    opacity: 0;
-    transform: scale(0.92) translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-/* Modal backdrop animation */
-.ant-modal-mask {
-  animation: modalMaskEnter 0.25s ease;
-}
-
-@keyframes modalMaskEnter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+/* 弹窗动画通过 Ant Design theme token 控制，不在此处叠加自定义动画 */
 
 
 /* ========================================
@@ -348,7 +323,8 @@ p {
    Transitions for common elements
    ======================================== */
 .ant-card, .ant-btn, .ant-tag, .ant-input, .ant-select, .ant-badge {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  /* 不使用 transition: all — 会干扰 Ant Design 内置动画导致弹窗闪烁 */
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
 }
 
 
@@ -423,12 +399,6 @@ p {
 .ant-message-notice-content {
   border-radius: 10px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
-  animation: messageSlideIn 0.3s ease;
-}
-
-@keyframes messageSlideIn {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 
@@ -449,7 +419,7 @@ p {
    ======================================== */
 .ant-pagination-item {
   border-radius: 8px !important;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .ant-pagination-item:hover {
