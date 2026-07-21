@@ -68,7 +68,7 @@ async function getUserMenus(userId: number, fallbackRoleId: number | null, roleS
   // Define system menu keys that should only be visible to ADMIN
   const systemMenuKeys = [
     'system', 'users', 'roles', 'menus', 'departments',
-    'dicts', 'operation-logs', 'login-logs'
+    'dicts', 'logs', 'operation-logs', 'login-logs'
   ]
 
   // For non-admin users, filter out system menus
