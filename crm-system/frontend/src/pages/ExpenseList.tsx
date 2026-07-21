@@ -407,7 +407,7 @@ function ExpenseList() {
     {
       title: '操作',
       key: 'action',
-      width: 220,
+      width: 300,
       render: (_: any, record: any) => {
         const isOwner = record.ownerId === user.id
         const canEdit = (record.status === 'DRAFT' || record.status === 'REJECTED') && (isOwner || user.role === 'ADMIN')
@@ -437,18 +437,18 @@ function ExpenseList() {
         }
 
         return (
-          <Space>
-            <Button type="text" icon={<EyeOutlined />} onClick={() => navigate(`/expenses/${record.id}`)} title="查看详情" />
+          <Space size={0}>
+            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/expenses/${record.id}`)}>查看</Button>
             {canEdit && (
-              <Button type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} title="编辑" />
+              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
             )}
             {(isOwner || user.role === 'ADMIN') && (
-              <Popconfirm title="确定要删除这条报销记录吗?" onConfirm={() => handleDelete(record.id)}>
-                <Button type="text" danger icon={<DeleteOutlined />} title="删除" />
+              <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+                <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
               </Popconfirm>
             )}
             <Dropdown menu={{ items: moreItems }}>
-              <Button type="text" icon={<MoreOutlined />} />
+              <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
             </Dropdown>
           </Space>
         )

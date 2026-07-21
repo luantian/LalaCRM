@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Tabs, Button, message, Space, Tag, Card, Input, Row, Col, Statistic, Empty, Tooltip } from 'antd'
-import { ReloadOutlined, SearchOutlined, InboxOutlined, EyeOutlined, ProjectOutlined, ClockCircleOutlined, CheckCircleOutlined, SwapOutlined, FundOutlined } from '@ant-design/icons'
-import { getOpportunities, getProjects, convertOpportunity, getOpportunityStats } from '../services/api'
+import { Table, Tabs, Button, message, Space, Tag, Card, Input, Row, Col, Statistic, Empty, Popconfirm } from 'antd'
+import { ReloadOutlined, SearchOutlined, InboxOutlined, EyeOutlined, ProjectOutlined, ClockCircleOutlined, CheckCircleOutlined, FundOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { getOpportunities, getProjects, getOpportunityStats, deleteOpportunity, deleteProject } from '../services/api'
 import dayjs from 'dayjs'
 
 const oppStatusMap: Record<string, { label: string; color: string }> = {
@@ -79,14 +79,25 @@ function ProjectArchive() {
     fetchData(page, pageSize)
   }
 
-  const handleConvert = async (id: number) => {
+  const handleEdit = (record: any) => {
+    if (activeTab === 'pending') {
+      navigate(`/opportunities/${record.id}/edit`)
+    } else {
+      navigate(`/projects/${record.id}/edit`)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
     try {
-      await convertOpportunity(id)
-      message.success('商机已转化为项目')
+      if (activeTab === 'pending') {
+        await deleteOpportunity(id)
+      } else {
+        await deleteProject(id)
+      }
+      message.success('删除成功')
       fetchData(pagination.current, pagination.pageSize)
-      fetchStats()
-    } catch (error: any) {
-      message.error(error?.error || '转化失败')
+    } catch (error) {
+      message.error('删除失败')
     }
   }
 
@@ -140,15 +151,15 @@ function ProjectArchive() {
     {
       title: '操作',
       key: 'action',
-      width: 120,
+      width: 240,
+      fixed: 'right' as const,
       render: (_: any, record: any) => (
-        <Space>
-          <Tooltip title="查看详情">
-            <Button type="text" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/opportunities/${record.id}`)} />
-          </Tooltip>
-          <Tooltip title="转化为项目">
-            <Button type="text" size="small" icon={<SwapOutlined />} style={{ color: '#1890ff' }} onClick={() => handleConvert(record.id)} />
-          </Tooltip>
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/opportunities/${record.id}`)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
         </Space>
       )
     }
@@ -195,11 +206,16 @@ function ProjectArchive() {
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 240,
+      fixed: 'right' as const,
       render: (_: any, record: any) => (
-        <Tooltip title="查看详情">
-          <Button type="text" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/projects/${record.id}`)} />
-        </Tooltip>
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/projects/${record.id}`)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+        </Space>
       )
     }
   ]

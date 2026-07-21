@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Card, Table, Tag, message, Button, Modal, Tree, Space, Tooltip, Form, Input, Checkbox, Divider, Empty } from 'antd'
-import { CheckCircleFilled, CloseCircleFilled, SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Card, Table, Tag, message, Button, Modal, Tree, Space, Form, Input, Checkbox, Divider, Empty, Dropdown, Descriptions } from 'antd'
+import { CheckCircleFilled, CloseCircleFilled, SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, MoreOutlined } from '@ant-design/icons'
 import type { DataNode } from 'antd/es/tree'
 import api from '../services/api'
 import { getRoleMenus, assignRoleMenus } from '../services/api'
@@ -42,6 +42,7 @@ function RoleManagement() {
   const [editingRole, setEditingRole] = useState<Role | null>(null)
   const [roleForm] = Form.useForm()
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([])
+  const [viewingRole, setViewingRole] = useState<Role | null>(null)
 
   // 权限定义（对照表用）
   const permissionDefs = [
@@ -219,6 +220,11 @@ function RoleManagement() {
     }
   }
 
+  // 查看角色详情
+  const handleViewRole = (role: Role) => {
+    setViewingRole(role)
+  }
+
   const handleDeleteRole = async (role: Role) => {
     try {
       await api.delete(`/roles/${role.id}`)
@@ -331,18 +337,17 @@ function RoleManagement() {
               )
             },
             {
-              title: '操作', key: 'action', width: 200,
+              title: '操作', key: 'action', width: 300,
               render: (_: any, record: Role) => (
-                <Space>
-                  <Tooltip title="编辑角色信息">
-                    <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditRole(record)}>编辑</Button>
-                  </Tooltip>
-                  <Tooltip title="分配该角色可访问的菜单">
-                    <Button type="link" size="small" icon={<SettingOutlined />} onClick={() => handleAssignMenus(record)}>菜单</Button>
-                  </Tooltip>
-                  <Tooltip title="删除角色">
-                    <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => Modal.confirm({ title: '确认删除', content: `确定删除角色"${record.displayName}"？如果该角色下有用户将无法删除。`, onOk: () => handleDeleteRole(record) })}>删除</Button>
-                  </Tooltip>
+                <Space size={0}>
+                  <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewRole(record)}>查看</Button>
+                  <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditRole(record)}>编辑</Button>
+                  <Dropdown menu={{ items: [
+                    { key: 'menu', icon: <SettingOutlined />, label: '分配菜单', onClick: () => handleAssignMenus(record) }
+                  ]}}>
+                    <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
+                  </Dropdown>
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => Modal.confirm({ title: '确认删除', content: `确定删除角色"${record.displayName}"？如果该角色下有用户将无法删除。`, onOk: () => handleDeleteRole(record) })}>删除</Button>
                 </Space>
               )
             }
@@ -428,6 +433,25 @@ function RoleManagement() {
             </div>
           ))}
         </div>
+      </Modal>
+
+      {/* 查看角色详情弹窗 */}
+      <Modal
+        title="角色详情"
+        open={!!viewingRole}
+        onCancel={() => setViewingRole(null)}
+        footer={null}
+        width={500}
+      >
+        {viewingRole && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label="角色名称">{viewingRole.displayName}</Descriptions.Item>
+            <Descriptions.Item label="角色标识"><code>{viewingRole.name}</code></Descriptions.Item>
+            <Descriptions.Item label="说明">{viewingRole.description || '-'}</Descriptions.Item>
+            <Descriptions.Item label="数据范围">{scopeMap[viewingRole.name] || '-'}</Descriptions.Item>
+            <Descriptions.Item label="权限数">{viewingRole.permissions?.length || 0}</Descriptions.Item>
+          </Descriptions>
+        )}
       </Modal>
     </div>
   )

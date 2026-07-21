@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Empty } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Empty, Popconfirm } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, MoreOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { getOpportunities, createOpportunity, updateOpportunity, deleteOpportunity, getOpportunityStats, getCustomers, convertOpportunity } from '../services/api'
 import dayjs from 'dayjs'
@@ -222,19 +222,23 @@ function OpportunityList() {
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 300,
+      fixed: 'right' as const,
       render: (_: any, record: any) => (
-        <Dropdown menu={{
-          items: [
-            { key: 'view', icon: <EyeOutlined />, label: '查看', onClick: () => navigate(`/opportunities/${record.id}`) },
-            { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => handleEdit(record) },
-            { key: 'convert', icon: <ThunderboltOutlined />, label: '转化为项目', onClick: () => handleConvert(record.id) },
-            { type: 'divider' },
-            { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => handleDelete(record.id) },
-          ]
-        }}>
-          <Button type="text" icon={<MoreOutlined />} />
-        </Dropdown>
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/opportunities/${record.id}`)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+          <Dropdown menu={{
+            items: [
+              { key: 'convert', icon: <ThunderboltOutlined />, label: '转化为项目', onClick: () => handleConvert(record.id) },
+            ]
+          }}>
+            <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
+          </Dropdown>
+        </Space>
       )
     }
   ]

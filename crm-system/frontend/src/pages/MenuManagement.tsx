@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Card, Space, Switch, Tooltip } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, DownOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
+import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Card, Space, Switch, Tooltip, Descriptions } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, DownOutlined, RightOutlined, SearchOutlined, EyeOutlined } from '@ant-design/icons'
 import api from '../services/api'
 import * as Icons from '@ant-design/icons'
 
@@ -99,6 +99,7 @@ function MenuManagement() {
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editingMenu, setEditingMenu] = useState<MenuItem | null>(null)
+  const [viewingMenu, setViewingMenu] = useState<MenuItem | null>(null)
   const [form] = Form.useForm()
 
   // 构建菜单树结构
@@ -171,6 +172,11 @@ function MenuManagement() {
     setEditingMenu(null)
     form.resetFields()
     setModalVisible(true)
+  }
+
+  // 查看菜单详情
+  const handleViewMenu = (menu: MenuItem) => {
+    setViewingMenu(menu)
   }
 
   // 打开编辑菜单弹窗
@@ -277,30 +283,18 @@ function MenuManagement() {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 240,
       render: (_: any, record: MenuItem) => (
-        <Space>
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewMenu(record)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
           <Popconfirm
-            title="确认删除"
-            description="确定要删除这个菜单吗？"
+            title="确定要删除吗?"
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
           >
-            <Button
-              type="link"
-              danger
-              icon={<DeleteOutlined />}
-            >
-              删除
-            </Button>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
         </Space>
       )
@@ -432,6 +426,26 @@ function MenuManagement() {
             </Select>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 查看菜单详情弹窗 */}
+      <Modal
+        title="菜单详情"
+        open={!!viewingMenu}
+        onCancel={() => setViewingMenu(null)}
+        footer={null}
+        width={500}
+      >
+        {viewingMenu && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label="菜单名称">{viewingMenu.label}</Descriptions.Item>
+            <Descriptions.Item label="菜单标识"><code>{viewingMenu.key}</code></Descriptions.Item>
+            <Descriptions.Item label="图标">{viewingMenu.icon || '-'}</Descriptions.Item>
+            <Descriptions.Item label="排序">{viewingMenu.order}</Descriptions.Item>
+            <Descriptions.Item label="是否显示">{viewingMenu.isVisible ? '是' : '否'}</Descriptions.Item>
+            <Descriptions.Item label="所需角色">{viewingMenu.requiredRole || '所有用户'}</Descriptions.Item>
+          </Descriptions>
+        )}
       </Modal>
     </div>
   )

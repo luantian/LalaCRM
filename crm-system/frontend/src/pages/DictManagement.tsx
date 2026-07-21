@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Card, Table, Button, Modal, Form, Input, Select, message, Space, Tag, Row, Col, Popconfirm } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, BookOutlined, AppstoreOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Modal, Form, Input, Select, message, Space, Tag, Row, Col, Popconfirm, Descriptions } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, BookOutlined, AppstoreOutlined, EyeOutlined } from '@ant-design/icons'
 import api from '../services/api'
 
 interface DictType {
@@ -38,6 +38,8 @@ function DictManagement() {
   const [itemModalVisible, setItemModalVisible] = useState(false)
   const [editingType, setEditingType] = useState<DictType | null>(null)
   const [editingItem, setEditingItem] = useState<DictItem | null>(null)
+  const [viewingType, setViewingType] = useState<DictType | null>(null)
+  const [viewingItem, setViewingItem] = useState<DictItem | null>(null)
   const [typeForm] = Form.useForm()
   const [itemForm] = Form.useForm()
 
@@ -78,6 +80,10 @@ function DictManagement() {
   }
 
   // ========== 字典类型操作 ==========
+  const handleViewType = (type: DictType) => {
+    setViewingType(type)
+  }
+
   const handleAddType = () => {
     setEditingType(null)
     typeForm.resetFields()
@@ -137,6 +143,10 @@ function DictManagement() {
   }
 
   // ========== 字典项操作 ==========
+  const handleViewItem = (item: DictItem) => {
+    setViewingItem(item)
+  }
+
   const handleAddItem = () => {
     if (!selectedType) {
       message.warning('请先选择一个字典类型')
@@ -225,22 +235,19 @@ function DictManagement() {
     {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 240,
       render: (_: any, record: DictType) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => handleEditType(record)}>
-            编辑
-          </Button>
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewType(record)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditType(record)}>编辑</Button>
           <Popconfirm
-            title="确认删除"
+            title="确定要删除吗?"
             description="删除字典类型会同时删除其下所有字典项，确定继续？"
             onConfirm={() => handleDeleteType(record.id)}
             okText="确定"
             cancelText="取消"
           >
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -282,22 +289,18 @@ function DictManagement() {
     {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 240,
       render: (_: any, record: DictItem) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => handleEditItem(record)}>
-            编辑
-          </Button>
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewItem(record)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditItem(record)}>编辑</Button>
           <Popconfirm
-            title="确认删除"
-            description="确定要删除该字典项吗？"
+            title="确定要删除吗?"
             onConfirm={() => handleDeleteItem(record.id)}
             okText="确定"
             cancelText="取消"
           >
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -473,6 +476,48 @@ function DictManagement() {
             <Input.TextArea rows={2} placeholder="请输入备注" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 查看字典类型详情弹窗 */}
+      <Modal
+        title="字典类型详情"
+        open={!!viewingType}
+        onCancel={() => setViewingType(null)}
+        footer={null}
+        width={500}
+      >
+        {viewingType && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label="名称">{viewingType.name}</Descriptions.Item>
+            <Descriptions.Item label="编码"><Tag>{viewingType.code}</Tag></Descriptions.Item>
+            <Descriptions.Item label="状态">
+              <Tag color={statusColor(viewingType.status)}>{statusText(viewingType.status)}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="备注">{viewingType.remark || '-'}</Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
+
+      {/* 查看字典项详情弹窗 */}
+      <Modal
+        title="字典项详情"
+        open={!!viewingItem}
+        onCancel={() => setViewingItem(null)}
+        footer={null}
+        width={500}
+      >
+        {viewingItem && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label="标签">{viewingItem.label}</Descriptions.Item>
+            <Descriptions.Item label="值"><Tag color="blue">{viewingItem.value}</Tag></Descriptions.Item>
+            <Descriptions.Item label="排序">{viewingItem.sort}</Descriptions.Item>
+            <Descriptions.Item label="CSS Class">{viewingItem.cssClass || '-'}</Descriptions.Item>
+            <Descriptions.Item label="状态">
+              <Tag color={statusColor(viewingItem.status)}>{statusText(viewingItem.status)}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="备注">{viewingItem.remark || '-'}</Descriptions.Item>
+          </Descriptions>
+        )}
       </Modal>
     </Row>
   )

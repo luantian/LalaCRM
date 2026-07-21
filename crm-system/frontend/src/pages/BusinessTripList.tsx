@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Popconfirm } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, CheckOutlined, CloseOutlined, MoreOutlined, SendOutlined, UndoOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getCustomers, getProjects, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
@@ -311,48 +311,42 @@ function BusinessTripList() {
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 300,
+      fixed: 'right' as const,
       render: (_: any, record: any) => {
-        const items: any[] = []
         const isOwner = record.ownerId === user.id
-        const canEdit = (record.status === 'DRAFT' || record.status === 'REJECTED') && (isOwner || user.role === 'ADMIN')
-
-        items.push({ key: 'view', icon: <EyeOutlined />, label: '查看', onClick: () => navigate(`/business-trips/${record.id}`) })
-
-        if (canEdit) {
-          items.push({ key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => handleEdit(record) })
-        }
+        const workflowItems: any[] = []
 
         if (record.status === 'DRAFT' && (isOwner || user.role === 'ADMIN')) {
-          items.push({ type: 'divider' })
-          items.push({ key: 'submit', icon: <SendOutlined />, label: '提交申请', onClick: () => handleSubmitTrip(record.id) })
+          workflowItems.push({ key: 'submit', icon: <SendOutlined />, label: '提交申请', onClick: () => handleSubmitTrip(record.id) })
         }
 
         if (record.status === 'SUBMITTED' && canApprove) {
-          items.push({ type: 'divider' })
-          items.push({ key: 'approve', icon: <CheckOutlined />, label: '批准', onClick: () => handleOpenApproveModal(record, 'approve') })
-          items.push({ key: 'reject', icon: <CloseOutlined />, label: '驳回', danger: true, onClick: () => handleOpenApproveModal(record, 'reject') })
+          workflowItems.push({ key: 'approve', icon: <CheckOutlined />, label: '批准', onClick: () => handleOpenApproveModal(record, 'approve') })
+          workflowItems.push({ key: 'reject', icon: <CloseOutlined />, label: '驳回', danger: true, onClick: () => handleOpenApproveModal(record, 'reject') })
         }
 
         if (record.status === 'REJECTED' && (isOwner || user.role === 'ADMIN')) {
-          items.push({ type: 'divider' })
-          items.push({ key: 'resubmit', icon: <UndoOutlined />, label: '重新提交', onClick: () => handleResubmit(record.id) })
+          workflowItems.push({ key: 'resubmit', icon: <UndoOutlined />, label: '重新提交', onClick: () => handleResubmit(record.id) })
         }
 
         if (record.status === 'APPROVED' && (isOwner || user.role === 'ADMIN')) {
-          items.push({ type: 'divider' })
-          items.push({ key: 'complete', icon: <CheckCircleOutlined />, label: '标记完成', onClick: () => handleComplete(record.id) })
-        }
-
-        if (canEdit) {
-          items.push({ type: 'divider' })
-          items.push({ key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => handleDelete(record.id) })
+          workflowItems.push({ key: 'complete', icon: <CheckCircleOutlined />, label: '标记完成', onClick: () => handleComplete(record.id) })
         }
 
         return (
-          <Dropdown menu={{ items }}>
-            <Button type="text" icon={<MoreOutlined />} />
-          </Dropdown>
+          <Space size={0}>
+            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/business-trips/${record.id}`)}>查看</Button>
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+            <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            </Popconfirm>
+            {workflowItems.length > 0 && (
+              <Dropdown menu={{ items: workflowItems }}>
+                <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
+              </Dropdown>
+            )}
+          </Space>
         )
       }
     }

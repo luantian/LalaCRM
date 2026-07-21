@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicker, message, Tag, Row, Col, Statistic, Space, Dropdown } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, MoreOutlined, SendOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
+import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicker, message, Tag, Row, Col, Statistic, Space, Dropdown, Popconfirm } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, MoreOutlined, SendOutlined, CheckOutlined, CloseOutlined, EyeOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, submitQuotation, approveQuotation, rejectQuotation, getOpportunities, getCustomers, getQuotationDetail } from '../services/api'
@@ -162,24 +162,31 @@ const QuotationList: React.FC = () => {
     },
     { title: '创建人', key: 'owner', render: (_: any, r: any) => r.owner?.name || '-' },
     {
-      title: '操作', key: 'action', width: 120,
-      render: (_: any, record: any) => (
-        <Dropdown menu={{
-          items: [
-            ...(record.status === 'DRAFT' ? [
-              { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => handleEdit(record) },
-              { key: 'submit', icon: <SendOutlined />, label: '提交审批', onClick: () => handleSubmit(record.id) },
-              { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => handleDelete(record.id) },
-            ] : []),
-            ...(record.status === 'SUBMITTED' ? [
-              { key: 'approve', icon: <CheckOutlined />, label: '批准', onClick: () => handleApprove(record.id) },
-              { key: 'reject', icon: <CloseOutlined />, label: '拒绝', onClick: () => handleReject(record.id) },
-            ] : []),
-          ]
-        }}>
-          <Button type="text" icon={<MoreOutlined />} />
-        </Dropdown>
-      )
+      title: '操作', key: 'action', width: 300, fixed: 'right' as const,
+      render: (_: any, record: any) => {
+        const workflowItems: any[] = []
+        if (record.status === 'DRAFT') {
+          workflowItems.push({ key: 'submit', icon: <SendOutlined />, label: '提交审批', onClick: () => handleSubmit(record.id) })
+        }
+        if (record.status === 'SUBMITTED') {
+          workflowItems.push({ key: 'approve', icon: <CheckOutlined />, label: '批准', onClick: () => handleApprove(record.id) })
+          workflowItems.push({ key: 'reject', icon: <CloseOutlined />, label: '拒绝', onClick: () => handleReject(record.id) })
+        }
+        return (
+          <Space size={0}>
+            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/quotations/${record.id}`)}>查看</Button>
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+            <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            </Popconfirm>
+            {workflowItems.length > 0 && (
+              <Dropdown menu={{ items: workflowItems }}>
+                <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
+              </Dropdown>
+            )}
+          </Space>
+        )
+      }
     }
   ]
 

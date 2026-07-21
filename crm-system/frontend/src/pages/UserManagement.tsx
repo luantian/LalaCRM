@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Card, Space, Tag, Empty } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Card, Space, Tag, Empty, Descriptions } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons'
 import api from '../services/api'
 
 interface User {
@@ -26,6 +26,7 @@ function UserManagement() {
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [viewingUser, setViewingUser] = useState<User | null>(null)
   const [form] = Form.useForm()
 
   // 获取用户列表
@@ -79,6 +80,11 @@ function UserManagement() {
       password: '' // 编辑时不显示密码
     })
     setModalVisible(true)
+  }
+
+  // 查看用户详情
+  const handleViewUser = (user: User) => {
+    setViewingUser(user)
   }
 
   // 删除用户
@@ -176,27 +182,18 @@ function UserManagement() {
     {
       title: '操作',
       key: 'action',
+      width: 240,
       render: (_: any, record: User) => (
-        <Space>
-          <Button
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewUser(record)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
           <Popconfirm
-            title="确认删除"
-            description="确定要删除这个用户吗？"
+            title="确定要删除吗?"
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
           >
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-            >
-              删除
-            </Button>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
         </Space>
       )
@@ -300,6 +297,27 @@ function UserManagement() {
             </Select>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 查看用户详情弹窗 */}
+      <Modal
+        title="用户详情"
+        open={!!viewingUser}
+        onCancel={() => setViewingUser(null)}
+        footer={null}
+        width={500}
+      >
+        {viewingUser && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label="用户名">{viewingUser.username}</Descriptions.Item>
+            <Descriptions.Item label="姓名">{viewingUser.name}</Descriptions.Item>
+            <Descriptions.Item label="邮箱">{viewingUser.email}</Descriptions.Item>
+            <Descriptions.Item label="角色">
+              <Tag color={roleColors[viewingUser.role] || 'default'}>{viewingUser.role}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="创建时间">{new Date(viewingUser.createdAt).toLocaleDateString('zh-CN')}</Descriptions.Item>
+          </Descriptions>
+        )}
       </Modal>
     </div>
   )

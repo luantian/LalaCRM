@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Card, Table, Button, Modal, Form, Input, Select, message, Space, Tag, Tree, Row, Col, Descriptions, Popconfirm } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined, UserOutlined, ExpandAltOutlined, ShrinkOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined, UserOutlined, ExpandAltOutlined, ShrinkOutlined, EyeOutlined } from '@ant-design/icons'
 import api from '../services/api'
 
 interface Department {
@@ -81,6 +81,7 @@ function DepartmentManagement() {
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editingDept, setEditingDept] = useState<Department | null>(null)
+  const [viewingDept, setViewingDept] = useState<Department | null>(null)
   const [form] = Form.useForm()
 
   const fetchDepartments = async () => {
@@ -150,6 +151,11 @@ function DepartmentManagement() {
       form.setFieldsValue({ status: 'ENABLED', order: 0 })
     }
     setModalVisible(true)
+  }
+
+  // 查看部门详情
+  const handleViewDept = (dept: any) => {
+    setViewingDept(dept)
   }
 
   // 打开编辑弹窗
@@ -244,21 +250,19 @@ function DepartmentManagement() {
     {
       title: '操作',
       key: 'action',
+      width: 240,
       render: (_: any, record: any) => (
-        <Space>
-          <Button icon={<EditOutlined />} onClick={() => handleEdit(record)}>
-            编辑
-          </Button>
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewDept(record)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
           <Popconfirm
-            title="确认删除"
-            description="确定要删除该部门吗？子部门也会被一并删除。"
+            title="确定要删除吗?"
+            description="子部门也会被一并删除。"
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
           >
-            <Button danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -434,6 +438,30 @@ function DepartmentManagement() {
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 查看部门详情弹窗 */}
+      <Modal
+        title="部门详情"
+        open={!!viewingDept}
+        onCancel={() => setViewingDept(null)}
+        footer={null}
+        width={560}
+      >
+        {viewingDept && (
+          <Descriptions column={2} bordered size="small">
+            <Descriptions.Item label="部门名称">{viewingDept.name}</Descriptions.Item>
+            <Descriptions.Item label="状态">
+              <Tag color={statusColor(viewingDept.status)}>{statusText(viewingDept.status)}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="负责人">{viewingDept.leader || '-'}</Descriptions.Item>
+            <Descriptions.Item label="排序">{viewingDept.order ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="联系电话">{viewingDept.phone || '-'}</Descriptions.Item>
+            <Descriptions.Item label="邮箱">{viewingDept.email || '-'}</Descriptions.Item>
+            <Descriptions.Item label="直接子部门数">{viewingDept.children ? viewingDept.children.length : 0}</Descriptions.Item>
+            <Descriptions.Item label="全部子孙部门数">{countChildren(viewingDept)}</Descriptions.Item>
+          </Descriptions>
+        )}
       </Modal>
     </Row>
   )

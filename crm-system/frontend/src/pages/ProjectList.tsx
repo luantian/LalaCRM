@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Dropdown, Empty } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, MoreOutlined } from '@ant-design/icons'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Empty, Popconfirm } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined } from '@ant-design/icons'
 import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getCustomers } from '../services/api'
 import dayjs from 'dayjs'
 
@@ -199,18 +199,16 @@ function ProjectList() {
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 240,
+      fixed: 'right' as const,
       render: (_: any, record: any) => (
-        <Dropdown menu={{
-          items: [
-            { key: 'view', icon: <EyeOutlined />, label: '查看', onClick: () => navigate(`/projects/${record.id}`) },
-            { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => handleEdit(record) },
-            { type: 'divider' },
-            { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => handleDelete(record.id) },
-          ]
-        }}>
-          <Button type="text" icon={<MoreOutlined />} />
-        </Dropdown>
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/projects/${record.id}`)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+        </Space>
       )
     }
   ]

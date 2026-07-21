@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Tooltip, Descriptions, List, Divider, Popconfirm, TimePicker } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, MoreOutlined, DownloadOutlined, EyeOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Tooltip, Descriptions, List, Divider, Popconfirm, TimePicker } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, DownloadOutlined, EyeOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, exportDailyReports, getDailyReportItems, createDailyReportItem, updateDailyReportItem, deleteDailyReportItem } from '../services/api'
 import dayjs from 'dayjs'
 
@@ -388,20 +388,17 @@ function DailyReportList() {
     {
       title: '操作',
       key: 'action',
-      width: 80,
-      render: (_: any, record: any) => {
-        const items: any[] = [
-          { key: 'view', icon: <EyeOutlined />, label: '查看', onClick: () => handleView(record) },
-          { key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => handleEdit(record) },
-          { type: 'divider' },
-          { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => handleDelete(record.id) }
-        ]
-        return (
-          <Dropdown menu={{ items }}>
-            <Button type="text" icon={<MoreOutlined />} />
-          </Dropdown>
-        )
-      }
+      width: 240,
+      fixed: 'right' as const,
+      render: (_: any, record: any) => (
+        <Space size={0}>
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleView(record)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+        </Space>
+      )
     }
   ]
 
