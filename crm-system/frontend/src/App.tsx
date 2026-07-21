@@ -19,6 +19,7 @@ const DailyReportList = lazy(() => import('./pages/DailyReportList'))
 const BusinessTripList = lazy(() => import('./pages/BusinessTripList'))
 const BusinessTripDetail = lazy(() => import('./pages/BusinessTripDetail'))
 const ExpenseList = lazy(() => import('./pages/ExpenseList'))
+const ExpenseDetail = lazy(() => import('./pages/ExpenseDetail'))
 const UserManagement = lazy(() => import('./pages/UserManagement'))
 const RoleManagement = lazy(() => import('./pages/RoleManagement'))
 const MenuManagement = lazy(() => import('./pages/MenuManagement'))
@@ -218,6 +219,7 @@ function App() {
             <Route path="business-trips" element={<Suspense fallback={<PageLoading />}><BusinessTripList /></Suspense>} />
             <Route path="business-trips/:id" element={<Suspense fallback={<PageLoading />}><BusinessTripDetail /></Suspense>} />
             <Route path="expenses" element={<Suspense fallback={<PageLoading />}><ExpenseList /></Suspense>} />
+            <Route path="expenses/:id" element={<Suspense fallback={<PageLoading />}><ExpenseDetail /></Suspense>} />
             <Route path="users" element={<Suspense fallback={<PageLoading />}><UserManagement /></Suspense>} />
             <Route path="roles" element={<Suspense fallback={<PageLoading />}><RoleManagement /></Suspense>} />
             <Route path="menus" element={<Suspense fallback={<PageLoading />}><MenuManagement /></Suspense>} />

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, List } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined } from '@ant-design/icons'
 import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getCustomers, getProjects, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
 function ExpenseList() {
+  const navigate = useNavigate()
   const [expenses, setExpenses] = useState<any[]>([])
   const [customers, setCustomers] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
@@ -342,7 +344,14 @@ function ExpenseList() {
   }
 
   const columns = [
-    { title: '报销标题', dataIndex: 'title', key: 'title' },
+    {
+      title: '报销标题',
+      dataIndex: 'title',
+      key: 'title',
+      render: (title: string, record: any) => (
+        <a onClick={() => navigate(`/expenses/${record.id}`)}>{title}</a>
+      )
+    },
     {
       title: '类别',
       dataIndex: 'category',
@@ -398,48 +407,49 @@ function ExpenseList() {
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 220,
       render: (_: any, record: any) => {
-        const items: any[] = []
         const isOwner = record.ownerId === user.id
         const canEdit = (record.status === 'DRAFT' || record.status === 'REJECTED') && (isOwner || user.role === 'ADMIN')
 
-        if (canEdit) {
-          items.push({ key: 'edit', icon: <EditOutlined />, label: '编辑', onClick: () => handleEdit(record) })
-        }
-
-        items.push({ key: 'files', icon: <FileOutlined />, label: '管理发票', onClick: () => handleManageFiles(record) })
+        const moreItems: any[] = []
+        moreItems.push({ key: 'files', icon: <FileOutlined />, label: '管理发票', onClick: () => handleManageFiles(record) })
 
         if (record.status === 'DRAFT' && (isOwner || user.role === 'ADMIN')) {
-          items.push({ type: 'divider' })
-          items.push({ key: 'submit', icon: <SendOutlined />, label: '提交申请', onClick: () => handleSubmitExpense(record.id) })
+          moreItems.push({ type: 'divider' })
+          moreItems.push({ key: 'submit', icon: <SendOutlined />, label: '提交申请', onClick: () => handleSubmitExpense(record.id) })
         }
 
         if (record.status === 'SUBMITTED' && canApprove) {
-          items.push({ type: 'divider' })
-          items.push({ key: 'approve', icon: <CheckOutlined />, label: '批准', onClick: () => handleOpenApproveModal(record, 'approve') })
-          items.push({ key: 'reject', icon: <CloseOutlined />, label: '驳回', danger: true, onClick: () => handleOpenApproveModal(record, 'reject') })
+          moreItems.push({ type: 'divider' })
+          moreItems.push({ key: 'approve', icon: <CheckOutlined />, label: '批准', onClick: () => handleOpenApproveModal(record, 'approve') })
+          moreItems.push({ key: 'reject', icon: <CloseOutlined />, label: '驳回', danger: true, onClick: () => handleOpenApproveModal(record, 'reject') })
         }
 
         if (record.status === 'REJECTED' && (isOwner || user.role === 'ADMIN')) {
-          items.push({ type: 'divider' })
-          items.push({ key: 'resubmit', icon: <UndoOutlined />, label: '重新提交', onClick: () => handleResubmit(record.id) })
+          moreItems.push({ type: 'divider' })
+          moreItems.push({ key: 'resubmit', icon: <UndoOutlined />, label: '重新提交', onClick: () => handleResubmit(record.id) })
         }
 
         if (record.status === 'APPROVED' && canApprove) {
-          items.push({ type: 'divider' })
-          items.push({ key: 'pay', icon: <DollarOutlined />, label: '标记已支付', onClick: () => handlePay(record.id) })
-        }
-
-        if (canEdit) {
-          items.push({ type: 'divider' })
-          items.push({ key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => handleDelete(record.id) })
+          moreItems.push({ type: 'divider' })
+          moreItems.push({ key: 'pay', icon: <DollarOutlined />, label: '标记已支付', onClick: () => handlePay(record.id) })
         }
 
         return (
-          <Dropdown menu={{ items }}>
-            <Button type="text" icon={<MoreOutlined />} />
-          </Dropdown>
+          <Space>
+            {canEdit && (
+              <Button type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
+            )}
+            {canEdit && (
+              <Popconfirm title="确定要删除这条报销记录吗?" onConfirm={() => handleDelete(record.id)}>
+                <Button type="text" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            )}
+            <Dropdown menu={{ items: moreItems }}>
+              <Button type="text" icon={<MoreOutlined />} />
+            </Dropdown>
+          </Space>
         )
       }
     }

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Image } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, FileTextOutlined, ScheduleOutlined, CheckOutlined, EyeOutlined } from '@ant-design/icons'
-import { getOpportunityDetail, updateOpportunity, convertOpportunity, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getCustomers, getUsers, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl } from '../services/api'
+import { getOpportunityDetail, updateOpportunity, convertOpportunity, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getCustomers, getUsers, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
 const { TextArea } = Input
@@ -19,6 +19,15 @@ function OpportunityDetail() {
   const [opportunity, setOpportunity] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
+  // 当前用户与权限
+  const currentUser = safeJsonParse(localStorage.getItem('user'), {})
+  const canEditOpportunity = currentUser.role === 'ADMIN' || currentUser.permissions?.includes('edit_opportunities')
+  const defaultTeamRole = useMemo(() => {
+    if (canEditOpportunity) return 'BUSINESS'
+    if (currentUser.role === 'PROJECT_MANAGER') return 'TECHNICAL'
+    return 'SALES'
+  }, [canEditOpportunity, currentUser.role])
+
   // 编辑状态
   const [modalVisible, setModalVisible] = useState(false)
   const [form] = Form.useForm()
@@ -27,7 +36,15 @@ function OpportunityDetail() {
   // 团队成员状态
   const [users, setUsers] = useState<any[]>([])
   const [teamMemberUserId, setTeamMemberUserId] = useState<number | null>(null)
-  const [teamMemberRole, setTeamMemberRole] = useState<string>('SALES')
+  const [teamMemberRole, setTeamMemberRole] = useState<string>(defaultTeamRole)
+
+  // 选择成员时自动设置默认角色
+  const handleTeamMemberUserIdChange = (userId: number | null) => {
+    setTeamMemberUserId(userId)
+    if (userId) {
+      setTeamMemberRole(defaultTeamRole)
+    }
+  }
 
   // 文件管理状态
   const [, setFiles] = useState<any[]>([])
@@ -147,7 +164,7 @@ function OpportunityDetail() {
       await addOpportunityTeamMember(parseInt(id!), { userId: teamMemberUserId, teamRole: teamMemberRole })
       message.success('添加团队成员成功')
       setTeamMemberUserId(null)
-      setTeamMemberRole('SALES')
+      setTeamMemberRole(defaultTeamRole)
       refreshDetail()
     } catch (error: any) {
       message.error(error?.error || '添加失败')
@@ -424,7 +441,7 @@ function OpportunityDetail() {
                 style={{ width: 200 }}
                 placeholder="选择成员"
                 value={teamMemberUserId}
-                onChange={setTeamMemberUserId}
+                onChange={handleTeamMemberUserIdChange}
                 showSearch
                 optionFilterProp="children"
                 allowClear
