@@ -148,7 +148,9 @@ function OrganizationList() {
     setLoading(true)
     try {
       const data = (await getOrganizationTree()) as any
-      setTreeData(data || [])
+      // 后端返回 { tree: [...] }，提取 tree 数组
+      const tree = Array.isArray(data) ? data : (data?.tree || [])
+      setTreeData(tree)
     } catch (error: any) {
       message.error(error?.error || '获取组织树失败')
     } finally {

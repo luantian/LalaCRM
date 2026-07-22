@@ -35,7 +35,7 @@ const OrganizationList = lazy(() => import('./pages/OrganizationList'))
 // 加载占位组件
 const PageLoading = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
-    <Spin size="large" tip="加载中..." />
+    <Spin size="large" />
   </div>
 )
 
