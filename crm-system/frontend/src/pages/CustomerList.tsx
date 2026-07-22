@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Table, Button, Modal, Form, Input, message, Space,
@@ -15,7 +15,7 @@ import {
 
 function CustomerList() {
   const navigate = useNavigate()
-  const [customers, setCustomers] = useState([])
+  const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<any>(null)
@@ -161,21 +161,50 @@ function CustomerList() {
     }
   }
 
+  // Group customers by company to build tree data
+  const treeData = useMemo(() => {
+    const companyMap = new Map<string, any[]>()
+    customers.forEach(c => {
+      const company = c.companyName || '未指定公司'
+      if (!companyMap.has(company)) companyMap.set(company, [])
+      companyMap.get(company)!.push(c)
+    })
+
+    return Array.from(companyMap.entries()).map(([company, contacts], idx) => ({
+      key: `company-${idx}`,
+      isCompany: true,
+      companyName: company,
+      contactCount: contacts.length,
+      name: company,
+      children: contacts.map((c: any) => ({ ...c, isCompany: false }))
+    }))
+  }, [customers])
+
   const columns = [
     {
-      title: '客户名称',
+      title: '公司名称 / 联系人',
       dataIndex: 'name',
       key: 'name',
-      render: (text: string, record: any) => (
-        <a onClick={() => navigate(`/customers/${record.id}`)}>{text}</a>
-      )
+      render: (_: any, record: any) => {
+        if (record.isCompany) {
+          return <strong style={{ fontSize: 15 }}>{record.companyName} <Tag color="blue">{record.contactCount}人</Tag></strong>
+        }
+        return <a onClick={() => navigate(`/customers/${record.id}`)}>{record.name}</a>
+      }
     },
-    { title: '公司名称', dataIndex: 'companyName', key: 'companyName' },
+    {
+      title: '联系人',
+      dataIndex: 'name',
+      key: 'contactName',
+      render: (text: string, record: any) => record.isCompany ? '' : text
+    },
+    { title: '职务', dataIndex: 'title', key: 'title', render: (_: any, r: any) => r.isCompany ? '' : (r.title || '-') },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => {
+      render: (status: string, record: any) => {
+        if (record.isCompany) return ''
         const statusMap: Record<string, { text: string; color: string }> = {
           ACTIVE: { text: '活跃', color: 'green' },
           INACTIVE: { text: '不活跃', color: 'default' },
@@ -185,28 +214,31 @@ function CustomerList() {
         return <Tag color={s.color}>{s.text}</Tag>
       }
     },
-    { title: '电话', dataIndex: 'phone', key: 'phone' },
-    { title: '邮箱', dataIndex: 'email', key: 'email' },
+    { title: '电话', dataIndex: 'phone', key: 'phone', render: (_: any, r: any) => r.isCompany ? '' : (r.phone || '-') },
+    { title: '邮箱', dataIndex: 'email', key: 'email', render: (_: any, r: any) => r.isCompany ? '' : (r.email || '-') },
     {
       title: '负责人',
       dataIndex: 'owner',
       key: 'owner',
-      render: (owner: any) => owner?.name || '-'
+      render: (owner: any, r: any) => r.isCompany ? '' : (owner?.name || '-')
     },
     {
       title: '操作',
       key: 'action',
       width: 240,
       fixed: 'right' as const,
-      render: (_: any, record: any) => (
-        <Space size={0}>
-          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/customers/${record.id}`)}>查看</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
-        </Space>
-      )
+      render: (_: any, record: any) => {
+        if (record.isCompany) return null
+        return (
+          <Space size={0}>
+            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/customers/${record.id}`)}>查看</Button>
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+            <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            </Popconfirm>
+          </Space>
+        )
+      }
     }
   ]
 
@@ -277,9 +309,13 @@ function CustomerList() {
         <Table
           rowSelection={rowSelection}
           columns={columns}
-          dataSource={customers}
+          dataSource={treeData}
           loading={loading}
-          rowKey="id"
+          rowKey="key"
+          expandable={{
+            childrenColumnName: 'children',
+            defaultExpandedRowKeys: treeData.slice(0, 3).map((c: any) => c.key),
+          }}
           locale={{ emptyText: <Empty description="暂无数据" /> }}
           pagination={{
             current: pagination.current,
@@ -289,7 +325,7 @@ function CustomerList() {
             showTotal: (total) => `共 ${total} 条`,
             onChange: handleTableChange
           }}
-          scroll={{ x: 1200 }}
+          scroll={{ x: 1300 }}
         />
       </Card>
 
