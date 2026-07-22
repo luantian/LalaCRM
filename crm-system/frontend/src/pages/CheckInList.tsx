@@ -440,6 +440,7 @@ function CheckInList() {
               const dateStr = date.format('YYYY-MM-DD')
               // 直接用 UTC 日期比较（后端存储的是 UTC 午夜）
               const dayRecords = records.filter(r => r.checkInDate?.substring(0, 10) === dateStr)
+                .sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime())
               const isToday = date.isSame(dayjs(), 'day')
               const isPast = date.isBefore(dayjs(), 'day')
               const isFuture = date.isAfter(dayjs(), 'day')
