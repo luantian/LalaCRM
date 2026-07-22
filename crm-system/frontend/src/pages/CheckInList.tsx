@@ -3,9 +3,14 @@ import { Card, Row, Col, Button, message, Tag, Modal, Input, Space } from 'antd'
 import { CheckCircleOutlined, ClockCircleOutlined, CarOutlined, ExclamationCircleOutlined, CalendarOutlined, TrophyOutlined, FireOutlined } from '@ant-design/icons'
 import { getCheckIns, getTodayCheckIn, checkIn, makeupCheckIn, getCheckInStats } from '../services/api'
 import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
 import 'dayjs/locale/zh-cn'
 
+dayjs.extend(utc)
 dayjs.locale('zh-cn')
+
+// 安全地把后端返回的时间转为用户本地时间显示
+const formatTime = (t: string | Date) => dayjs.utc(t).local().format('HH:mm')
 import type { Dayjs } from 'dayjs'
 
 // 2026年法定节假日和传统节日
@@ -429,7 +434,7 @@ function CheckInList() {
             for (let day = 1; day <= daysInMonth; day++) {
               const date = currentMonth.date(day)
               const dateStr = date.format('YYYY-MM-DD')
-              const dayRecords = records.filter(r => dayjs(r.checkInDate).format('YYYY-MM-DD') === dateStr)
+              const dayRecords = records.filter(r => dayjs.utc(r.checkInDate).local().format('YYYY-MM-DD') === dateStr)
               const isToday = date.isSame(dayjs(), 'day')
               const isPast = date.isBefore(dayjs(), 'day')
               const isFuture = date.isAfter(dayjs(), 'day')
@@ -583,7 +588,7 @@ function CheckInList() {
                           textAlign: 'center',
                           backdropFilter: 'blur(4px)'
                         }}>
-                          ☀ {dayjs(morningRecord.checkInTime).format('HH:mm')}
+                          ☀ {formatTime(morningRecord.checkInTime)}
                         </div>
                       )}
                       {eveningRecord && (
@@ -597,7 +602,7 @@ function CheckInList() {
                           textAlign: 'center',
                           backdropFilter: 'blur(4px)'
                         }}>
-                          ☾ {dayjs(eveningRecord.checkInTime).format('HH:mm')}
+                          ☾ {formatTime(eveningRecord.checkInTime)}
                         </div>
                       )}
                     </div>
