@@ -333,7 +333,7 @@ function OpportunityList() {
         title={editingOpportunity ? '编辑商机' : '新增商机'}
         open={modalVisible}
         onOk={handleSubmit}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { form.resetFields(); setModalVisible(false) }}
         width={640}
         style={{ top: 20 }}
       >

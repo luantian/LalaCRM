@@ -173,10 +173,10 @@ const QuotationList: React.FC = () => {
 
       <Card style={{ marginBottom: 16 }}>
         <Space wrap>
-          <Select placeholder="状态" allowClear style={{ width: 120 }} onChange={v => setFilters((f: any) => ({ ...f, status: v || undefined }))}>
+          <Select placeholder="状态" allowClear style={{ width: 120 }} onChange={v => { setFilters((f: any) => ({ ...f, status: v || undefined })); setPagination(prev => ({ ...prev, current: 1 })) }}>
             {Object.entries(statusConfig).map(([k, v]) => <Option key={k} value={k}>{v.text}</Option>)}
           </Select>
-          <Input.Search placeholder="搜索报价单" allowClear style={{ width: 200 }} onSearch={v => setFilters((f: any) => ({ ...f, search: v || undefined }))} />
+          <Input.Search placeholder="搜索报价单" allowClear style={{ width: 200 }} onSearch={v => { setFilters((f: any) => ({ ...f, search: v || undefined })); setPagination(prev => ({ ...prev, current: 1 })) }} />
         </Space>
       </Card>
 
@@ -189,7 +189,7 @@ const QuotationList: React.FC = () => {
         />
       </Card>
 
-      <Modal title={editingQuotation ? '编辑报价单' : '新建报价单'} open={modalVisible} onOk={handleFormSubmit} onCancel={() => setModalVisible(false)} width={800}>
+      <Modal title={editingQuotation ? '编辑报价单' : '新建报价单'} open={modalVisible} onOk={handleFormSubmit} onCancel={() => { form.resetFields(); setItems([]); setModalVisible(false) }} width={800}>
         <Form form={form} layout="vertical">
           <Row gutter={16}>
             <Col span={12}><Form.Item name="name" label="报价单名称" rules={[{ required: true }]}><Input /></Form.Item></Col>

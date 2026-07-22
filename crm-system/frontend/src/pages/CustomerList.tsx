@@ -264,7 +264,7 @@ function CustomerList() {
         title={editingCustomer ? '编辑客户' : '新增客户'}
         open={modalVisible}
         onOk={handleSubmit}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { form.resetFields(); setModalVisible(false) }}
         width={600}
       >
         <Form form={form} layout="vertical">

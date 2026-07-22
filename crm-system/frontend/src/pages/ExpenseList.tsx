@@ -570,7 +570,7 @@ function ExpenseList() {
         title={editingExpense ? '编辑报销' : '新增报销'}
         open={modalVisible}
         onOk={handleSubmit}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { form.resetFields(); setModalVisible(false) }}
         width={600}
       >
         <Form form={form} layout="vertical">

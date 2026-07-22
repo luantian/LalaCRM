@@ -308,7 +308,7 @@ router.delete('/:id/permanent', authenticateToken, idValidation, validate, logOp
     const id = parseInt(req.params.id as string)
 
     // 检查客户是否存在
-    const customer = await prisma.customer.findUnique({ where: { id } })
+    const customer = await prisma.customer.findFirst({ where: { id, deletedAt: null } })
     if (!customer) {
       return res.status(404).json({ error: '客户不存在' })
     }

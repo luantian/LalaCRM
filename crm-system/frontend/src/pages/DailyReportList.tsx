@@ -512,7 +512,7 @@ function DailyReportList() {
         title={editingReport ? '编辑日报' : '新增日报'}
         open={modalVisible}
         onOk={handleSubmit}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { form.resetFields(); setFormItems([]); setModalVisible(false) }}
         width={700}
       >
         <Form form={form} layout="vertical">

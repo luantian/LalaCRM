@@ -292,7 +292,7 @@ function ProjectList() {
         title={editingProject ? '编辑项目' : '新增项目'}
         open={modalVisible}
         onOk={handleSubmit}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { form.resetFields(); setModalVisible(false) }}
         style={{ top: 20 }}
       >
         <Form form={form} layout="vertical">

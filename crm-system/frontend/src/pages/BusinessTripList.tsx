@@ -456,7 +456,7 @@ function BusinessTripList() {
         title={editingTrip ? '编辑出差' : '新增出差'}
         open={modalVisible}
         onOk={handleSubmit}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { form.resetFields(); setModalVisible(false) }}
         width={700}
       >
         <Form form={form} layout="vertical">
