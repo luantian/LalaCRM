@@ -4,9 +4,23 @@ import { authenticateToken, AuthRequest } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+
+dayjs.extend(utc)
 
 const router = Router()
 const prisma = new PrismaClient()
+
+// 序列化打卡记录：确保时间字段带有明确的 UTC 标记（"Z"后缀），
+// 避免前端因缺少时区信息而把 UTC 时间误当本地时间显示
+function serializeCheckIn(record: any) {
+  if (!record) return record
+  return {
+    ...record,
+    checkInTime: record.checkInTime ? dayjs(record.checkInTime).utc().toISOString() : record.checkInTime,
+    checkInDate: record.checkInDate ? dayjs(record.checkInDate).utc().startOf('day').toISOString() : record.checkInDate,
+  }
+}
 
 // 每月补卡次数限制
 const MAX_MAKEUP_PER_MONTH = 3
@@ -91,11 +105,11 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     })
 
     res.json({
-      records,
+      records: records.map(serializeCheckIn),
       dailySummary: Array.from(dailyMap.entries()).map(([date, d]) => ({
         date,
-        morning: d.morning,
-        evening: d.evening,
+        morning: serializeCheckIn(d.morning),
+        evening: serializeCheckIn(d.evening),
         morningCount: records.filter(r => dayjs(r.checkInDate).format('YYYY-MM-DD') === date && r.period === 'MORNING').length,
         eveningCount: records.filter(r => dayjs(r.checkInDate).format('YYYY-MM-DD') === date && r.period === 'EVENING').length,
       })),
@@ -154,12 +168,12 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
     res.json({
       morningCheckedIn: !!morningRecord,
       eveningCheckedIn: !!eveningRecord,
-      morningRecord,
-      eveningRecord,
+      morningRecord: serializeCheckIn(morningRecord),
+      eveningRecord: serializeCheckIn(eveningRecord),
       morningCount: morningRecords.length,
       eveningCount: eveningRecords.length,
-      allRecords: records,
-      checkInDate: range.checkInDate,
+      allRecords: records.map(serializeCheckIn),
+      checkInDate: dayjs(range.checkInDate).utc().startOf('day').toISOString(),
       onBusinessTrip: !!activeTrip,
       activeTrip
     })
@@ -251,7 +265,7 @@ router.post('/', authenticateToken, logOperation('打卡管理', 'CHECKIN'), asy
     }
 
     res.status(201).json({
-      ...record,
+      ...serializeCheckIn(record),
       typeLabel: typeLabels[checkInType],
       trip: activeTrip ? { id: activeTrip.id, title: activeTrip.title, destination: activeTrip.destination } : null,
       morningCount: existingRecords.length,
@@ -310,7 +324,7 @@ router.post('/makeup', authenticateToken, logOperation('打卡管理', 'MAKEUP')
     })
 
     res.status(201).json({
-      ...record,
+      ...serializeCheckIn(record),
       makeupRemaining: MAX_MAKEUP_PER_MONTH - makeupCount - 1
     })
   } catch (error) {
