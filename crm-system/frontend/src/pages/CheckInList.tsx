@@ -73,6 +73,7 @@ function CheckInList() {
         getCheckIns({ month: currentMonth.format('YYYY-MM') }),
         getCheckInStats({ month: currentMonth.format('YYYY-MM') })
       ])
+      console.log('[fetchData] records:', recordsRes.records?.length, '条')
       setRecords(recordsRes.records || [])
       setStats(statsRes)
     } catch (error) {
@@ -95,8 +96,10 @@ function CheckInList() {
       const result: any = await checkIn({})
       console.log('[打卡] 响应:', result)
       message.success(result?.message || '打卡成功')
-      fetchTodayStatus()
-      fetchData()
+      // 等待一小段时间确保数据库提交完成，然后刷新数据
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await fetchTodayStatus()
+      await fetchData()
     } catch (error: any) {
       console.error('[打卡] 失败:', error)
       message.error(error?.error || error?.message || '打卡失败')
@@ -435,7 +438,8 @@ function CheckInList() {
             for (let day = 1; day <= daysInMonth; day++) {
               const date = currentMonth.date(day)
               const dateStr = date.format('YYYY-MM-DD')
-              const dayRecords = records.filter(r => dayjs.utc(r.checkInDate).local().format('YYYY-MM-DD') === dateStr)
+              // 直接用 UTC 日期比较（后端存储的是 UTC 午夜）
+              const dayRecords = records.filter(r => r.checkInDate?.substring(0, 10) === dateStr)
               const isToday = date.isSame(dayjs(), 'day')
               const isPast = date.isBefore(dayjs(), 'day')
               const isFuture = date.isAfter(dayjs(), 'day')
