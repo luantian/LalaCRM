@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Tooltip, Descriptions, List, Divider, Popconfirm, TimePicker } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, DownloadOutlined, EyeOutlined, CheckCircleOutlined } from '@ant-design/icons'
-import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, exportDailyReports, getDailyReportItems, createDailyReportItem, updateDailyReportItem, deleteDailyReportItem } from '../services/api'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Tooltip, Descriptions, List, Divider, Popconfirm, TimePicker, Upload, Dropdown } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, DownloadOutlined, EyeOutlined, CheckCircleOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
+import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, exportDailyReports, exportDailyReportsExcel, importDailyReports, getDailyReportItems, createDailyReportItem, updateDailyReportItem, deleteDailyReportItem } from '../services/api'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -25,6 +25,7 @@ function DailyReportList() {
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null)
   const [filterProjectId, setFilterProjectId] = useState<number | undefined>(undefined)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [importModalVisible, setImportModalVisible] = useState(false)
   const searchTextRef = useRef(searchText)
   const dateRangeRef = useRef(dateRange)
   const filterProjectIdRef = useRef(filterProjectId)
@@ -230,19 +231,28 @@ function DailyReportList() {
     }
   }
 
-  const handleExport = async () => {
+  const handleExport = async (type: 'csv' | 'excel') => {
     try {
-      const response: any = await exportDailyReports({ search: searchText })
-      const blob = new Blob([response], { type: 'text/csv' })
-      const url = window.URL.createObjectURL(blob)
+      const res = type === 'csv' ? await exportDailyReports({ search: searchText }) : await exportDailyReportsExcel({ search: searchText })
+      const blob = res.data
+      const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `日报_${dayjs().format('YYYY-MM-DD')}.csv`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      window.URL.revokeObjectURL(url)
-    } catch (error) { message.error('导出失败') }
+      a.download = `数据.${type === 'csv' ? 'csv' : 'xlsx'}`
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+      message.success('导出成功')
+    } catch { message.error('导出失败') }
+  }
+
+  const handleImport = async (file: File) => {
+    try {
+      const result: any = await importDailyReports(file)
+      message.success(result?.message || '导入成功')
+      setImportModalVisible(false)
+      fetchReports()
+    } catch (e: any) { message.error(e?.error || '导入失败') }
+    return false
   }
 
   // 新建日报中的内联工作记录管理
@@ -487,7 +497,14 @@ function DailyReportList() {
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => fetchReports(pagination.current, pagination.pageSize)}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增日报</Button>
-          <Button icon={<DownloadOutlined />} onClick={handleExport}>导出</Button>
+          <Dropdown menu={{ items: [
+            { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
+            { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
+            { type: 'divider' },
+            { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
+          ]}}>
+            <Button icon={<DownloadOutlined />}>导入导出</Button>
+          </Dropdown>
         </Space>
       </div>
 
@@ -859,6 +876,14 @@ function DailyReportList() {
             <Input.TextArea rows={2} placeholder="产出/成果（可选）" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal title="导入数据" open={importModalVisible} onCancel={() => setImportModalVisible(false)} footer={null}>
+        <Upload.Dragger accept=".csv,.xlsx,.xls" beforeUpload={(file) => { handleImport(file); return false }} showUploadList={false}>
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+          <p className="ant-upload-tip">支持 CSV、Excel 格式</p>
+        </Upload.Dragger>
       </Modal>
     </div>
   )

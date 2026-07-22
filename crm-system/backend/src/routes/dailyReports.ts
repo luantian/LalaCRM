@@ -5,6 +5,8 @@ import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
 import { clampPagination } from '../middleware/validation'
 import logger from '../utils/logger'
+import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { upload } from '../middleware/upload'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -1063,6 +1065,70 @@ router.get('/stats/hours-analysis', authenticateToken, checkPermission('view_rep
   } catch (error) {
     logger.error('Get hours analysis error:', error)
     res.status(500).json({ error: '获取工时分析失败' })
+  }
+})
+
+const columns = [
+  { key: 'reportDate', label: '日期' },
+  { key: 'type', label: '类型' },
+  { key: 'content', label: '工作内容' },
+  { key: 'plan', label: '明日计划' },
+  { key: 'issues', label: '问题与困难' },
+  { key: 'hours', label: '工时' },
+  { key: 'status', label: '状态' },
+  { key: 'user.name', label: '创建人' }
+]
+
+const labelMap: Record<string, string> = {
+  '日期': 'reportDate',
+  '类型': 'type',
+  '工作内容': 'content',
+  '明日计划': 'plan',
+  '问题与困难': 'issues',
+  '工时': 'hours'
+}
+
+router.get('/export/excel', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
+  try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const data = await prisma.dailyReport.findMany({
+      where: { deletedAt: null, ...dataScopeWhere },
+      include: { user: { select: { name: true } }, project: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' }
+    })
+    exportExcel(res, 'daily-reports.xlsx', '工作日报', columns, data)
+  } catch (error) {
+    logger.error('Export error:', error)
+    res.status(500).json({ error: '导出失败' })
+  }
+})
+
+router.post('/import', authenticateToken, upload.single('file'), logOperation('工作日报', 'IMPORT'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请上传文件' })
+    const { data, error } = parseImportFile(req.file)
+    if (error) return res.status(400).json({ error })
+    if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
+
+    let success = 0, failed = 0
+    for (const row of data) {
+      try {
+        const mapped = mapImportRow(row, labelMap)
+        await prisma.dailyReport.create({
+          data: {
+            ...mapped,
+            reportDate: mapped.reportDate ? new Date(mapped.reportDate) : new Date(),
+            hours: parseFloat(mapped.hours) || 0,
+            userId: req.user!.id,
+          } as any
+        })
+        success++
+      } catch { failed++ }
+    }
+    res.json({ message: `导入完成: 成功 ${success} 条, 失败 ${failed} 条`, success, failed })
+  } catch (error) {
+    logger.error('Import error:', error)
+    res.status(500).json({ error: '导入失败' })
   }
 })
 

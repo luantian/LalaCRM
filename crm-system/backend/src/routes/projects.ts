@@ -6,6 +6,7 @@ import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
 import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
+import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import fs from 'fs'
 import path from 'path'
 
@@ -623,6 +624,90 @@ router.delete('/:id/team/:memberId', authenticateToken, checkPermission('edit_pr
   } catch (error) {
     logger.error('Remove project team member error:', error)
     res.status(500).json({ error: '移除团队成员失败' })
+  }
+})
+
+// ==================== 导出/导入 ====================
+
+const projectColumns = [
+  { key: 'name', label: '项目名称' },
+  { key: 'customer.name', label: '客户' },
+  { key: 'status', label: '状态' },
+  { key: 'budget', label: '预算' },
+  { key: 'progress', label: '进度(%)' },
+  { key: 'startDate', label: '开始日期' },
+  { key: 'endDate', label: '结束日期' },
+  { key: 'owner.name', label: '负责人' },
+]
+
+const projectLabelMap: Record<string, string> = {
+  '项目名称': 'name',
+  '状态': 'status',
+  '预算': 'budget',
+  '进度(%)': 'progress',
+}
+
+// 导出项目 Excel
+router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+  try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const data = await prisma.project.findMany({
+      where: { deletedAt: null, ...dataScopeWhere },
+      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+    })
+    exportExcel(res, '项目列表.xlsx', '项目', projectColumns, data)
+  } catch (error) {
+    logger.error('Export error:', error)
+    res.status(500).json({ error: '导出失败' })
+  }
+})
+
+// 导出项目 CSV
+router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+  try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const data = await prisma.project.findMany({
+      where: { deletedAt: null, ...dataScopeWhere },
+      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+    })
+    exportCSV(res, '项目列表.csv', projectColumns, data)
+  } catch (error) {
+    logger.error('Export CSV error:', error)
+    res.status(500).json({ error: '导出失败' })
+  }
+})
+
+// 导入项目
+router.post('/import', authenticateToken, upload.single('file'), logOperation('项目管理', 'IMPORT'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请上传文件' })
+    const { data, error } = parseImportFile(req.file)
+    if (error) return res.status(400).json({ error })
+    if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
+
+    let success = 0, failed = 0
+    for (const row of data) {
+      try {
+        const mapped = mapImportRow(row, projectLabelMap)
+        await prisma.project.create({
+          data: {
+            name: mapped.name || '未命名项目',
+            customerId: 0,
+            status: mapped.status || 'PENDING',
+            budget: mapped.budget ? Number(mapped.budget) : null,
+            progress: mapped.progress ? Number(mapped.progress) : 0,
+            ownerId: req.user!.id,
+          },
+        })
+        success++
+      } catch { failed++ }
+    }
+    res.json({ message: `导入完成: 成功 ${success} 条, 失败 ${failed} 条`, success, failed })
+  } catch (error) {
+    logger.error('Import error:', error)
+    res.status(500).json({ error: '导入失败' })
   }
 })
 

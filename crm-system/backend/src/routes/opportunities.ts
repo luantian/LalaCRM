@@ -6,6 +6,7 @@ import { applyDataScope } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
 import { sortValidation, clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
+import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import fs from 'fs'
 import path from 'path'
 
@@ -792,6 +793,91 @@ router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, logOper
   } catch (error) {
     logger.error('Delete record file error:', error)
     res.status(500).json({ error: '删除附件失败' })
+  }
+})
+
+// ==================== 导出/导入 ====================
+
+const opportunityColumns = [
+  { key: 'name', label: '商机名称' },
+  { key: 'customer.name', label: '客户' },
+  { key: 'application', label: '应用领域' },
+  { key: 'budget', label: '预算' },
+  { key: 'winRate', label: '赢单率(%)' },
+  { key: 'status', label: '状态' },
+  { key: 'owner.name', label: '负责人' },
+]
+
+const opportunityLabelMap: Record<string, string> = {
+  '商机名称': 'name',
+  '应用领域': 'application',
+  '预算': 'budget',
+  '赢单率(%)': 'winRate',
+  '状态': 'status',
+}
+
+// 导出商机 Excel
+router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+  try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const data = await prisma.opportunity.findMany({
+      where: { deletedAt: null, ...dataScopeWhere },
+      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+    })
+    exportExcel(res, '商机列表.xlsx', '商机', opportunityColumns, data)
+  } catch (error) {
+    logger.error('Export error:', error)
+    res.status(500).json({ error: '导出失败' })
+  }
+})
+
+// 导出商机 CSV
+router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+  try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const data = await prisma.opportunity.findMany({
+      where: { deletedAt: null, ...dataScopeWhere },
+      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+    })
+    exportCSV(res, '商机列表.csv', opportunityColumns, data)
+  } catch (error) {
+    logger.error('Export CSV error:', error)
+    res.status(500).json({ error: '导出失败' })
+  }
+})
+
+// 导入商机
+router.post('/import', authenticateToken, upload.single('file'), logOperation('商机管理', 'IMPORT'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请上传文件' })
+    const { data, error } = parseImportFile(req.file)
+    if (error) return res.status(400).json({ error })
+    if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
+
+    let success = 0, failed = 0
+    for (const row of data) {
+      try {
+        const mapped = mapImportRow(row, opportunityLabelMap)
+        await prisma.opportunity.create({
+          data: {
+            name: mapped.name || '未命名商机',
+            customerId: 0,
+            application: mapped.application || null,
+            budget: mapped.budget ? Number(mapped.budget) : null,
+            winRate: mapped.winRate ? Number(mapped.winRate) : 0,
+            status: mapped.status || 'OPEN',
+            ownerId: req.user!.id,
+          },
+        })
+        success++
+      } catch { failed++ }
+    }
+    res.json({ message: `导入完成: 成功 ${success} 条, 失败 ${failed} 条`, success, failed })
+  } catch (error) {
+    logger.error('Import error:', error)
+    res.status(500).json({ error: '导入失败' })
   }
 })
 

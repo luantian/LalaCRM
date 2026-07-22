@@ -2,15 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Table, Button, Modal, Form, Input, message, Space,
-  Card, Row, Col, Tag, Empty, Popconfirm
+  Card, Row, Col, Tag, Empty, Popconfirm, Dropdown, Upload
 } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined,
-  ReloadOutlined, EyeOutlined
+  ReloadOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined
 } from '@ant-design/icons'
 import {
   getCustomers, createCustomer, updateCustomer, deleteCustomer,
-  batchDeleteCustomers
+  batchDeleteCustomers, exportCustomers, exportCustomersExcel, importCustomers
 } from '../services/api'
 
 function CustomerList() {
@@ -28,6 +28,7 @@ function CustomerList() {
   const [searchText, setSearchText] = useState('')
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [importModalVisible, setImportModalVisible] = useState(false)
   const searchTextRef = useRef(searchText)
   useEffect(() => { searchTextRef.current = searchText }, [searchText])
 
@@ -93,6 +94,31 @@ function CustomerList() {
     } catch (error) {
       message.error('删除失败')
     }
+  }
+
+  const handleExport = async (type: 'csv' | 'excel') => {
+    try {
+      const blob: any = type === 'csv' ? await exportCustomers() : await exportCustomersExcel()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `客户数据.${type === 'csv' ? 'csv' : 'xlsx'}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      message.success('导出成功')
+    } catch { message.error('导出失败') }
+  }
+
+  const handleImport = async (file: File) => {
+    try {
+      const result: any = await importCustomers(file)
+      message.success(result?.message || '导入成功')
+      setImportModalVisible(false)
+      fetchCustomers(pagination.current, pagination.pageSize)
+    } catch (e: any) { message.error(e?.error || '导入失败') }
+    return false
   }
 
   const handleBatchDelete = async () => {
@@ -234,6 +260,14 @@ function CustomerList() {
               批量删除 ({selectedRowKeys.length})
             </Button>
           )}
+          <Dropdown menu={{ items: [
+            { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
+            { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
+            { type: 'divider' },
+            { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
+          ]}}>
+            <Button icon={<DownloadOutlined />}>导入导出</Button>
+          </Dropdown>
         </Space>
       </div>
 
@@ -303,6 +337,18 @@ function CustomerList() {
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal title="导入数据" open={importModalVisible} onCancel={() => setImportModalVisible(false)} footer={null}>
+        <Upload.Dragger
+          accept=".csv,.xlsx,.xls"
+          beforeUpload={(file) => { handleImport(file); return false }}
+          showUploadList={false}
+        >
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+          <p className="ant-upload-tip">支持 CSV、Excel 格式（.csv / .xlsx / .xls）</p>
+        </Upload.Dragger>
       </Modal>
     </div>
   )

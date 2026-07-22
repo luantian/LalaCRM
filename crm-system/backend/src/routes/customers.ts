@@ -5,6 +5,8 @@ import { paginationValidation, idValidation, createCustomerValidation, updateCus
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
 import logger from '../utils/logger'
+import { exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { upload } from '../middleware/upload'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -326,6 +328,67 @@ router.delete('/:id/permanent', authenticateToken, idValidation, validate, logOp
   } catch (error) {
     logger.error('Permanent delete customer error:', error)
     res.status(500).json({ error: '永久删除客户失败' })
+  }
+})
+
+// 导出客户Excel
+router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+  try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const data = await prisma.customer.findMany({
+      where: { deletedAt: null, ...dataScopeWhere },
+      include: { owner: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' }
+    })
+    const columns = [
+      { key: 'name', label: '客户名称' },
+      { key: 'companyName', label: '公司名称' },
+      { key: 'phone', label: '电话' },
+      { key: 'email', label: '邮箱' },
+      { key: 'address', label: '地址' },
+      { key: 'status', label: '状态' },
+      { key: 'owner.name', label: '负责人' },
+      { key: 'createdAt', label: '创建时间' }
+    ]
+    exportExcel(res, 'customers.xlsx', '客户列表', columns, data)
+  } catch (error) {
+    logger.error('Export error:', error)
+    res.status(500).json({ error: '导出失败' })
+  }
+})
+
+// 导入客户数据
+router.post('/import', authenticateToken, upload.single('file'), logOperation('客户管理', 'IMPORT'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请上传文件' })
+    const { data, error } = parseImportFile(req.file)
+    if (error) return res.status(400).json({ error })
+    if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
+
+    const labelMap: Record<string, string> = { '客户名称': 'name', '公司名称': 'companyName', '电话': 'phone', '邮箱': 'email', '地址': 'address', '状态': 'status' }
+
+    let success = 0, failed = 0
+    for (const row of data) {
+      try {
+        const mapped = mapImportRow(row, labelMap)
+        await prisma.customer.create({
+          data: {
+            name: mapped.name,
+            companyName: mapped.companyName,
+            phone: mapped.phone,
+            email: mapped.email,
+            address: mapped.address,
+            status: mapped.status || 'ACTIVE',
+            ownerId: req.user!.id,
+          } as any
+        })
+        success++
+      } catch { failed++ }
+    }
+    res.json({ message: `导入完成: 成功 ${success} 条, 失败 ${failed} 条`, success, failed })
+  } catch (error) {
+    logger.error('Import error:', error)
+    res.status(500).json({ error: '导入失败' })
   }
 })
 

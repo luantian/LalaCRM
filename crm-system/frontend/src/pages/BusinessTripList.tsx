@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Popconfirm } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, CheckOutlined, CloseOutlined, MoreOutlined, SendOutlined, UndoOutlined, CheckCircleOutlined } from '@ant-design/icons'
-import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getCustomers, getProjects, safeJsonParse } from '../services/api'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Popconfirm, Upload } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, CheckOutlined, CloseOutlined, MoreOutlined, SendOutlined, UndoOutlined, CheckCircleOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
+import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getCustomers, getProjects, safeJsonParse, exportBusinessTripsCsv, exportBusinessTripsExcel, importBusinessTrips } from '../services/api'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -37,6 +37,7 @@ function BusinessTripList() {
   const [approveAction, setApproveAction] = useState<'approve' | 'reject'>('approve')
   const [approveRemark, setApproveRemark] = useState('')
   const [rejectReason, setRejectReason] = useState('')
+  const [importModalVisible, setImportModalVisible] = useState(false)
 
   const fetchTrips = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
@@ -267,6 +268,30 @@ function BusinessTripList() {
     return customer ? customer.name : '-'
   }
 
+  const handleExport = async (type: 'csv' | 'excel') => {
+    try {
+      const res = type === 'csv' ? await exportBusinessTripsCsv() : await exportBusinessTripsExcel()
+      const blob = res.data
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `数据.${type === 'csv' ? 'csv' : 'xlsx'}`
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+      message.success('导出成功')
+    } catch { message.error('导出失败') }
+  }
+
+  const handleImport = async (file: File) => {
+    try {
+      const result: any = await importBusinessTrips(file)
+      message.success(result?.message || '导入成功')
+      setImportModalVisible(false)
+      fetchTrips()
+    } catch (e: any) { message.error(e?.error || '导入失败') }
+    return false
+  }
+
 
   const columns = [
     { title: '出差标题', dataIndex: 'title', key: 'title' },
@@ -432,6 +457,14 @@ function BusinessTripList() {
               批量删除 ({selectedRowKeys.length})
             </Button>
           )}
+          <Dropdown menu={{ items: [
+            { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
+            { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
+            { type: 'divider' },
+            { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
+          ]}}>
+            <Button icon={<DownloadOutlined />}>导入导出</Button>
+          </Dropdown>
         </Space>
       </div>
 
@@ -563,6 +596,14 @@ function BusinessTripList() {
             onChange={(e) => setRejectReason(e.target.value)}
           />
         )}
+      </Modal>
+
+      <Modal title="导入数据" open={importModalVisible} onCancel={() => setImportModalVisible(false)} footer={null}>
+        <Upload.Dragger accept=".csv,.xlsx,.xls" beforeUpload={(file) => { handleImport(file); return false }} showUploadList={false}>
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+          <p className="ant-upload-tip">支持 CSV、Excel 格式</p>
+        </Upload.Dragger>
       </Modal>
     </div>
   )

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, List } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined, EyeOutlined } from '@ant-design/icons'
-import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getCustomers, getProjects, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse } from '../services/api'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, List, Upload } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined, EyeOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
+import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getCustomers, getProjects, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses } from '../services/api'
 import dayjs from 'dayjs'
 
 function ExpenseList() {
@@ -41,6 +41,7 @@ function ExpenseList() {
   const [currentExpense, setCurrentExpense] = useState<any>(null)
   const [expenseFiles, setExpenseFiles] = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
+  const [importModalVisible, setImportModalVisible] = useState(false)
 
   const user = safeJsonParse(localStorage.getItem('user'), {})
   const canApprove = ['ADMIN', 'PROJECT_DIRECTOR', 'PROJECT_MANAGER'].includes(user.role) || user.permissions?.includes('approve_expenses')
@@ -355,6 +356,30 @@ function ExpenseList() {
     return project ? project.name : '-'
   }
 
+  const handleExport = async (type: 'csv' | 'excel') => {
+    try {
+      const res = type === 'csv' ? await exportExpensesCsv() : await exportExpensesExcel()
+      const blob = res.data
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `数据.${type === 'csv' ? 'csv' : 'xlsx'}`
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+      message.success('导出成功')
+    } catch { message.error('导出失败') }
+  }
+
+  const handleImport = async (file: File) => {
+    try {
+      const result: any = await importExpenses(file)
+      message.success(result?.message || '导入成功')
+      setImportModalVisible(false)
+      fetchExpenses()
+    } catch (e: any) { message.error(e?.error || '导入失败') }
+    return false
+  }
+
   const columns = [
     {
       title: '报销标题',
@@ -546,6 +571,14 @@ function ExpenseList() {
               批量删除 ({selectedRowKeys.length})
             </Button>
           )}
+          <Dropdown menu={{ items: [
+            { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
+            { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
+            { type: 'divider' },
+            { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
+          ]}}>
+            <Button icon={<DownloadOutlined />}>导入导出</Button>
+          </Dropdown>
         </Space>
       </div>
 
@@ -736,6 +769,14 @@ function ExpenseList() {
             </List.Item>
           )}
         />
+      </Modal>
+
+      <Modal title="导入数据" open={importModalVisible} onCancel={() => setImportModalVisible(false)} footer={null}>
+        <Upload.Dragger accept=".csv,.xlsx,.xls" beforeUpload={(file) => { handleImport(file); return false }} showUploadList={false}>
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+          <p className="ant-upload-tip">支持 CSV、Excel 格式</p>
+        </Upload.Dragger>
       </Modal>
     </div>
   )

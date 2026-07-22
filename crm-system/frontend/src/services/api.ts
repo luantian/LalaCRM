@@ -331,4 +331,39 @@ export const getNotifications = (params?: any) => api.get('/notifications', { pa
 export const markNotificationRead = (id: number) => api.put(`/notifications/${id}/read`)
 export const markAllNotificationsRead = () => api.put('/notifications/read-all')
 
+// ==================== 导出(Excel) ====================
+export const exportCustomersExcel = () => api.get('/customers/export/excel', { responseType: 'blob' })
+export const exportProjectsExcel = () => api.get('/projects/export/excel', { responseType: 'blob' })
+export const exportOpportunitiesExcel = () => api.get('/opportunities/export/excel', { responseType: 'blob' })
+export const exportSalesExcel = () => api.get('/sales/export/excel', { responseType: 'blob' })
+export const exportContractsExcel = () => api.get('/contracts/export/excel', { responseType: 'blob' })
+export const exportQuotationsExcel = () => api.get('/quotations/export/excel', { responseType: 'blob' })
+export const exportBusinessTripsExcel = () => api.get('/business-trips/export/excel', { responseType: 'blob' })
+export const exportExpensesExcel = () => api.get('/expenses/export/excel', { responseType: 'blob' })
+export const exportDailyReportsExcel = (params?: any) => api.get('/daily-reports/export/excel', { params, responseType: 'blob' })
+
+// ==================== 导出(CSV) - 补充缺失的 ====================
+export const exportProjectsCsv = () => api.get('/projects/export/csv', { responseType: 'blob' })
+export const exportContractsCsv = () => api.get('/contracts/export/csv', { responseType: 'blob' })
+export const exportOpportunitiesCsv = () => api.get('/opportunities/export/csv', { responseType: 'blob' })
+export const exportQuotationsCsv = () => api.get('/quotations/export/csv', { responseType: 'blob' })
+export const exportBusinessTripsCsv = () => api.get('/business-trips/export/csv', { responseType: 'blob' })
+export const exportExpensesCsv = () => api.get('/expenses/export/csv', { responseType: 'blob' })
+
+// ==================== 导入 ====================
+const importFile = (url: string, file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post(url, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
+export const importCustomers = (file: File) => importFile('/customers/import', file)
+export const importProjects = (file: File) => importFile('/projects/import', file)
+export const importOpportunities = (file: File) => importFile('/opportunities/import', file)
+export const importSales = (file: File) => importFile('/sales/import', file)
+export const importContracts = (file: File) => importFile('/contracts/import', file)
+export const importQuotations = (file: File) => importFile('/quotations/import', file)
+export const importBusinessTrips = (file: File) => importFile('/business-trips/import', file)
+export const importExpenses = (file: File) => importFile('/expenses/import', file)
+export const importDailyReports = (file: File) => importFile('/daily-reports/import', file)
+
 export default api

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Tabs, Button, message, Space, Tag, Card, Input, Row, Col, Statistic, Empty, Popconfirm } from 'antd'
-import { ReloadOutlined, SearchOutlined, InboxOutlined, EyeOutlined, ProjectOutlined, ClockCircleOutlined, CheckCircleOutlined, FundOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
-import { getOpportunities, getProjects, getOpportunityStats, deleteOpportunity, deleteProject } from '../services/api'
+import { Table, Tabs, Button, message, Space, Tag, Card, Input, Row, Col, Statistic, Empty, Popconfirm, Dropdown, Upload, Modal } from 'antd'
+import { ReloadOutlined, SearchOutlined, InboxOutlined, EyeOutlined, ProjectOutlined, ClockCircleOutlined, CheckCircleOutlined, FundOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, ImportOutlined } from '@ant-design/icons'
+import { getOpportunities, getProjects, getOpportunityStats, deleteOpportunity, deleteProject, exportSales, exportSalesExcel, importSales } from '../services/api'
 import dayjs from 'dayjs'
 
 const oppStatusMap: Record<string, { label: string; color: string }> = {
@@ -24,6 +24,7 @@ function ProjectArchive() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
   const [oppStats, setOppStats] = useState<any>(null)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [importModalVisible, setImportModalVisible] = useState(false)
 
   const fetchData = async (page = 1, pageSize = 10) => {
     setLoading(true)
@@ -121,6 +122,30 @@ function ProjectArchive() {
     } catch (error) {
       message.error('批量删除失败')
     }
+  }
+
+  const handleExport = async (type: 'csv' | 'excel') => {
+    try {
+      const res = type === 'csv' ? await exportSales() : await exportSalesExcel()
+      const blob = res.data
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `数据.${type === 'csv' ? 'csv' : 'xlsx'}`
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+      message.success('导出成功')
+    } catch { message.error('导出失败') }
+  }
+
+  const handleImport = async (file: File) => {
+    try {
+      const result: any = await importSales(file)
+      message.success(result?.message || '导入成功')
+      setImportModalVisible(false)
+      fetchData()
+    } catch (e: any) { message.error(e?.error || '导入失败') }
+    return false
   }
 
   const rowSelection = {
@@ -309,6 +334,14 @@ function ProjectArchive() {
                 allowClear
               />
               <Button icon={<ReloadOutlined />} onClick={() => fetchData(pagination.current, pagination.pageSize)}>刷新</Button>
+              <Dropdown menu={{ items: [
+                { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
+                { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
+                { type: 'divider' },
+                { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
+              ]}}>
+                <Button icon={<DownloadOutlined />}>导入导出</Button>
+              </Dropdown>
             </Space>
           }
         />
@@ -331,6 +364,14 @@ function ProjectArchive() {
           />
         </div>
       </Card>
+
+      <Modal title="导入数据" open={importModalVisible} onCancel={() => setImportModalVisible(false)} footer={null}>
+        <Upload.Dragger accept=".csv,.xlsx,.xls" beforeUpload={(file) => { handleImport(file); return false }} showUploadList={false}>
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+          <p className="ant-upload-tip">支持 CSV、Excel 格式</p>
+        </Upload.Dragger>
+      </Modal>
     </div>
   )
 }

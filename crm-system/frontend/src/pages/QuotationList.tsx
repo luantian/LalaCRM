@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicker, message, Tag, Row, Col, Statistic, Space, Popconfirm } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons'
+import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicker, message, Tag, Row, Col, Statistic, Space, Popconfirm, Dropdown, Upload } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getCustomers, getQuotationDetail } from '../services/api'
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getCustomers, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations } from '../services/api'
 
 const { Option } = Select
 
@@ -29,6 +29,7 @@ const QuotationList: React.FC = () => {
   const [opportunities, setOpportunities] = useState<any[]>([])
   const [customers, setCustomers] = useState<any[]>([])
   const [items, setItems] = useState<any[]>([])
+  const [importModalVisible, setImportModalVisible] = useState(false)
 
   const fetchQuotations = useCallback(async () => {
     setLoading(true)
@@ -64,6 +65,31 @@ const QuotationList: React.FC = () => {
     fetchOpportunities()
     fetchCustomers()
   }, [fetchQuotations, fetchStats]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleExport = async (type: 'csv' | 'excel') => {
+    try {
+      const blob: any = type === 'csv' ? await exportQuotationsCsv() : await exportQuotationsExcel()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `报价单数据.${type === 'csv' ? 'csv' : 'xlsx'}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      message.success('导出成功')
+    } catch { message.error('导出失败') }
+  }
+
+  const handleImport = async (file: File) => {
+    try {
+      const result: any = await importQuotations(file)
+      message.success(result?.message || '导入成功')
+      setImportModalVisible(false)
+      fetchQuotations()
+    } catch (e: any) { message.error(e?.error || '导入失败') }
+    return false
+  }
 
   const handleCreate = () => {
     setEditingQuotation(null)
@@ -181,7 +207,19 @@ const QuotationList: React.FC = () => {
       </Card>
 
       <Card>
-        <div style={{ marginBottom: 16 }}><Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建报价单</Button></div>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+          <Space>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建报价单</Button>
+            <Dropdown menu={{ items: [
+              { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
+              { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
+              { type: 'divider' },
+              { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
+            ]}}>
+              <Button icon={<DownloadOutlined />}>导入导出</Button>
+            </Dropdown>
+          </Space>
+        </div>
         <Table columns={columns} dataSource={quotations} rowKey="id" loading={loading}
           scroll={{ x: 1200 }}
           pagination={{ ...pagination, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
@@ -226,6 +264,18 @@ const QuotationList: React.FC = () => {
             summary={() => <Table.Summary.Row><Table.Summary.Cell index={0} colSpan={4} align="right"><strong>合计</strong></Table.Summary.Cell><Table.Summary.Cell index={1}><strong>¥{items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0).toLocaleString()}</strong></Table.Summary.Cell><Table.Summary.Cell index={2} /></Table.Summary.Row>}
           />
         </Form>
+      </Modal>
+
+      <Modal title="导入数据" open={importModalVisible} onCancel={() => setImportModalVisible(false)} footer={null}>
+        <Upload.Dragger
+          accept=".csv,.xlsx,.xls"
+          beforeUpload={(file) => { handleImport(file); return false }}
+          showUploadList={false}
+        >
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+          <p className="ant-upload-tip">支持 CSV、Excel 格式（.csv / .xlsx / .xls）</p>
+        </Upload.Dragger>
       </Modal>
     </div>
   )

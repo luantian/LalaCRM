@@ -6,6 +6,7 @@ import { applyDataScope } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
 import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
+import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import fs from 'fs'
 import path from 'path'
 
@@ -451,6 +452,89 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
   } catch (error) {
     logger.error('Download quotation file error:', error)
     res.status(500).json({ error: '下载文件失败' })
+  }
+})
+
+// ==================== 导出/导入 ====================
+
+const quotationColumns = [
+  { key: 'name', label: '报价单' },
+  { key: 'version', label: '版本' },
+  { key: 'customer.name', label: '客户' },
+  { key: 'totalAmount', label: '报价总额' },
+  { key: 'status', label: '状态' },
+  { key: 'validUntil', label: '有效期' },
+  { key: 'owner.name', label: '创建人' },
+]
+
+const quotationLabelMap: Record<string, string> = {
+  '报价单': 'name',
+  '报价总额': 'totalAmount',
+  '状态': 'status',
+}
+
+// 导出报价单 Excel
+router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+  try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const data = await prisma.quotation.findMany({
+      where: { deletedAt: null, ...dataScopeWhere },
+      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+    })
+    exportExcel(res, '报价单列表.xlsx', '报价单', quotationColumns, data)
+  } catch (error) {
+    logger.error('Export error:', error)
+    res.status(500).json({ error: '导出失败' })
+  }
+})
+
+// 导出报价单 CSV
+router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+  try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const data = await prisma.quotation.findMany({
+      where: { deletedAt: null, ...dataScopeWhere },
+      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+    })
+    exportCSV(res, '报价单列表.csv', quotationColumns, data)
+  } catch (error) {
+    logger.error('Export CSV error:', error)
+    res.status(500).json({ error: '导出失败' })
+  }
+})
+
+// 导入报价单
+router.post('/import', authenticateToken, upload.single('file'), logOperation('报价管理', 'IMPORT'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请上传文件' })
+    const { data, error } = parseImportFile(req.file)
+    if (error) return res.status(400).json({ error })
+    if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
+
+    let success = 0, failed = 0
+    for (const row of data) {
+      try {
+        const mapped = mapImportRow(row, quotationLabelMap)
+        await prisma.quotation.create({
+          data: {
+            name: mapped.name || '未命名报价单',
+            version: 1,
+            opportunityId: 0,
+            customerId: 0,
+            totalAmount: mapped.totalAmount ? Number(mapped.totalAmount) : 0,
+            status: mapped.status || 'DRAFT',
+            ownerId: req.user!.id,
+          },
+        })
+        success++
+      } catch { failed++ }
+    }
+    res.json({ message: `导入完成: 成功 ${success} 条, 失败 ${failed} 条`, success, failed })
+  } catch (error) {
+    logger.error('Import error:', error)
+    res.status(500).json({ error: '导入失败' })
   }
 })
 

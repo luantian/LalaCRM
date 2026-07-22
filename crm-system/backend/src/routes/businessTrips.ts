@@ -5,6 +5,8 @@ import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
 import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
+import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { upload } from '../middleware/upload'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -468,6 +470,75 @@ router.delete('/:id', authenticateToken, logOperation('出差管理', 'DELETE'),
   } catch (error) {
     logger.error('Delete business trip error:', error)
     res.status(500).json({ error: '删除出差记录失败' })
+  }
+})
+
+const columns = [
+  { key: 'title', label: '出差标题' },
+  { key: 'destination', label: '目的地' },
+  { key: 'purpose', label: '目的' },
+  { key: 'startDate', label: '开始日期' },
+  { key: 'endDate', label: '结束日期' },
+  { key: 'days', label: '天数' },
+  { key: 'totalAmount', label: '总费用' },
+  { key: 'status', label: '状态' },
+  { key: 'owner.name', label: '负责人' }
+]
+
+const labelMap: Record<string, string> = {
+  '出差标题': 'title',
+  '目的地': 'destination',
+  '目的': 'purpose',
+  '开始日期': 'startDate',
+  '结束日期': 'endDate',
+  '天数': 'days',
+  '总费用': 'totalAmount'
+}
+
+router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+  try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const data = await prisma.businessTrip.findMany({
+      where: { deletedAt: null, ...dataScopeWhere },
+      include: { owner: { select: { name: true } }, customer: { select: { name: true } }, project: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' }
+    })
+    exportExcel(res, 'business-trips.xlsx', '出差记录', columns, data)
+  } catch (error) {
+    logger.error('Export error:', error)
+    res.status(500).json({ error: '导出失败' })
+  }
+})
+
+router.post('/import', authenticateToken, upload.single('file'), logOperation('出差管理', 'IMPORT'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请上传文件' })
+    const { data, error } = parseImportFile(req.file)
+    if (error) return res.status(400).json({ error })
+    if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
+
+    let success = 0, failed = 0
+    for (const row of data) {
+      try {
+        const mapped = mapImportRow(row, labelMap)
+        await prisma.businessTrip.create({
+          data: {
+            ...mapped,
+            startDate: mapped.startDate ? new Date(mapped.startDate) : new Date(),
+            endDate: mapped.endDate ? new Date(mapped.endDate) : new Date(),
+            days: parseInt(mapped.days) || 1,
+            totalAmount: parseFloat(mapped.totalAmount) || 0,
+            status: 'DRAFT',
+            ownerId: req.user!.id,
+          } as any
+        })
+        success++
+      } catch { failed++ }
+    }
+    res.json({ message: `导入完成: 成功 ${success} 条, 失败 ${failed} 条`, success, failed })
+  } catch (error) {
+    logger.error('Import error:', error)
+    res.status(500).json({ error: '导入失败' })
   }
 })
 

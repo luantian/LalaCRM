@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Empty, Popconfirm } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined } from '@ant-design/icons'
-import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getCustomers } from '../services/api'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Empty, Popconfirm, Dropdown, Upload } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
+import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getCustomers, exportProjectsCsv, exportProjectsExcel, importProjects } from '../services/api'
 import dayjs from 'dayjs'
 
 function ProjectList() {
@@ -22,6 +22,7 @@ function ProjectList() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [searchText, setSearchText] = useState('')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [importModalVisible, setImportModalVisible] = useState(false)
   const searchTextRef = useRef(searchText)
   useEffect(() => { searchTextRef.current = searchText }, [searchText])
 
@@ -111,6 +112,31 @@ function ProjectList() {
     } catch (error) {
       message.error('删除失败')
     }
+  }
+
+  const handleExport = async (type: 'csv' | 'excel') => {
+    try {
+      const blob: any = type === 'csv' ? await exportProjectsCsv() : await exportProjectsExcel()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `项目数据.${type === 'csv' ? 'csv' : 'xlsx'}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      message.success('导出成功')
+    } catch { message.error('导出失败') }
+  }
+
+  const handleImport = async (file: File) => {
+    try {
+      const result: any = await importProjects(file)
+      message.success(result?.message || '导入成功')
+      setImportModalVisible(false)
+      fetchProjects(pagination.current, pagination.pageSize)
+    } catch (e: any) { message.error(e?.error || '导入失败') }
+    return false
   }
 
   const handleBatchDelete = async () => {
@@ -267,6 +293,14 @@ function ProjectList() {
               批量删除 ({selectedRowKeys.length})
             </Button>
           )}
+          <Dropdown menu={{ items: [
+            { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
+            { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
+            { type: 'divider' },
+            { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
+          ]}}>
+            <Button icon={<DownloadOutlined />}>导入导出</Button>
+          </Dropdown>
         </Space>
       </div>
 
@@ -340,6 +374,18 @@ function ProjectList() {
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal title="导入数据" open={importModalVisible} onCancel={() => setImportModalVisible(false)} footer={null}>
+        <Upload.Dragger
+          accept=".csv,.xlsx,.xls"
+          beforeUpload={(file) => { handleImport(file); return false }}
+          showUploadList={false}
+        >
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+          <p className="ant-upload-tip">支持 CSV、Excel 格式（.csv / .xlsx / .xls）</p>
+        </Upload.Dragger>
       </Modal>
     </div>
   )
