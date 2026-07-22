@@ -370,6 +370,7 @@ function DailyReportList() {
     {
       title: '姓名',
       key: 'userName',
+      width: 80,
       render: (_: any, record: any) => record.user?.name || '-'
     },
     {
