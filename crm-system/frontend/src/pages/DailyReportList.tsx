@@ -662,7 +662,14 @@ function DailyReportList() {
                 })()}
               </Descriptions.Item>
               <Descriptions.Item label="时长">
-                {viewingReport.hours != null ? `${viewingReport.hours}小时` : '-'}
+                {(() => {
+                  // 优先从工作记录中计算总时长（更准确），无记录时回退到日报存储的时长
+                  if (items.length > 0) {
+                    const total = items.reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0)
+                    if (total > 0) return `${total}小时`
+                  }
+                  return viewingReport.hours != null ? `${viewingReport.hours}小时` : '-'
+                })()}
               </Descriptions.Item>
               <Descriptions.Item label="工作内容" span={2}>
                 {viewingReport.content || '-'}
