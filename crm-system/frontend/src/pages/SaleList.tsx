@@ -126,16 +126,16 @@ function ProjectArchive() {
 
   const handleExport = async (type: 'csv' | 'excel') => {
     try {
-      const res = type === 'csv' ? await exportSales() : await exportSalesExcel()
-      const blob = res.data
+      const blob: any = type === 'csv' ? await exportSales() : await exportSalesExcel()
+      if (!blob) { message.error('导出失败：无数据'); return }
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `数据.${type === 'csv' ? 'csv' : 'xlsx'}`
+      a.download = `销售数据.${type === 'csv' ? 'csv' : 'xlsx'}`
       document.body.appendChild(a); a.click(); a.remove()
       URL.revokeObjectURL(url)
       message.success('导出成功')
-    } catch { message.error('导出失败') }
+    } catch (e: any) { message.error(e?.error || '导出失败') }
   }
 
   const handleImport = async (file: File) => {
