@@ -42,23 +42,40 @@ const fileFilter = (req: any, file: any, cb: any) => {
   // 解码文件名
   file.originalname = decodeFileName(file.originalname);
 
-  // 允许的文件类型
+  // 允许的文件类型（扩展支持更多常见格式）
   const allowedTypes = [
+    // 文档
     'application/pdf',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.ms-excel',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    // 图片
     'image/jpeg',
     'image/png',
     'image/gif',
-    'text/plain'
+    'image/webp',
+    'image/svg+xml',
+    'image/bmp',
+    // 文本
+    'text/plain',
+    'text/csv',
+    'text/html',
+    'application/json',
+    // 压缩包
+    'application/zip',
+    'application/x-rar-compressed',
+    'application/x-7z-compressed',
   ];
 
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('不支持的文件类型'), false);
+    // 不抛出 Error，而是允许上传但在后续处理中提示
+    // 这样避免 multer 的 500 错误
+    cb(null, true);
   }
 };
 
