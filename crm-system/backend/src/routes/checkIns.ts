@@ -18,7 +18,7 @@ function serializeCheckIn(record: any) {
   return {
     ...record,
     checkInTime: record.checkInTime ? dayjs(record.checkInTime).utc().toISOString() : record.checkInTime,
-    checkInDate: record.checkInDate ? dayjs(record.checkInDate).utc().startOf('day').toISOString() : record.checkInDate,
+    checkInDate: record.checkInDate ? dayjs(record.checkInDate).utc().format('YYYY-MM-DD') + 'T00:00:00.000Z' : record.checkInDate,
   }
 }
 
@@ -30,25 +30,29 @@ const DAY_BOUNDARY_HOUR = 5
 
 /**
  * 获取打卡日期的起止范围（以凌晨5点为分界）
- * 例如：当前时间 7月22日 03:00 → 属于 7月21日 的打卡
- *       当前时间 7月22日 06:00 → 属于 7月22日 的打卡
+ * 使用 UTC 模式，避免时区转换导致日期错位
+ * 例如：当前时间 7月22日 03:00 UTC → 属于 7月21日 的打卡
+ *       当前时间 7月22日 06:00 UTC → 属于 7月22日 的打卡
  */
 function getCheckInDayRange(now: dayjs.Dayjs) {
-  if (now.hour() < DAY_BOUNDARY_HOUR) {
+  const utcNow = now.utc()
+  if (utcNow.hour() < DAY_BOUNDARY_HOUR) {
     // 凌晨5点前 → 属于昨天的打卡周期
-    const day = now.subtract(1, 'day').startOf('day').add(DAY_BOUNDARY_HOUR, 'hour')
+    const checkInDate = utcNow.subtract(1, 'day').startOf('day')
+    const start = checkInDate.add(DAY_BOUNDARY_HOUR, 'hour')
     return {
-      start: day.toDate(),
-      end: day.add(1, 'day').toDate(),
-      checkInDate: now.subtract(1, 'day').startOf('day').toDate()
+      start: start.toDate(),
+      end: start.add(1, 'day').toDate(),
+      checkInDate: checkInDate.toDate()
     }
   } else {
     // 凌晨5点后 → 属于今天的打卡周期
-    const day = now.startOf('day').add(DAY_BOUNDARY_HOUR, 'hour')
+    const checkInDate = utcNow.startOf('day')
+    const start = checkInDate.add(DAY_BOUNDARY_HOUR, 'hour')
     return {
-      start: day.toDate(),
-      end: day.add(1, 'day').toDate(),
-      checkInDate: now.startOf('day').toDate()
+      start: start.toDate(),
+      end: start.add(1, 'day').toDate(),
+      checkInDate: checkInDate.toDate()
     }
   }
 }
@@ -59,7 +63,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     const { month } = req.query
     const userId = req.user!.id
 
-    const targetMonth = month ? dayjs(month as string) : dayjs()
+    const targetMonth = month ? dayjs.utc(month as string) : dayjs.utc()
     const startDate = targetMonth.startOf('month').toDate()
     const endDate = targetMonth.endOf('month').toDate()
 
@@ -77,7 +81,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     // 按日期分组，取每天最早上班和最晚下班
     const dailyMap = new Map<string, { morning?: any; evening?: any }>()
     for (const r of records) {
-      const dateKey = dayjs(r.checkInDate).format('YYYY-MM-DD')
+      const dateKey = dayjs.utc(r.checkInDate).format('YYYY-MM-DD')
       if (!dailyMap.has(dateKey)) dailyMap.set(dateKey, {})
       const day = dailyMap.get(dateKey)!
       if (r.period === 'MORNING') {
@@ -183,13 +187,18 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
   }
 })
 
-// 打卡（允许多次打卡，早上取最早，晚上取最晚）
+// 打卡（自动判断上下班，前端不需要传 period）
 router.post('/', authenticateToken, logOperation('打卡管理', 'CHECKIN'), async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id
-    const { period = 'MORNING' } = req.body
     const now = dayjs()
-    const range = getCheckInDayRange(now)
+    const utcNow = now.utc()
+    const range = getCheckInDayRange(utcNow)
+
+    // 自动判断时段：根据用户本地时间（通过 Accept-Language 或偏移）
+    // 这里使用简单的 UTC+8 判断（适用于中国用户）
+    const localHour = now.add(8, 'hour').utc().hour() // UTC+8 的本地小时
+    const period = localHour < 12 ? 'MORNING' : 'EVENING'
 
     // 检查是否在出差
     const activeTrip = await prisma.businessTrip.findFirst({
@@ -339,7 +348,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
     const userId = req.user!.id
     const { month } = req.query
 
-    const targetMonth = month ? dayjs(month as string) : dayjs()
+    const targetMonth = month ? dayjs.utc(month as string) : dayjs.utc()
     const startDate = targetMonth.startOf('month').toDate()
     const endDate = targetMonth.endOf('month').toDate()
 

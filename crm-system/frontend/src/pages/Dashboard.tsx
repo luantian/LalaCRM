@@ -62,9 +62,7 @@ function Dashboard() {
 
   const handleQuickCheckIn = async () => {
     try {
-      const hour = dayjs().hour()
-      const period = hour < 12 ? 'MORNING' : 'EVENING'
-      const result: any = await checkIn({ period })
+      const result: any = await checkIn({})
       message.success(result?.message || '打卡成功！')
       fetchTodayCheckIn()
     } catch (error: any) {
