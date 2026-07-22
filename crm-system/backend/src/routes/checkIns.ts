@@ -274,9 +274,9 @@ router.post('/', authenticateToken, logOperation('打卡管理', 'CHECKIN'), asy
         ? (period === 'MORNING' ? '已记录，以最早打卡为准' : '已记录，以最晚打卡为准')
         : '打卡成功'
     })
-  } catch (error) {
-    logger.error('Check-in error:', error)
-    res.status(500).json({ error: '打卡失败' })
+  } catch (error: any) {
+    logger.error('Check-in error:', error?.message || error, JSON.stringify(error, Object.getOwnPropertyNames(error)))
+    res.status(500).json({ error: error?.message || '打卡失败' })
   }
 })
 

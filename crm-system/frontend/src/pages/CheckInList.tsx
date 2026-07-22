@@ -93,12 +93,15 @@ function CheckInList() {
     try {
       const hour = dayjs().hour()
       const period = hour < 12 ? 'MORNING' as const : 'EVENING' as const
+      console.log('[打卡] 发送请求, period:', period, '当前时间:', dayjs().format('HH:mm:ss'))
       const result: any = await checkIn({ period })
+      console.log('[打卡] 响应:', result)
       message.success(result?.message || (period === 'MORNING' ? '上班打卡成功！' : '下班打卡成功！'))
       fetchTodayStatus()
       fetchData()
     } catch (error: any) {
-      message.error(error?.error || '打卡失败')
+      console.error('[打卡] 失败:', error)
+      message.error(error?.error || error?.message || '打卡失败')
     }
   }
 
