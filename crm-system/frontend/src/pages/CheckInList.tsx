@@ -504,7 +504,9 @@ function CheckInList() {
                   }}
                   style={{
                     background: bgGradient,
-                    border: `2px solid ${borderColor}`,
+                    borderWidth: 2,
+                    borderStyle: 'solid',
+                    borderColor: borderColor,
                     borderRadius: 12,
                     padding: '12px 8px',
                     minHeight: 90,
