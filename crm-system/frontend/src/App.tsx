@@ -8,8 +8,6 @@ import './App.css'
 
 // 路由级代码分割 — 每个页面按需加载，减小初始 bundle 大小
 const Dashboard = lazy(() => import('./pages/Dashboard'))
-const CustomerList = lazy(() => import('./pages/CustomerList'))
-const CustomerDetail = lazy(() => import('./pages/CustomerDetail'))
 const SaleList = lazy(() => import('./pages/SaleList'))
 const ProjectList = lazy(() => import('./pages/ProjectList'))
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'))
@@ -209,8 +207,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Suspense fallback={<PageLoading />}><Dashboard /></Suspense>} />
-            <Route path="customers" element={<Suspense fallback={<PageLoading />}><CustomerList /></Suspense>} />
-            <Route path="customers/:id" element={<Suspense fallback={<PageLoading />}><CustomerDetail /></Suspense>} />
+            <Route path="customers" element={<Suspense fallback={<PageLoading />}><OrganizationList /></Suspense>} />
             <Route path="sales" element={<Suspense fallback={<PageLoading />}><SaleList /></Suspense>} />
             <Route path="projects" element={<Suspense fallback={<PageLoading />}><ProjectList /></Suspense>} />
             <Route path="projects/:id" element={<Suspense fallback={<PageLoading />}><ProjectDetail /></Suspense>} />
@@ -231,7 +228,6 @@ function App() {
             <Route path="quotations" element={<Suspense fallback={<PageLoading />}><QuotationList /></Suspense>} />
             <Route path="quotations/:id" element={<Suspense fallback={<PageLoading />}><QuotationDetail /></Suspense>} />
             <Route path="check-ins" element={<Suspense fallback={<PageLoading />}><CheckInList /></Suspense>} />
-            <Route path="organizations" element={<Suspense fallback={<PageLoading />}><OrganizationList /></Suspense>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
