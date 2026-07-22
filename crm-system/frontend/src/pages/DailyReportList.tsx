@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Tooltip, Descriptions, List, Divider, Popconfirm, TimePicker, Upload, Dropdown } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Tooltip, Descriptions, Empty, Divider, Popconfirm, TimePicker, Upload, Dropdown } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, DownloadOutlined, EyeOutlined, CheckCircleOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, exportDailyReports, exportDailyReportsExcel, importDailyReports, getDailyReportItems, createDailyReportItem, updateDailyReportItem, deleteDailyReportItem } from '../services/api'
 import dayjs from 'dayjs'
@@ -647,8 +647,13 @@ function DailyReportList() {
               <Descriptions.Item label="姓名">
                 {viewingReport.user?.name || '-'}
               </Descriptions.Item>
-              <Descriptions.Item label="项目" span={2}>
-                {viewingReport.project?.name || '-'}
+              <Descriptions.Item label="关联项目" span={2}>
+                {(() => {
+                  // 日报本身的项目在基本信息中显示，工作记录的项目在工作记录中各自显示
+                  return viewingReport.project?.name
+                    ? <Tag color="blue">{viewingReport.project.name}</Tag>
+                    : <span style={{ color: '#bbb' }}>未关联（可在各工作记录中关联项目）</span>
+                })()}
               </Descriptions.Item>
               <Descriptions.Item label="类型">
                 {(() => {
@@ -675,6 +680,11 @@ function DailyReportList() {
               <Space>
                 <CheckCircleOutlined />
                 工作记录 ({items.length})
+                {items.length > 0 && (
+                  <span style={{ fontWeight: 'normal', color: '#999', fontSize: 12 }}>
+                    共 {items.reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0)} 小时
+                  </span>
+                )}
               </Space>
             </Divider>
             <Button
@@ -686,66 +696,135 @@ function DailyReportList() {
             >
               添加工作记录
             </Button>
-            <List
-              loading={itemsLoading}
-              dataSource={items}
-              renderItem={(item: any) => (
-                <List.Item
-                  actions={[
-                    <Button
-                      type="link"
-                      size="small"
-                      icon={<EditOutlined />}
-                      onClick={() => handleViewItem(item)}
+            {itemsLoading ? (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>加载中...</div>
+            ) : items.length === 0 ? (
+              <Empty description="暂无工作记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {items.map((item: any, index: number) => {
+                  const priorityConfig: Record<string, { label: string; color: string; icon: string }> = {
+                    URGENT: { label: '紧急', color: '#f5222d', icon: '🔥' },
+                    HIGH: { label: '高', color: '#ff4d4f', icon: '⬆' },
+                    MEDIUM: { label: '中', color: '#1890ff', icon: '●' },
+                    LOW: { label: '低', color: '#52c41a', icon: '⬇' },
+                  }
+                  const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
+                    COMPLETED: { label: '已完成', color: '#52c41a', bg: '#f6ffed' },
+                    IN_PROGRESS: { label: '进行中', color: '#1890ff', bg: '#e6f7ff' },
+                    DELAYED: { label: '已延期', color: '#faad14', bg: '#fffbe6' },
+                    CANCELLED: { label: '已取消', color: '#999', bg: '#fafafa' },
+                  }
+                  const timeTypeConfig: Record<string, { label: string; color: string; icon: string }> = {
+                    NORMAL: { label: '正常', color: '#13c2c2', icon: '⏱' },
+                    OVERTIME: { label: '加班', color: '#f5222d', icon: '🔥' },
+                    LEAVE: { label: '请假', color: '#faad14', icon: '🏖' },
+                    OTHER: { label: '其他', color: '#8c8c8c', icon: '📌' },
+                  }
+                  const pc = priorityConfig[item.priority] || priorityConfig.MEDIUM
+                  const sc = statusConfig[item.status] || statusConfig.COMPLETED
+                  const tc = timeTypeConfig[item.timeType] || timeTypeConfig.NORMAL
+
+                  return (
+                    <div
+                      key={item.id || index}
+                      style={{
+                        background: '#fff',
+                        border: '1px solid #f0f0f0',
+                        borderRadius: 10,
+                        padding: '14px 18px',
+                        transition: 'all 0.2s',
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.08)'
+                        e.currentTarget.style.borderColor = '#d9d9d9'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'
+                        e.currentTarget.style.borderColor = '#f0f0f0'
+                      }}
                     >
-                      编辑
-                    </Button>,
-                    <Popconfirm
-                      title="确定删除此工作记录吗？"
-                      onConfirm={() => handleDeleteItem(item.id)}
-                      okText="确定"
-                      cancelText="取消"
-                    >
-                      <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-                        删除
-                      </Button>
-                    </Popconfirm>
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={
-                      <Space size={8}>
-                        <span style={{ fontSize: 12, color: '#94a3b8' }}>优先级</span>
-                        <Tag color={item.priority === 'HIGH' ? 'red' : item.priority === 'MEDIUM' ? 'orange' : 'blue'}>
-                          {item.priority === 'HIGH' ? '高' : item.priority === 'MEDIUM' ? '中' : '低'}
-                        </Tag>
-                        <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 8 }}>状态</span>
-                        <Tag color={item.status === 'COMPLETED' ? 'green' : item.status === 'IN_PROGRESS' ? 'blue' : 'red'}>
-                          {item.status === 'COMPLETED' ? '已完成' : item.status === 'IN_PROGRESS' ? '进行中' : item.status === 'DELAYED' ? '延期' : '取消'}
-                        </Tag>
-                        <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 8 }}>工时</span>
-                        <Tag color={item.timeType === 'OVERTIME' ? 'red' : item.timeType === 'LEAVE' ? 'orange' : item.timeType === 'OTHER' ? 'default' : 'cyan'}>
-                          {item.timeType === 'OVERTIME' ? '加班' : item.timeType === 'LEAVE' ? '请假' : item.timeType === 'OTHER' ? '其他' : '正常'}
-                        </Tag>
-                      </Space>
-                    }
-                    description={
-                      <div>
-                        <div>{item.content}</div>
-                        {item.result && <div style={{ color: '#52c41a', marginTop: 4 }}>成果：{item.result}</div>}
-                        <div style={{ marginTop: 4, color: '#999' }}>
-                          {item.project && <span>项目：{item.project.name} | </span>}
-                          {item.hours != null && <span>工时：{item.hours}小时</span>}
-                          {item.startTime && item.endTime && (
-                            <span> | {dayjs(item.startTime).format('HH:mm')} - {dayjs(item.endTime).format('HH:mm')}</span>
-                          )}
+                      {/* 顶部行：序号 + 内容 + 操作 */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                        <div style={{
+                          minWidth: 24, height: 24, borderRadius: 6,
+                          background: '#f0f5ff', color: '#1890ff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 12, fontWeight: 600, marginTop: 1
+                        }}>
+                          {index + 1}
                         </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 500, color: '#262626', lineHeight: 1.6, wordBreak: 'break-word' }}>
+                            {item.content}
+                          </div>
+                          {/* 标签行 */}
+                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                              padding: '1px 8px', borderRadius: 4,
+                              fontSize: 11, fontWeight: 500,
+                              color: pc.color, background: `${pc.color}10`,
+                              border: `1px solid ${pc.color}30`
+                            }}>
+                              <span style={{ fontSize: 10 }}>{pc.icon}</span>{pc.label}
+                            </span>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                              padding: '1px 8px', borderRadius: 4,
+                              fontSize: 11, fontWeight: 500,
+                              color: sc.color, background: sc.bg,
+                              border: `1px solid ${sc.color}30`
+                            }}>
+                              {sc.label}
+                            </span>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                              padding: '1px 8px', borderRadius: 4,
+                              fontSize: 11, fontWeight: 500,
+                              color: tc.color, background: `${tc.color}08`,
+                              border: `1px solid ${tc.color}25`
+                            }}>
+                              <span style={{ fontSize: 10 }}>{tc.icon}</span>{tc.label}
+                            </span>
+                            {item.hours != null && Number(item.hours) > 0 && (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center',
+                                padding: '1px 8px', borderRadius: 4,
+                                fontSize: 11, fontWeight: 600,
+                                color: '#722ed1', background: '#f9f0ff',
+                                border: '1px solid #d3adf7'
+                              }}>
+                                ⏳ {item.hours}h
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <Space size={2} style={{ flexShrink: 0 }}>
+                          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleViewItem(item)} style={{ color: '#1890ff' }} />
+                          <Popconfirm title="确定删除此工作记录吗？" onConfirm={() => handleDeleteItem(item.id)} okText="确定" cancelText="取消">
+                            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                          </Popconfirm>
+                        </Space>
                       </div>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
+                      {/* 底部行：项目 + 时间 + 成果 */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 10, paddingLeft: 36, fontSize: 12, color: '#8c8c8c' }}>
+                        {item.project?.name && (
+                          <span>📁 {item.project.name}</span>
+                        )}
+                        {item.startTime && item.endTime && (
+                          <span>🕐 {dayjs(item.startTime).format('HH:mm')} – {dayjs(item.endTime).format('HH:mm')}</span>
+                        )}
+                        {item.result && (
+                          <span style={{ color: '#52c41a' }}>✅ {item.result}</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
       </Modal>
