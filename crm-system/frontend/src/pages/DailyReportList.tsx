@@ -233,16 +233,23 @@ function DailyReportList() {
 
   const handleExport = async (type: 'csv' | 'excel') => {
     try {
-      const res = type === 'csv' ? await exportDailyReports({ search: searchText }) : await exportDailyReportsExcel({ search: searchText })
-      const blob = res.data
+      // 注意：axios 拦截器已解包 response.data，responseType: 'blob' 时返回值直接就是 Blob
+      const blob = type === 'csv' ? await exportDailyReports({ search: searchText }) : await exportDailyReportsExcel({ search: searchText })
+      if (!blob || !(blob instanceof Blob)) {
+        message.error('导出失败：响应格式异常')
+        return
+      }
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `数据.${type === 'csv' ? 'csv' : 'xlsx'}`
+      a.download = `日报数据.${type === 'csv' ? 'csv' : 'xlsx'}`
       document.body.appendChild(a); a.click(); a.remove()
       URL.revokeObjectURL(url)
       message.success('导出成功')
-    } catch { message.error('导出失败') }
+    } catch (e) {
+      console.error('[导出] 失败:', e)
+      message.error('导出失败')
+    }
   }
 
   const handleImport = async (file: File) => {
