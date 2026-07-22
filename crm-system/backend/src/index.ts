@@ -44,6 +44,7 @@ import quotationRoutes from './routes/quotations'
 import checkInRoutes from './routes/checkIns'
 import taskRoutes from './routes/tasks'
 import notificationRoutes from './routes/notifications'
+import orgRoutes from './routes/organizations'
 
 dotenv.config()
 
@@ -133,6 +134,7 @@ app.use('/api/quotations', quotationRoutes)
 app.use('/api/check-ins', checkInRoutes)
 app.use('/api/tasks', taskRoutes)
 app.use('/api/notifications', notificationRoutes)
+app.use('/api/organizations', orgRoutes)
 
 // 健康检查
 

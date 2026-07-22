@@ -30,6 +30,7 @@ const LoginLogList = lazy(() => import('./pages/LoginLogList'))
 const QuotationList = lazy(() => import('./pages/QuotationList'))
 const QuotationDetail = lazy(() => import('./pages/QuotationDetail'))
 const CheckInList = lazy(() => import('./pages/CheckInList'))
+const OrganizationList = lazy(() => import('./pages/OrganizationList'))
 
 // 加载占位组件
 const PageLoading = () => (
@@ -230,6 +231,7 @@ function App() {
             <Route path="quotations" element={<Suspense fallback={<PageLoading />}><QuotationList /></Suspense>} />
             <Route path="quotations/:id" element={<Suspense fallback={<PageLoading />}><QuotationDetail /></Suspense>} />
             <Route path="check-ins" element={<Suspense fallback={<PageLoading />}><CheckInList /></Suspense>} />
+            <Route path="organizations" element={<Suspense fallback={<PageLoading />}><OrganizationList /></Suspense>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

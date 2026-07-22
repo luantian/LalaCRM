@@ -49,6 +49,7 @@ model User {
   assignedTasks   Task[] @relation("TaskAssigner") // 我委派的任务
   receivedTasks   Task[] @relation("TaskAssignees") // 我被委派的任务
   notifications   Notification[] // 我的通知
+  organizations   Organization[] // 管理的组织
 }
 
 // 角色表
@@ -85,6 +86,57 @@ model MenuItem {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   roleMenus    RoleMenu[] // 角色-菜单关联
+}
+
+// ==================== 组织管理（集团/公司/分公司 无限层级）====================
+
+// 组织表（自引用树结构，支持无限层级）
+model Organization {
+  id          Int       @id @default(autoincrement())
+  name        String    // 组织名称
+  type        OrgType   // 类型：集团/公司/分公司
+  parentId    Int?      // 父组织ID（null为顶级）
+  parent      Organization? @relation("OrgTree", fields: [parentId], references: [id])
+  children    Organization[] @relation("OrgTree")
+  address     String?   // 地址
+  phone       String?   // 电话
+  email       String?   // 邮箱
+  taxNo       String?   // 税号
+  website     String?   // 网站
+  legalPerson String?   // 法人代表
+  registeredCapital String? // 注册资本
+  description String?   // 描述
+  status      OrgStatus @default(ACTIVE)
+  ownerId     Int       // 负责人ID
+  owner       User      @relation(fields: [ownerId], references: [id])
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  contacts    OrgContact[] // 联系人
+
+  @@index([parentId])
+  @@index([type])
+  @@index([status])
+}
+
+// 组织联系人
+model OrgContact {
+  id              Int      @id @default(autoincrement())
+  organizationId  Int
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  name            String   // 姓名
+  title           String?  // 职务
+  department      String?  // 部门
+  phone           String?  // 电话
+  email           String?  // 邮箱
+  wechat          String?  // 微信
+  isPrimary       Boolean  @default(false) // 是否主要联系人
+  notes           String?  // 备注
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([organizationId])
 }
 
 // 客户表
@@ -1509,4 +1561,18 @@ enum CheckInType {
   EARLY_LEAVE   // 早退
   AUTO          // 出差自动打卡
   MAKEUP        // 补卡
+}
+
+// ==================== 组织管理枚举 ====================
+
+enum OrgType {
+  GROUP       // 集团
+  COMPANY     // 公司
+  BRANCH      // 分公司/部门
+}
+
+enum OrgStatus {
+  ACTIVE      // 正常
+  INACTIVE    // 停用
+  PENDING     // 待审核
 }

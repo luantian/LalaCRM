@@ -320,6 +320,17 @@ export const getQuotationFiles = (id: number) => api.get(`/quotations/${id}/file
 export const deleteQuotationFile = (id: number, fileId: number) => api.delete(`/quotations/${id}/files/${fileId}`)
 export const downloadQuotationFile = (fileId: number) => `${api.defaults.baseURL}/quotations/files/${fileId}/download`
 
+// ==================== 组织管理 ====================
+export const getOrganizationTree = () => api.get('/organizations/tree')
+export const getOrganizationDetail = (id: number) => api.get(`/organizations/${id}`)
+export const createOrganization = (data: any) => api.post('/organizations', data)
+export const updateOrganization = (id: number, data: any) => api.put(`/organizations/${id}`, data)
+export const deleteOrganization = (id: number) => api.delete(`/organizations/${id}`)
+export const getOrganizationContacts = (id: number) => api.get(`/organizations/${id}/contacts`)
+export const createOrganizationContact = (orgId: number, data: any) => api.post(`/organizations/${orgId}/contacts`, data)
+export const updateOrganizationContact = (orgId: number, contactId: number, data: any) => api.put(`/organizations/${orgId}/contacts/${contactId}`, data)
+export const deleteOrganizationContact = (orgId: number, contactId: number) => api.delete(`/organizations/${orgId}/contacts/${contactId}`)
+
 // ==================== 任务管理 ====================
 export const getTasks = (params?: any) => api.get('/tasks', { params })
 export const createTask = (data: any) => api.post('/tasks', data)
