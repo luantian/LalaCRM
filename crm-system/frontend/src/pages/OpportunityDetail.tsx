@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Image } from 'antd'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Image, Spin, Result } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, FileTextOutlined, ScheduleOutlined, CheckOutlined, EyeOutlined } from '@ant-design/icons'
 import { getOpportunityDetail, updateOpportunity, convertOpportunity, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getCustomers, getUsers, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
@@ -18,6 +18,7 @@ function OpportunityDetail() {
   const navigate = useNavigate()
   const [opportunity, setOpportunity] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   // 当前用户与权限
   const currentUser = safeJsonParse(localStorage.getItem('user'), {})
@@ -67,6 +68,7 @@ function OpportunityDetail() {
         setOpportunity(data)
       } catch (error) {
         console.error('获取商机详情失败:', error)
+        setError(true)
       } finally {
         setLoading(false)
       }
@@ -277,8 +279,11 @@ function OpportunityDetail() {
     }
   }
 
-  if (loading || !opportunity) {
-    return <div>加载中...</div>
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}><Spin size="large" tip="加载中..." /></div>
+  }
+  if (error || !opportunity) {
+    return <div style={{ textAlign: 'center', padding: 80 }}><Result status="error" title="加载失败" subTitle="请返回重试" extra={<Button type="primary" onClick={() => navigate('/opportunities')}>返回列表</Button>} /></div>
   }
 
   const statusConfig: Record<string, { text: string; color: string }> = {

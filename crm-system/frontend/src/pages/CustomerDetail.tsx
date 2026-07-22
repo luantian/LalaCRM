@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, message, Popconfirm, Checkbox } from 'antd'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, message, Popconfirm, Checkbox, Spin, Result } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, StarOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import { getCustomerDetail, updateCustomer, getCustomerContacts, createCustomerContact, updateCustomerContact, deleteCustomerContact, setPrimaryContact } from '../services/api'
 import dayjs from 'dayjs'
@@ -10,6 +10,7 @@ function CustomerDetail() {
   const navigate = useNavigate()
   const [customer, setCustomer] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   // 编辑状态
   const [modalVisible, setModalVisible] = useState(false)
@@ -28,6 +29,7 @@ function CustomerDetail() {
         setCustomer(data)
       } catch (error) {
         console.error('获取客户详情失败:', error)
+        setError(true)
       } finally {
         setLoading(false)
       }
@@ -127,8 +129,11 @@ function CustomerDetail() {
     }
   }
 
-  if (loading || !customer) {
-    return <div>加载中...</div>
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}><Spin size="large" tip="加载中..." /></div>
+  }
+  if (error || !customer) {
+    return <div style={{ textAlign: 'center', padding: 80 }}><Result status="error" title="加载失败" subTitle="请返回重试" extra={<Button type="primary" onClick={() => navigate('/customers')}>返回列表</Button>} /></div>
   }
 
   const statusConfig: Record<string, { text: string; color: string }> = {

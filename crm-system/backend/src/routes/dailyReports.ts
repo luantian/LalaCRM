@@ -79,7 +79,11 @@ router.get('/', authenticateToken, checkPermission('view_reports'), applyDataSco
       where,
       include: {
         user: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } }
+        project: { select: { id: true, name: true } },
+        items: {
+          where: { deletedAt: null },
+          select: { project: { select: { id: true, name: true } } }
+        }
       },
       orderBy: { reportDate: 'desc' },
       skip,

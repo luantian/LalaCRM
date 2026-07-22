@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message } from 'antd'
+import { Card, Descriptions, Tag, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, Spin, Result } from 'antd'
 import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons'
 import { getBusinessTripDetail, updateBusinessTrip, getCustomers, getProjects } from '../services/api'
 import dayjs from 'dayjs'
@@ -12,6 +12,7 @@ function BusinessTripDetail() {
   const navigate = useNavigate()
   const [trip, setTrip] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   // 编辑状态
   const [modalVisible, setModalVisible] = useState(false)
@@ -26,6 +27,7 @@ function BusinessTripDetail() {
         setTrip(data)
       } catch (error) {
         console.error('获取出差详情失败:', error)
+        setError(true)
       } finally {
         setLoading(false)
       }
@@ -99,8 +101,11 @@ function BusinessTripDetail() {
     }
   }
 
-  if (loading || !trip) {
-    return <div>加载中...</div>
+  if (loading) {
+    return <div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'60vh'}}><Spin size="large" tip="加载中..." /></div>
+  }
+  if (error || !trip) {
+    return <div style={{textAlign:'center',padding:80}}><Result status="error" title="加载失败" subTitle="请返回重试" extra={<Button type="primary" onClick={() => navigate('/business-trips')}>返回列表</Button>} /></div>
   }
 
   const statusConfig: Record<string, { text: string; color: string }> = {

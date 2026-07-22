@@ -44,11 +44,11 @@ function CustomerList() {
       if (searchTextRef.current) params.search = searchTextRef.current
 
       const response: any = await getCustomers(params)
-      setCustomers(response.data)
+      setCustomers(response.data || [])
       setPagination({
-        current: response.pagination.page,
-        pageSize: response.pagination.pageSize,
-        total: response.pagination.total
+        current: response.pagination?.page || 1,
+        pageSize: response.pagination?.pageSize || 10,
+        total: response.pagination?.total || 0
       })
     } catch (error) {
       message.error('获取客户列表失败')

@@ -375,7 +375,29 @@ function DailyReportList() {
     {
       title: '项目',
       key: 'project',
-      render: (_: any, record: any) => record.project?.name || '-'
+      width: 200,
+      render: (_: any, record: any) => {
+        // 收集所有关联项目：日报本身的项目 + 工作记录中的项目
+        const projectNames = new Set<string>()
+        if (record.project?.name) projectNames.add(record.project.name)
+        if (Array.isArray(record.items)) {
+          record.items.forEach((item: any) => {
+            if (item.project?.name) projectNames.add(item.project.name)
+          })
+        }
+        const names = Array.from(projectNames)
+        if (names.length === 0) return <span style={{ color: '#bbb' }}>—</span>
+        if (names.length === 1) return <Tag color="blue">{names[0]}</Tag>
+        return (
+          <Tooltip title={names.join('、')}>
+            <Space size={2} wrap>
+              {names.map((name, i) => (
+                <Tag key={i} color="blue" style={{ margin: '1px 2px' }}>{name}</Tag>
+              ))}
+            </Space>
+          </Tooltip>
+        )
+      }
     },
     {
       title: '类型',

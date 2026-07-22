@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Slider, Avatar, Empty, Image } from 'antd'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Slider, Avatar, Empty, Image, Spin, Result } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, EyeOutlined } from '@ant-design/icons'
 import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getCustomers, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, getShipments, createShipment, updateShipment, deleteShipment, getProcurements, createProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUsers, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
@@ -13,6 +13,7 @@ function ProjectDetail() {
   const navigate = useNavigate()
   const [project, setProject] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const user = safeJsonParse(localStorage.getItem('user'), {})
 
   // 合同管理状态
@@ -104,6 +105,7 @@ function ProjectDetail() {
         setProject(data)
       } catch (error) {
         console.error('获取项目详情失败:', error)
+        setError(true)
       } finally {
         setLoading(false)
       }
@@ -172,7 +174,8 @@ function ProjectDetail() {
     } catch (error) { message.error('更新失败') }
   }
 
-  if (loading || !project) return <div>加载中...</div>
+  if (loading) return <div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'60vh'}}><Spin size="large" tip="加载中..." /></div>
+  if (error || !project) return <div style={{textAlign:'center',padding:80}}><Result status="error" title="加载失败" subTitle="请返回重试" extra={<Button type="primary" onClick={() => navigate('/projects')}>返回列表</Button>} /></div>
 
   const statusConfig: Record<string, { text: string; color: string }> = {
     PENDING: { text: '待开始', color: 'default' }, IN_PROGRESS: { text: '进行中', color: 'processing' },
