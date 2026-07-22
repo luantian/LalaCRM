@@ -767,43 +767,55 @@ function DailyReportList() {
                             {item.content}
                           </div>
                           {/* 标签行 */}
-                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 3,
-                              padding: '1px 8px', borderRadius: 4,
-                              fontSize: 11, fontWeight: 500,
-                              color: pc.color, background: `${pc.color}10`,
-                              border: `1px solid ${pc.color}30`
-                            }}>
-                              <span style={{ fontSize: 10 }}>{pc.icon}</span>{pc.label}
+                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 10px', marginTop: 8 }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                              <span style={{ color: '#999' }}>优先级</span>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 3,
+                                padding: '1px 8px', borderRadius: 4,
+                                fontSize: 11, fontWeight: 500,
+                                color: pc.color, background: `${pc.color}10`,
+                                border: `1px solid ${pc.color}30`
+                              }}>
+                                <span style={{ fontSize: 10 }}>{pc.icon}</span>{pc.label}
+                              </span>
                             </span>
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 3,
-                              padding: '1px 8px', borderRadius: 4,
-                              fontSize: 11, fontWeight: 500,
-                              color: sc.color, background: sc.bg,
-                              border: `1px solid ${sc.color}30`
-                            }}>
-                              {sc.label}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                              <span style={{ color: '#999' }}>状态</span>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 3,
+                                padding: '1px 8px', borderRadius: 4,
+                                fontSize: 11, fontWeight: 500,
+                                color: sc.color, background: sc.bg,
+                                border: `1px solid ${sc.color}30`
+                              }}>
+                                {sc.label}
+                              </span>
                             </span>
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 3,
-                              padding: '1px 8px', borderRadius: 4,
-                              fontSize: 11, fontWeight: 500,
-                              color: tc.color, background: `${tc.color}08`,
-                              border: `1px solid ${tc.color}25`
-                            }}>
-                              <span style={{ fontSize: 10 }}>{tc.icon}</span>{tc.label}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                              <span style={{ color: '#999' }}>工时类型</span>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 3,
+                                padding: '1px 8px', borderRadius: 4,
+                                fontSize: 11, fontWeight: 500,
+                                color: tc.color, background: `${tc.color}08`,
+                                border: `1px solid ${tc.color}25`
+                              }}>
+                                <span style={{ fontSize: 10 }}>{tc.icon}</span>{tc.label}
+                              </span>
                             </span>
                             {item.hours != null && Number(item.hours) > 0 && (
-                              <span style={{
-                                display: 'inline-flex', alignItems: 'center',
-                                padding: '1px 8px', borderRadius: 4,
-                                fontSize: 11, fontWeight: 600,
-                                color: '#722ed1', background: '#f9f0ff',
-                                border: '1px solid #d3adf7'
-                              }}>
-                                ⏳ {item.hours}h
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                                <span style={{ color: '#999' }}>工时</span>
+                                <span style={{
+                                  display: 'inline-flex', alignItems: 'center',
+                                  padding: '1px 8px', borderRadius: 4,
+                                  fontSize: 11, fontWeight: 600,
+                                  color: '#722ed1', background: '#f9f0ff',
+                                  border: '1px solid #d3adf7'
+                                }}>
+                                  ⏳ {item.hours}h
+                                </span>
                               </span>
                             )}
                           </div>
