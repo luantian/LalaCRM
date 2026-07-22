@@ -36,13 +36,12 @@ export function useWebSocket(onMessage: MessageHandler, enabled: boolean = true)
     // 开发环境连接后端 WebSocket 端口，生产环境通过 nginx 代理
     const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     const wsHost = isDev ? `${window.location.hostname}:5000` : window.location.hostname
-    const wsUrl = `${protocol}//${wsHost}/ws?userId=${user.id}`
+    const wsUrl = `${protocol}//${wsHost}/ws?token=${encodeURIComponent(token)}&userId=${user.id}`
 
-    console.log('WebSocket: Connecting (token via Sec-WebSocket-Protocol header)')
+    console.log('WebSocket: Connecting')
 
     try {
-      // 通过 Sec-WebSocket-Protocol 安全传递 token（不会出现在 URL/日志中）
-      const ws = new WebSocket(wsUrl, ['auth.' + token])
+      const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {

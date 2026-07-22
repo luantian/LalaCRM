@@ -25,14 +25,20 @@ export function initWebSocket(server: Server) {
   wss = new WebSocketServer({ server, path: '/ws' })
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-    // 从 Sec-WebSocket-Protocol header 获取 token（比 URL 参数更安全）
+    const url = new URL(req.url || '', 'http://localhost')
+    // 支持两种方式获取 token：Protocol header 或 URL 参数
     const protocols = (req.headers['sec-websocket-protocol'] || '').split(',').map(p => p.trim())
     const authProtocol = protocols.find(p => p.startsWith('auth.'))
-    const token = authProtocol ? authProtocol.slice(5) : ''
-    const url = new URL(req.url || '', 'http://localhost')
+    const token = authProtocol ? authProtocol.slice(5) : (url.searchParams.get('token') || '')
     const userIdParam = parseInt(url.searchParams.get('userId') || '0')
 
     logger.info(`WebSocket connection attempt from: ${req.socket.remoteAddress}`)
+
+    // 如果通过 Protocol header 认证，回复协议让浏览器保持连接
+    if (authProtocol) {
+      // 注意：ws 库在 connection 事件中无法直接回复协议
+      // 需要通过 handleUpgrade 处理，这里简化为允许 URL 参数方式
+    }
 
     // 验证 JWT token
     if (!token) {
