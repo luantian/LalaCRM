@@ -25,35 +25,45 @@ function serializeCheckIn(record: any) {
 // 每月补卡次数限制
 const MAX_MAKEUP_PER_MONTH = 3
 
-// 工作日切分点：凌晨5点。5点前算昨天加班，5点后算今天
+// 工作日切分点：凌晨5点（UTC+8）。5点前算昨天加班，5点后算今天
 const DAY_BOUNDARY_HOUR = 5
+const UTC_OFFSET = 8 // UTC+8（中国标准时间）
 
 /**
- * 获取打卡日期的起止范围（以凌晨5点为分界）
- * 使用 UTC 模式，避免时区转换导致日期错位
- * 例如：当前时间 7月22日 03:00 UTC → 属于 7月21日 的打卡
- *       当前时间 7月22日 06:00 UTC → 属于 7月22日 的打卡
+ * 获取 UTC+8 本地时间
+ * 无论服务器在什么时区，都返回用户视角的本地时间
+ */
+function getUTC8Local(now: dayjs.Dayjs): dayjs.Dayjs {
+  return dayjs(now.valueOf()).utc().add(UTC_OFFSET, 'hour')
+}
+
+/**
+ * 获取打卡日期的起止范围（以 UTC+8 凌晨5点为分界）
+ * 所有边界计算基于 UTC+8 时区
+ * 例如：当前 UTC+8 时间 7月22日 03:00 → 属于 7月21日 的打卡
+ *       当前 UTC+8 时间 7月22日 06:00 → 属于 7月22日 的打卡
  */
 function getCheckInDayRange(now: dayjs.Dayjs) {
-  const utcNow = now.utc()
-  if (utcNow.hour() < DAY_BOUNDARY_HOUR) {
-    // 凌晨5点前 → 属于昨天的打卡周期
-    const checkInDate = utcNow.subtract(1, 'day').startOf('day')
-    const start = checkInDate.add(DAY_BOUNDARY_HOUR, 'hour')
-    return {
-      start: start.toDate(),
-      end: start.add(1, 'day').toDate(),
-      checkInDate: checkInDate.toDate()
-    }
+  const localNow = getUTC8Local(now)
+  const localHour = localNow.hour()
+
+  let checkInDate: dayjs.Dayjs
+  if (localHour < DAY_BOUNDARY_HOUR) {
+    // UTC+8 凌晨5点前 → 属于昨天的打卡周期
+    checkInDate = localNow.subtract(1, 'day').startOf('day')
   } else {
-    // 凌晨5点后 → 属于今天的打卡周期
-    const checkInDate = utcNow.startOf('day')
-    const start = checkInDate.add(DAY_BOUNDARY_HOUR, 'hour')
-    return {
-      start: start.toDate(),
-      end: start.add(1, 'day').toDate(),
-      checkInDate: checkInDate.toDate()
-    }
+    // UTC+8 凌晨5点后 → 属于今天的打卡周期
+    checkInDate = localNow.startOf('day')
+  }
+
+  // 构建时间范围（转换为 UTC 存储）
+  const start = checkInDate.add(DAY_BOUNDARY_HOUR, 'hour').subtract(UTC_OFFSET, 'hour') // UTC+8 5AM → UTC 上一天 21:00
+  const end = start.add(1, 'day')
+
+  return {
+    start: start.toDate(),
+    end: end.toDate(),
+    checkInDate: checkInDate.toDate() // UTC+8 当天 00:00 的 Date 对象
   }
 }
 
@@ -192,12 +202,13 @@ router.post('/', authenticateToken, logOperation('打卡管理', 'CHECKIN'), asy
   try {
     const userId = req.user!.id
     const now = dayjs()
-    const utcNow = now.utc()
-    const range = getCheckInDayRange(utcNow)
+    const range = getCheckInDayRange(now)
 
-    // 自动判断时段：根据用户本地时间（通过 Accept-Language 或偏移）
-    // 这里使用简单的 UTC+8 判断（适用于中国用户）
-    const localHour = now.add(8, 'hour').utc().hour() // UTC+8 的本地小时
+    // 自动判断时段：根据 UTC+8 本地时间
+    const localNow = getUTC8Local(now)
+    const localHour = localNow.hour()
+    const localMinute = localNow.minute()
+    const localTime = localHour * 60 + localMinute // UTC+8 的分钟数
     const period = localHour < 12 ? 'MORNING' : 'EVENING'
 
     // 检查是否在出差
@@ -215,20 +226,16 @@ router.post('/', authenticateToken, logOperation('打卡管理', 'CHECKIN'), asy
     if (activeTrip) {
       checkInType = 'AUTO'
     } else {
-      const hour = now.hour()
-      const minute = now.minute()
-      const currentTime = hour * 60 + minute
-
       if (period === 'MORNING') {
-        // 上班打卡：9:00前正常，9:00后迟到
+        // 上班打卡：9:00前正常，9:00后迟到（UTC+8）
         const workStart = 9 * 60
-        if (currentTime > workStart) {
+        if (localTime > workStart) {
           checkInType = 'LATE'
         }
       } else if (period === 'EVENING') {
-        // 下班打卡：17:30后正常，17:30前早退
+        // 下班打卡：17:30后正常，17:30前早退（UTC+8）
         const workEnd = 17 * 60 + 30
-        if (currentTime < workEnd) {
+        if (localTime < workEnd) {
           checkInType = 'EARLY_LEAVE'
         }
       }
