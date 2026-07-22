@@ -441,6 +441,7 @@ function BusinessTripList() {
         dataSource={trips}
         loading={loading}
         rowKey="id"
+        scroll={{ x: 1200 }}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,

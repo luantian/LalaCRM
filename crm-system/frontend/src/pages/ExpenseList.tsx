@@ -555,6 +555,7 @@ function ExpenseList() {
         dataSource={expenses}
         loading={loading}
         rowKey="id"
+        scroll={{ x: 1400 }}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,

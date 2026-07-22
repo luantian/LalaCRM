@@ -82,9 +82,9 @@ function ProjectArchive() {
 
   const handleEdit = (record: any) => {
     if (activeTab === 'pending') {
-      navigate(`/opportunities/${record.id}/edit`)
+      navigate(`/opportunities/${record.id}`)
     } else {
-      navigate(`/projects/${record.id}/edit`)
+      navigate(`/projects/${record.id}`)
     }
   }
 
@@ -280,7 +280,7 @@ function ProjectArchive() {
         styles={{ body: { padding: '0' } }}>
         <Tabs
           activeKey={activeTab}
-          onChange={(key) => { setActiveTab(key); setSearch(''); setSelectedRowKeys([]) }}
+          onChange={(key) => { setActiveTab(key); setSearch(''); setSelectedRowKeys([]); setPagination(prev => ({ ...prev, current: 1 })) }}
           style={{ padding: '0 16px' }}
           items={[
             {

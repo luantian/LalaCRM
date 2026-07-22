@@ -41,21 +41,21 @@ const QuotationList: React.FC = () => {
   }, [pagination.current, pagination.pageSize, filters])
 
   const fetchStats = useCallback(async () => {
-    try { const res: any = await getQuotationStats(); setStats(res) } catch {}
+    try { const res: any = await getQuotationStats(); setStats(res) } catch (e) { console.error(e) }
   }, [])
 
   const fetchOpportunities = async () => {
     try {
       const res: any = await getOpportunities({ pageSize: 1000 })
       setOpportunities(res.data || [])
-    } catch {}
+    } catch (e) { console.error(e) }
   }
 
   const fetchCustomers = async () => {
     try {
       const res: any = await getCustomers({ pageSize: 1000 })
       setCustomers(res.data || [])
-    } catch {}
+    } catch (e) { console.error(e) }
   }
 
   useEffect(() => {
@@ -83,7 +83,7 @@ const QuotationList: React.FC = () => {
     try {
       const detail: any = await getQuotationDetail(record.id)
       setItems(detail.items || [])
-    } catch {}
+    } catch (e: any) { message.error(e?.error || '操作失败') }
     setModalVisible(true)
   }
 
@@ -133,7 +133,7 @@ const QuotationList: React.FC = () => {
       setItems([])
       fetchQuotations()
       fetchStats()
-    } catch {}
+    } catch (e: any) { message.error(e?.error || '操作失败') }
   }
 
   const columns = [
@@ -183,6 +183,7 @@ const QuotationList: React.FC = () => {
       <Card>
         <div style={{ marginBottom: 16 }}><Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建报价单</Button></div>
         <Table columns={columns} dataSource={quotations} rowKey="id" loading={loading}
+          scroll={{ x: 1200 }}
           pagination={{ ...pagination, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
           onChange={(pag) => setPagination(prev => ({ ...prev, current: pag.current || 1, pageSize: pag.pageSize || 10 }))}
         />

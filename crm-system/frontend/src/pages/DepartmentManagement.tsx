@@ -398,7 +398,7 @@ function DepartmentManagement() {
               showSearch
               optionFilterProp="children"
               placeholder="不选则为顶级部门"
-              options={flatList.map((d) => ({
+              options={flatList.filter(d => d.id !== editingDept?.id).map((d) => ({
                 value: d.id,
                 label: d.name,
               }))}

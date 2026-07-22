@@ -182,6 +182,17 @@ function DailyReportList() {
       if (editingReport) {
         await updateDailyReport(editingReport.id, data)
         reportId = editingReport.id
+
+        // 删除已移除的工作项
+        const existingItemsRes: any = await getDailyReportItems(reportId)
+        const existingItems = existingItemsRes || []
+        const formItemIds = formItems.filter(i => i.id).map(i => i.id)
+        for (const existing of existingItems) {
+          if (!formItemIds.includes(existing.id)) {
+            await deleteDailyReportItem(reportId, existing.id)
+          }
+        }
+
         message.success('更新成功')
       } else {
         const res: any = await createDailyReport(data)
@@ -485,6 +496,7 @@ function DailyReportList() {
         dataSource={reports}
         loading={loading}
         rowKey="id"
+        scroll={{ x: 1200 }}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,
