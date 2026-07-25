@@ -217,6 +217,12 @@ router.get('/:id', authenticateToken, checkPermission('view_projects'), async (r
       return res.status(404).json({ error: '项目不存在' })
     }
 
+    // 数据范围检查：只能查看自己的项目或自己是团队成员的项目（管理员除外）
+    const isTeamMember = project.teamMembers.some(tm => tm.userId === req.user!.id)
+    if (project.ownerId !== req.user!.id && !isTeamMember && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权访问此项目' })
+    }
+
     res.json(project)
   } catch (error) {
     res.status(500).json({ error: '获取项目详情失败' })
@@ -713,6 +719,9 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
     if (error) return res.status(400).json({ error })
     if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
 
+    // 从请求体获取默认的组织ID
+    const defaultOrganizationId = req.body.organizationId ? parseInt(req.body.organizationId) : null
+
     let success = 0, failed = 0
     for (const row of data) {
       try {
@@ -720,7 +729,7 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
         await prisma.project.create({
           data: {
             name: mapped.name || '未命名项目',
-            organizationId: 0,
+            organizationId: defaultOrganizationId,
             status: mapped.status || 'IN_PROGRESS',
             budget: mapped.budget ? Number(mapped.budget) : null,
             progress: mapped.progress ? Number(mapped.progress) : 0,

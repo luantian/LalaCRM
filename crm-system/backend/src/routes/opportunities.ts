@@ -152,6 +152,12 @@ router.get('/:id', authenticateToken, checkPermission('view_opportunities'), asy
       return res.status(404).json({ error: '商机不存在' })
     }
 
+    // 数据范围检查：只能查看自己的商机或自己是团队成员的商机（管理员除外）
+    const isTeamMember = opportunity.teamMembers.some(tm => tm.userId === req.user!.id)
+    if (opportunity.ownerId !== req.user!.id && !isTeamMember && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权访问此商机' })
+    }
+
     res.json(opportunity)
   } catch (error) {
     res.status(500).json({ error: '获取商机详情失败' })
@@ -235,6 +241,26 @@ router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), log
     const existing = await prisma.opportunity.findFirst({ where: { id: numericId, deletedAt: null } })
     if (!existing) {
       return res.status(404).json({ error: '商机不存在' })
+    }
+
+    // 状态流转校验（如果提供了status且与当前不同）
+    if (status && status !== existing.status) {
+      const validTransitions: Record<string, string[]> = {
+        'OPEN': ['QUALIFIED', 'LOST', 'CLOSED'],
+        'QUALIFIED': ['PROPOSAL', 'LOST', 'CLOSED'],
+        'PROPOSAL': ['NEGOTIATION', 'LOST', 'CLOSED'],
+        'NEGOTIATION': ['WON', 'LOST', 'CLOSED'],
+        'WON': ['CLOSED'],
+        'LOST': [],
+        'CLOSED': []
+      }
+      const allowedNext = validTransitions[existing.status] || []
+      if (!allowedNext.includes(status)) {
+        return res.status(400).json({
+          error: `商机状态不能从 ${existing.status} 变更为 ${status}`,
+          allowedTransitions: allowedNext
+        })
+      }
     }
 
     const opportunity = await prisma.opportunity.update({
@@ -907,6 +933,9 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
     if (error) return res.status(400).json({ error })
     if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
 
+    // 从请求体获取默认的组织ID
+    const defaultOrganizationId = req.body.organizationId ? parseInt(req.body.organizationId) : null
+
     let success = 0, failed = 0
     for (const row of data) {
       try {
@@ -914,7 +943,7 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
         await prisma.opportunity.create({
           data: {
             name: mapped.name || '未命名商机',
-            organizationId: 0,
+            organizationId: defaultOrganizationId,
             application: mapped.application || null,
             budget: mapped.budget ? Number(mapped.budget) : null,
             winRate: mapped.winRate ? Number(mapped.winRate) : 0,

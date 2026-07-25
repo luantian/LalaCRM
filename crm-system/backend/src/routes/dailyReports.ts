@@ -319,8 +319,8 @@ router.put('/:id', authenticateToken, checkPermission('create_reports'), logOper
       return res.status(404).json({ error: '工作日报不存在' })
     }
 
-    // 只能更新自己的日报
-    if (existing.userId !== req.user!.id) {
+    // 只能更新自己的日报（管理员除外）
+    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
       return res.status(403).json({ error: '只能修改自己的日报' })
     }
 

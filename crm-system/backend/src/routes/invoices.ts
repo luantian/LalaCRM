@@ -227,6 +227,11 @@ router.get('/:id', authenticateToken, checkPermission('view_invoices'), async (r
       return res.status(404).json({ error: '发票不存在' })
     }
 
+    // 数据范围检查：只能查看自己的发票（管理员除外）
+    if (invoice.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权访问此发票' })
+    }
+
     res.json(invoice)
   } catch (error) {
     logger.error('Get invoice detail error:', error)

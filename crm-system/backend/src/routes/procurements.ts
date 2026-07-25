@@ -82,6 +82,13 @@ router.get('/:id', authenticateToken, checkPermission('view_procurements'), asyn
       include: { project: true, items: true, files: { where: { deletedAt: null } } }
     })
     if (!procurement) return res.status(404).json({ error: '采购单不存在' })
+
+    // 数据范围检查：只能查看自己负责的项目的采购单（管理员除外）
+    const project = await prisma.project.findFirst({ where: { id: procurement.projectId, deletedAt: null }, select: { ownerId: true } })
+    if (project?.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权访问此采购单' })
+    }
+
     res.json(procurement)
   } catch (error) {
     logger.error('Get procurement error:', error)
@@ -137,9 +144,19 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_procurem
       return res.status(400).json({ error: '状态不能为空' })
     }
 
-    const procurement = await prisma.procurement.findFirst({ where: { id, deletedAt: null } })
+    const procurement = await prisma.procurement.findFirst({
+      where: { id, deletedAt: null },
+      include: { project: { select: { ownerId: true } } }
+    })
     if (!procurement) {
       return res.status(404).json({ error: '采购单不存在' })
+    }
+
+    // 防止自审批：项目负责人/采购负责人不能审批自己的采购单（管理员除外）
+    const isAssigned = procurement.assignedTo === req.user!.id
+    const isProjectOwner = procurement.project?.ownerId === req.user!.id
+    if ((isAssigned || isProjectOwner) && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '不能审批自己负责的采购单' })
     }
 
     const allowedNext = validTransitions[procurement.status] || []
@@ -206,6 +223,18 @@ router.put('/:id', authenticateToken, checkPermission('edit_procurements'), logO
 router.delete('/:id', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+
+    const existing = await prisma.procurement.findFirst({ where: { id, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '采购单不存在' })
+    }
+
+    // 只允许删除计划中或已取消的采购单
+    if (existing.status !== 'PLANNED' && existing.status !== 'CANCELLED') {
+      return res.status(400).json({ error: '只能删除计划中或已取消的采购单' })
+    }
+
+    await prisma.procurementPayment.updateMany({ where: { procurementId: id }, data: { deletedAt: new Date() } })
     await prisma.procurementItem.updateMany({ where: { procurementId: id }, data: { deletedAt: new Date() } })
     await prisma.procurementFile.updateMany({ where: { procurementId: id }, data: { deletedAt: new Date() } })
     await prisma.procurement.update({ where: { id }, data: { deletedAt: new Date() } })

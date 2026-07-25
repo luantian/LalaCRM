@@ -162,6 +162,11 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
       return res.status(404).json({ error: '合同不存在' })
     }
 
+    // 数据范围检查：只能查看自己的合同（管理员除外）
+    if (contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权访问此合同' })
+    }
+
     res.json(contract)
   } catch (error) {
     res.status(500).json({ error: '获取合同详情失败' })

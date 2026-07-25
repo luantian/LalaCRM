@@ -141,6 +141,11 @@ router.get('/:id', authenticateToken, checkPermission('view_quotations'), async 
       return res.status(404).json({ error: '报价单不存在' })
     }
 
+    // 数据范围检查：只能查看自己的报价单（管理员除外）
+    if (quotation.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权访问此报价单' })
+    }
+
     res.json(quotation)
   } catch (error) {
     logger.error('Get quotation detail error:', error)
@@ -513,6 +518,25 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
     if (error) return res.status(400).json({ error })
     if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
 
+    // 从请求体获取默认的关联ID
+    const defaultOpportunityId = req.body.opportunityId ? parseInt(req.body.opportunityId) : null
+    const defaultOrganizationId = req.body.organizationId ? parseInt(req.body.organizationId) : null
+
+    // 如果没有提供关联商机，查找第一个可用的商机
+    let fallbackOpportunityId = defaultOpportunityId
+    if (!fallbackOpportunityId) {
+      const firstOpp = await prisma.opportunity.findFirst({
+        where: { deletedAt: null, ownerId: req.user!.id },
+        select: { id: true },
+        orderBy: { createdAt: 'desc' }
+      })
+      if (firstOpp) fallbackOpportunityId = firstOpp.id
+    }
+
+    if (!fallbackOpportunityId) {
+      return res.status(400).json({ error: '导入需要提供关联商机ID(opportunityId)，或您名下至少需要一个商机' })
+    }
+
     let success = 0, failed = 0
     for (const row of data) {
       try {
@@ -521,8 +545,8 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
           data: {
             name: mapped.name || '未命名报价单',
             version: 1,
-            opportunityId: 0,
-            organizationId: 0,
+            opportunityId: fallbackOpportunityId,
+            organizationId: defaultOrganizationId,
             totalAmount: mapped.totalAmount ? Number(mapped.totalAmount) : 0,
             status: mapped.status || 'DRAFT',
             ownerId: req.user!.id,

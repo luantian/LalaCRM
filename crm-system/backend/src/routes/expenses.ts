@@ -157,6 +157,11 @@ router.get('/:id', authenticateToken, checkPermission('view_expenses'), async (r
       return res.status(404).json({ error: '费用报销记录不存在' })
     }
 
+    // 数据范围检查：只能查看自己的报销记录（管理员除外）
+    if (expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权访问此报销记录' })
+    }
+
     res.json(expense)
   } catch (error) {
     res.status(500).json({ error: '获取费用报销详情失败' })
@@ -231,6 +236,11 @@ router.put('/:id', authenticateToken, checkPermission('submit_expenses'), logOpe
       return res.status(404).json({ error: '费用报销记录不存在' })
     }
 
+    // 所有权检查：只能编辑自己的报销（管理员除外）
+    if (existing.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权编辑此报销记录' })
+    }
+
     // 只允许编辑草稿或被驳回的记录
     if (existing.status !== 'DRAFT' && existing.status !== 'REJECTED') {
       return res.status(400).json({ error: '当前状态不允许编辑' })
@@ -267,6 +277,11 @@ router.delete('/:id', authenticateToken, checkPermission('submit_expenses'), log
     const existing = await prisma.expense.findFirst({ where: { id, deletedAt: null } })
     if (!existing) {
       return res.status(404).json({ error: '费用报销记录不存在' })
+    }
+
+    // 所有权检查：只能删除自己的报销（管理员除外）
+    if (existing.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权删除此报销记录' })
     }
 
     if (existing.status !== 'DRAFT' && existing.status !== 'REJECTED') {
