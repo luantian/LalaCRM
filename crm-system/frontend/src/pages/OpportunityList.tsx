@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Empty, Popconfirm, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, MoreOutlined, ThunderboltOutlined, DownloadOutlined, ImportOutlined, InboxOutlined, StopOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import { getOpportunities, createOpportunity, updateOpportunity, deleteOpportunity, getOpportunityStats, getOrganizations, convertOpportunity, exportOpportunitiesCsv, exportOpportunitiesExcel, importOpportunities } from '../services/api'
+import { OrgContactSelector } from '../components/OrgContactSelector'
 import dayjs from 'dayjs'
 
 function OpportunityList() {
@@ -240,6 +241,7 @@ function OpportunityList() {
       key: 'organizationId',
       render: (organizationId: number, record: any) => record.organization?.name || getOrganizationName(organizationId)
     },
+    { title: '联系人', key: 'contact', render: (_: any, r: any) => r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : r.decisionMaker || '-' },
     { title: '应用领域', dataIndex: 'application', key: 'application', render: (v: string) => v || '-' },
     { title: '预算', dataIndex: 'budget', key: 'budget', render: (v: number) => v ? `${v}元` : '-' },
     { title: '成单率', dataIndex: 'winRate', key: 'winRate', render: (v: number) => v !== null && v !== undefined ? `${v}%` : '-' },
@@ -413,6 +415,7 @@ function OpportunityList() {
               filterOption={(input, option) =>
                 (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())
               }
+              onChange={() => form.setFieldValue('contactId', null)}
             >
               {organizations.map(organization => (
                 <Select.Option key={organization.id} value={organization.id}>
@@ -420,6 +423,13 @@ function OpportunityList() {
                 </Select.Option>
               ))}
             </Select>
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.organizationId !== cur.organizationId}>
+            {({ getFieldValue }) => (
+              <Form.Item name="contactId" label="联系人">
+                <OrgContactSelector organizationId={getFieldValue('organizationId')} placeholder="选择客户方联系人" />
+              </Form.Item>
+            )}
           </Form.Item>
           <Form.Item name="application" label="应用领域">
             <Input />

@@ -51,6 +51,7 @@ router.get('/', authenticateToken, checkPermission('view_quotations'), applyData
       include: {
         opportunity: { select: { id: true, name: true } },
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true, phone: true } },
         owner: { select: { id: true, name: true } },
         _count: { select: { items: true, files: true } }
       },
@@ -131,6 +132,7 @@ router.get('/:id', authenticateToken, checkPermission('view_quotations'), async 
       include: {
         opportunity: { select: { id: true, name: true } },
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true, phone: true } },
         owner: { select: { id: true, name: true } },
         items: { orderBy: { id: 'asc' } },
         files: { orderBy: { uploadedAt: 'desc' } }
@@ -156,7 +158,7 @@ router.get('/:id', authenticateToken, checkPermission('view_quotations'), async 
 // 创建报价单
 router.post('/', authenticateToken, checkPermission('edit_quotations'), logOperation('报价管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    const { name, opportunityId, organizationId, validUntil, notes, items } = req.body
+    const { name, opportunityId, organizationId, contactId, validUntil, notes, items } = req.body
 
     if (!name || !opportunityId || !organizationId) {
       return res.status(400).json({ error: '报价单名称、商机ID和组织ID不能为空' })
@@ -193,6 +195,7 @@ router.post('/', authenticateToken, checkPermission('edit_quotations'), logOpera
         version: nextVersion,
         opportunityId: parseInt(opportunityId),
         organizationId: parseInt(organizationId),
+        contactId: contactId ? parseInt(contactId) : null,
         totalAmount,
         validUntil: validUntil ? new Date(validUntil) : null,
         notes,

@@ -4,6 +4,7 @@ import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Co
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, EyeOutlined } from '@ant-design/icons'
 import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizations, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, uploadPaymentFiles, deletePaymentFile, downloadPaymentFileUrl, previewPaymentFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl } from '../services/api'
 import dayjs from 'dayjs'
+import { OrgContactSelector } from '../components/OrgContactSelector'
 
 const { TextArea } = Input
 const { RangePicker } = DatePicker
@@ -435,6 +436,7 @@ function ProjectDetail() {
   // ===== 表格列 =====
   const contractColumns = [
     { title: '合同名称', dataIndex: 'name', key: 'name' },
+    { title: '联系人', key: 'contact', render: (_: any, r: any) => r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : '-' },
     { title: '金额', dataIndex: 'amount', key: 'amount', render: (v: number) => <span style={{ color: '#1890ff', fontWeight: 'bold' }}>{Number(v)}元</span> },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => { const c = contractStatusConfig[s] || { text: s, color: 'default' }; return <Tag color={c.color}>{c.text}</Tag> } },
     { title: '签订日期', dataIndex: 'signDate', key: 'signDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
@@ -556,6 +558,7 @@ function ProjectDetail() {
     { title: '发票号码', dataIndex: 'invoiceNo', key: 'invoiceNo' },
     { title: '发票类型', dataIndex: 'invoiceType', key: 'invoiceType', render: (t: string) => <Tag color={t === 'INCOME' ? 'success' : 'warning'}>{{ INCOME: '出项', EXPENSE: '进项' }[t] || t}</Tag> },
     { title: '发票类别', dataIndex: 'category', key: 'category', render: (c: string) => ({ VAT_SPECIAL: '增值税专用', VAT_NORMAL: '增值税普通', VAT_ELECTRONIC: '电子发票', RECEIPT: '收据', OTHER: '其他' }[c] || c) },
+    { title: '联系人', key: 'contact', render: (_: any, r: any) => r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : '-' },
     { title: '不含税金额', dataIndex: 'amount', key: 'amount', render: (v: number) => `${Number(v).toFixed(2)}元` },
     { title: '税率', dataIndex: 'taxRate', key: 'taxRate', render: (v: number) => `${Number(v)}%` },
     { title: '税额', dataIndex: 'taxAmount', key: 'taxAmount', render: (v: number) => `${Number(v).toFixed(2)}元` },
@@ -1450,10 +1453,17 @@ function ProjectDetail() {
       <Modal title={editingContract ? '编辑合同' : '新增合同'} open={contractModalVisible} onOk={handleContractSubmit} onCancel={() => setContractModalVisible(false)} width={600}>
         <Form form={contractForm} layout="vertical">
           <Form.Item name="name" label="合同名称" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="amount" label="合同金额" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} precision={2} /></Form.Item>
-          <Form.Item name="status" label="状态"><Select><Select.Option value="DRAFT">草稿</Select.Option><Select.Option value="PENDING">待审批</Select.Option><Select.Option value="ACTIVE">生效中</Select.Option><Select.Option value="EXPIRED">已过期</Select.Option><Select.Option value="CANCELLED">已取消</Select.Option></Select></Form.Item>
-          <Form.Item name="signDate" label="签订日期"><DatePicker style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="dateRange" label="合同周期"><RangePicker style={{ width: '100%' }} /></Form.Item>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="amount" label="合同金额" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} precision={2} /></Form.Item></Col>
+            <Col span={12}><Form.Item name="status" label="状态"><Select><Select.Option value="DRAFT">草稿</Select.Option><Select.Option value="PENDING">待审批</Select.Option><Select.Option value="ACTIVE">生效中</Select.Option><Select.Option value="EXPIRED">已过期</Select.Option><Select.Option value="CANCELLED">已取消</Select.Option></Select></Form.Item></Col>
+          </Row>
+          <Form.Item name="contactId" label="签约联系人">
+            <OrgContactSelector organizationId={project?.organizationId} />
+          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="signDate" label="签订日期"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
+            <Col span={12}><Form.Item name="dateRange" label="合同周期"><RangePicker style={{ width: '100%' }} /></Form.Item></Col>
+          </Row>
           <Form.Item name="content" label="合同内容"><TextArea rows={4} /></Form.Item>
         </Form>
       </Modal>
@@ -1526,6 +1536,7 @@ function ProjectDetail() {
             <Col span={12}><Form.Item name="partyTaxNo" label="对方税号"><Input placeholder="纳税人识别号" /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
+            <Col span={12}><Form.Item name="contactId" label="联系人"><OrgContactSelector organizationId={project?.organizationId} placeholder="选择对方联系人" /></Form.Item></Col>
             <Col span={12}><Form.Item name="status" label="状态"><Select><Select.Option value="PENDING">待开</Select.Option><Select.Option value="ISSUED">已开</Select.Option><Select.Option value="CONFIRMED">已确认</Select.Option><Select.Option value="CANCELLED">已作废</Select.Option></Select></Form.Item></Col>
           </Row>
           <Form.Item name="remarks" label="备注"><TextArea rows={2} /></Form.Item>

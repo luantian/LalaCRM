@@ -53,6 +53,7 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['a
       where,
       include: {
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true, phone: true } },
         owner: { select: { id: true, name: true } }
       },
       orderBy: { [sortBy as string]: sortOrder as string },
@@ -176,6 +177,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
       where: { id: parseInt(id), deletedAt: null },
       include: {
         organization: true,
+        contact: { select: { id: true, name: true, title: true, phone: true, email: true } },
         owner: { select: { id: true, name: true } }
       }
     })
@@ -193,7 +195,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 // 创建销售记录
 router.post('/', authenticateToken, logOperation('销售管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    const { organizationId, projectId, contractId, type, category, amount, description, date } = req.body
+    const { organizationId, contactId, projectId, contractId, type, category, amount, description, date } = req.body
 
     if (!organizationId || !type || !category || !amount || !date) {
       return res.status(400).json({ error: '必填字段缺失' })
@@ -202,6 +204,7 @@ router.post('/', authenticateToken, logOperation('销售管理', 'CREATE'), asyn
     const sale = await prisma.sale.create({
       data: {
         organizationId,
+        contactId: contactId || null,
         projectId: projectId || null,
         contractId: contractId || null,
         type,

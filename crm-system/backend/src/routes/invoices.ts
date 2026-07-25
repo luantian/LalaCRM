@@ -64,6 +64,7 @@ router.get('/', authenticateToken, checkPermission('view_invoices'), applyDataSc
         project: { select: { id: true, name: true } },
         contract: { select: { id: true, name: true } },
         procurement: { select: { id: true, title: true } },
+        contact: { select: { id: true, name: true, title: true, phone: true } },
         owner: { select: { id: true, name: true } },
         _count: { select: { files: true } }
       },
@@ -218,6 +219,7 @@ router.get('/:id', authenticateToken, checkPermission('view_invoices'), async (r
         project: { select: { id: true, name: true } },
         contract: { select: { id: true, name: true } },
         procurement: { select: { id: true, title: true } },
+        contact: { select: { id: true, name: true, title: true, phone: true, email: true } },
         owner: { select: { id: true, name: true } },
         files: { orderBy: { uploadedAt: 'desc' } }
       }
@@ -244,7 +246,7 @@ router.post('/', authenticateToken, checkPermission('edit_invoices'), logOperati
   try {
     const {
       invoiceNo, invoiceType, category, amount, taxRate,
-      invoiceDate, status, projectId, contractId, procurementId,
+      invoiceDate, status, projectId, contractId, procurementId, contactId,
       partyName, partyTaxNo, remarks
     } = req.body
 
@@ -272,6 +274,7 @@ router.post('/', authenticateToken, checkPermission('edit_invoices'), logOperati
         projectId: projectId ? parseInt(projectId) : null,
         contractId: contractId ? parseInt(contractId) : null,
         procurementId: procurementId ? parseInt(procurementId) : null,
+        contactId: contactId ? parseInt(contactId) : null,
         partyName,
         partyTaxNo,
         ownerId: req.user!.id,
@@ -297,7 +300,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_invoices'), logOpera
     const id = parseInt(req.params.id as string)
     const {
       invoiceNo, invoiceType, category, amount, taxRate,
-      invoiceDate, status, projectId, contractId, procurementId,
+      invoiceDate, status, projectId, contractId, procurementId, contactId,
       partyName, partyTaxNo, remarks
     } = req.body
 
@@ -330,6 +333,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_invoices'), logOpera
         projectId: projectId !== undefined ? (projectId ? parseInt(projectId) : null) : existing.projectId,
         contractId: contractId !== undefined ? (contractId ? parseInt(contractId) : null) : existing.contractId,
         procurementId: procurementId !== undefined ? (procurementId ? parseInt(procurementId) : null) : existing.procurementId,
+        contactId: contactId !== undefined ? (contactId ? parseInt(contactId) : null) : existing.contactId,
         partyName: partyName !== undefined ? partyName : existing.partyName,
         partyTaxNo: partyTaxNo !== undefined ? partyTaxNo : existing.partyTaxNo,
         remarks: remarks !== undefined ? remarks : existing.remarks

@@ -53,7 +53,8 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['n
       include: {
         organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } },
-        owner: { select: { id: true, name: true } }
+        owner: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true, phone: true } }
       },
       orderBy: { [sortBy as string]: sortOrder as string },
       skip,
@@ -154,7 +155,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
       include: {
         organization: true,
         project: true,
-        owner: { select: { id: true, name: true } }
+        owner: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true, phone: true, email: true } }
       }
     })
 
@@ -176,7 +178,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 // 创建合同
 router.post('/', authenticateToken, logOperation('合同管理', 'CREATE'), dateValidation('signDate', 'startDate', 'endDate'), async (req: AuthRequest, res) => {
   try {
-    const { name, organizationId, projectId, opportunityId, amount, signDate, startDate, endDate, status, content } = req.body
+    const { name, organizationId, projectId, opportunityId, contactId, amount, signDate, startDate, endDate, status, content } = req.body
 
     if (!name || !organizationId || !amount) {
       return res.status(400).json({ error: '必填字段缺失' })
@@ -188,6 +190,7 @@ router.post('/', authenticateToken, logOperation('合同管理', 'CREATE'), date
         organizationId,
         projectId: projectId || null,
         opportunityId: opportunityId || null,
+        contactId: contactId || null,
         amount,
         signDate: signDate ? new Date(signDate) : null,
         startDate: startDate ? new Date(startDate) : null,
@@ -308,7 +311,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
 router.put('/:id', authenticateToken, logOperation('合同管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
-    const { name, organizationId, projectId, amount, signDate, startDate, endDate, status, content } = req.body
+    const { name, organizationId, projectId, contactId, amount, signDate, startDate, endDate, status, content } = req.body
 
     // 检查当前状态，不允许通过 PUT 直接修改状态
     const currentContract = await prisma.contract.findFirst({ where: { id: parseInt(id), deletedAt: null } })
@@ -329,6 +332,7 @@ router.put('/:id', authenticateToken, logOperation('合同管理', 'UPDATE'), as
         name,
         organizationId,
         projectId,
+        contactId: contactId !== undefined ? (contactId || null) : currentContract.contactId,
         amount,
         signDate: signDate ? new Date(signDate) : null,
         startDate: startDate ? new Date(startDate) : null,

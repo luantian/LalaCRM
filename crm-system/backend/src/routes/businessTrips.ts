@@ -54,6 +54,7 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), clampPagination(),
       where,
       include: {
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true, phone: true } },
         project: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } },
         expenses: {
@@ -130,6 +131,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
       where: { id, deletedAt: null },
       include: {
         organization: true,
+        contact: { select: { id: true, name: true, title: true, phone: true, email: true } },
         project: true,
         owner: { select: { id: true, name: true } },
         expenses: {
@@ -160,6 +162,7 @@ router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), date
     const {
       title,
       organizationId,
+      contactId,
       projectId,
       destination,
       purpose,
@@ -183,6 +186,7 @@ router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), date
       data: {
         title,
         organizationId: organizationId || null,
+        contactId: contactId || null,
         projectId: projectId || null,
         destination,
         purpose,
@@ -399,6 +403,7 @@ router.put('/:id', authenticateToken, logOperation('出差管理', 'UPDATE'), as
     const {
       title,
       organizationId,
+      contactId,
       projectId,
       destination,
       purpose,
@@ -437,6 +442,7 @@ router.put('/:id', authenticateToken, logOperation('出差管理', 'UPDATE'), as
       data: {
         title,
         organizationId: organizationId || null,
+        contactId: contactId !== undefined ? (contactId || null) : undefined,
         projectId: projectId || null,
         destination,
         purpose,

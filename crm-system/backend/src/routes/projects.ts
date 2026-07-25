@@ -58,6 +58,7 @@ router.get('/', authenticateToken, checkPermission('view_projects'), applyDataSc
         where,
         include: {
           organization: { select: { id: true, name: true } },
+          contact: { select: { id: true, name: true, title: true, phone: true } },
           owner: { select: { id: true, name: true } },
           contracts: {
             select: {
@@ -102,6 +103,7 @@ router.get('/', authenticateToken, checkPermission('view_projects'), applyDataSc
       where,
       include: {
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true, phone: true } },
         owner: { select: { id: true, name: true } },
         _count: {
           select: { contracts: true }
@@ -167,6 +169,7 @@ router.get('/:id', authenticateToken, checkPermission('view_projects'), async (r
       where: { id: parseInt(id), deletedAt: null },
       include: {
         organization: true,
+        contact: { select: { id: true, name: true, title: true, phone: true, email: true } },
         owner: { select: { id: true, name: true } },
         contracts: {
           orderBy: { createdAt: 'desc' },
@@ -232,7 +235,7 @@ router.get('/:id', authenticateToken, checkPermission('view_projects'), async (r
 // 创建项目
 router.post('/', authenticateToken, checkPermission('create_projects'), logOperation('项目管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    const { name, organizationId, status, budget, startDate, endDate, description } = req.body
+    const { name, organizationId, contactId, status, budget, startDate, endDate, description } = req.body
 
     if (!name || !organizationId) {
       return res.status(400).json({ error: '项目名称和组织ID不能为空' })
@@ -242,6 +245,7 @@ router.post('/', authenticateToken, checkPermission('create_projects'), logOpera
       data: {
         name,
         organizationId,
+        contactId: contactId || null,
         status: status || 'IN_PROGRESS',
         budget,
         startDate: startDate ? new Date(startDate) : null,
@@ -265,7 +269,7 @@ router.post('/', authenticateToken, checkPermission('create_projects'), logOpera
 router.put('/:id', authenticateToken, checkPermission('edit_projects'), logOperation('项目管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
-    const { name, organizationId, status, budget, startDate, endDate, description, progress } = req.body
+    const { name, organizationId, contactId, status, budget, startDate, endDate, description, progress } = req.body
 
     // 项目状态流转规则
     const validTransitions: Record<string, string[]> = {
@@ -297,6 +301,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_projects'), logOpera
       data: {
         name,
         organizationId,
+        contactId: contactId !== undefined ? (contactId || null) : undefined,
         status,
         budget,
         startDate: startDate ? new Date(startDate) : null,

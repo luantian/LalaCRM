@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, Spin, Result, Table } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { getBusinessTripDetail, updateBusinessTrip, getOrganizations, getProjects } from '../services/api'
+import { OrgContactSelector } from '../components/OrgContactSelector'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -329,13 +330,24 @@ function BusinessTripDetail() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="organizationId" label="客户">
-                <Select placeholder="请选择客户（可选）" allowClear showSearch optionFilterProp="children">
+                <Select placeholder="请选择客户（可选）" allowClear showSearch optionFilterProp="children" onChange={() => form.setFieldValue('contactId', null)}>
                   {organizations.map(c => (
                     <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
+            <Col span={12}>
+              <Form.Item name="contactId" label="拜访对象">
+                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.organizationId !== cur.organizationId}>
+                  {({ getFieldValue }) => (
+                    <OrgContactSelector organizationId={getFieldValue('organizationId')} placeholder="选择要拜访的联系人" />
+                  )}
+                </Form.Item>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="projectId" label="项目">
                 <Select placeholder="请选择项目（可选）" allowClear showSearch optionFilterProp="children">

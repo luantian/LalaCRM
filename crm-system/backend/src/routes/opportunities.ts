@@ -60,6 +60,7 @@ router.get('/', authenticateToken, checkPermission('view_opportunities'), applyD
       where,
       include: {
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true, phone: true } },
         owner: { select: { id: true, name: true } },
         project: { select: { id: true, name: true, status: true } },
         _count: {
@@ -135,6 +136,7 @@ router.get('/:id', authenticateToken, checkPermission('view_opportunities'), asy
       where: { id: parseInt(id), deletedAt: null },
       include: {
         organization: true,
+        contact: { select: { id: true, name: true, title: true, phone: true, email: true } },
         owner: { select: { id: true, name: true } },
         teamMembers: {
           include: {
@@ -170,6 +172,7 @@ router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOp
     const {
       name,
       organizationId,
+      contactId,
       application,
       budget,
       decisionMaker,
@@ -191,6 +194,7 @@ router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOp
       data: {
         name,
         organizationId,
+        contactId: contactId || null,
         application,
         budget,
         decisionMaker,
@@ -225,6 +229,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), log
     const {
       name,
       organizationId,
+      contactId,
       application,
       budget,
       decisionMaker,
@@ -268,6 +273,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), log
       data: {
         name,
         organizationId,
+        contactId: contactId !== undefined ? (contactId || null) : undefined,
         application,
         budget,
         decisionMaker,
