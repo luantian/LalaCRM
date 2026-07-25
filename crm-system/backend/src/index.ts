@@ -167,6 +167,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     return res.status(400).json({ error: `文件上传失败: ${err.message}` })
   }
 
+  // 文件类型被过滤器拒绝
+  if (err.code === 'FILE_TYPE_REJECTED' || err.message === 'FILE_TYPE_REJECTED') {
+    return res.status(400).json({ error: '不支持的文件类型，请上传文档、图片、压缩包等常见格式' })
+  }
+
   // JWT 错误处理
   if (err.name === 'UnauthorizedError') {
     return res.status(401).json({ error: '无效的认证令牌' })

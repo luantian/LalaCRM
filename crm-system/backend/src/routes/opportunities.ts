@@ -776,7 +776,7 @@ router.get('/records/files/:fileId/download', authenticateToken, async (req: Aut
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    const filePath = path.resolve(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
     }
@@ -797,7 +797,7 @@ router.get('/records/files/:fileId/preview', authenticateToken, async (req: Auth
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    const filePath = path.resolve(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
     }

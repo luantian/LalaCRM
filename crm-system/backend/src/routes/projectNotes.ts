@@ -395,7 +395,7 @@ router.get('/notes/files/:fileId/preview', authenticateToken, async (req: AuthRe
     const fileId = Number(req.params.fileId);
     const file = await prisma.projectNoteFile.findFirst({ where: { id: fileId, deletedAt: null } });
     if (!file) return res.status(404).json({ error: '文件不存在' });
-    const filePath = path.resolve(file.filePath);
+    const filePath = path.join(__dirname, '../uploads', file.filePath);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: '文件不存在于磁盘' });
 
     // 设置正确的 Content-Type
@@ -428,7 +428,7 @@ router.get('/notes/files/:fileId/download', authenticateToken, async (req: AuthR
     const fileId = Number(req.params.fileId);
     const file = await prisma.projectNoteFile.findFirst({ where: { id: fileId, deletedAt: null } });
     if (!file) return res.status(404).json({ error: '文件不存在' });
-    const filePath = path.resolve(file.filePath);
+    const filePath = path.join(__dirname, '../uploads', file.filePath);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: '文件不存在于磁盘' });
     res.download(filePath, file.fileName);
   } catch (error) {

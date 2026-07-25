@@ -42,6 +42,15 @@ router.post('/', authenticateToken, logOperation('合同订货', 'CREATE'), asyn
       return res.status(400).json({ error: '缺少必填字段' })
     }
 
+    // 检查用户是否有权操作该合同
+    const contract = await prisma.contract.findFirst({ where: { id: contractId, deletedAt: null } })
+    if (!contract) {
+      return res.status(404).json({ error: '合同不存在' })
+    }
+    if (contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此合同的订货明细' })
+    }
+
     const parsedUnitPrice = Number(unitPrice)
     const item = await prisma.contractOrderItem.create({
       data: {
@@ -75,9 +84,15 @@ router.put('/:id', authenticateToken, logOperation('合同订货', 'UPDATE'), as
     const parsedUnitPrice = unitPrice ? Number(unitPrice) : undefined
     const parsedQuantity = quantity ? Number(quantity) : undefined
 
-    const existing = await prisma.contractOrderItem.findFirst({ where: { id, deletedAt: null } })
+    const existing = await prisma.contractOrderItem.findFirst({
+      where: { id, deletedAt: null },
+      include: { contract: { select: { ownerId: true } } }
+    })
     if (!existing) {
       return res.status(404).json({ error: '订货明细不存在' })
+    }
+    if (existing.contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此订货明细' })
     }
 
     const item = await prisma.contractOrderItem.update({
@@ -113,9 +128,15 @@ router.post('/:id/files', authenticateToken, upload.array('files', 10), logOpera
       return res.status(400).json({ error: '请选择文件' })
     }
 
-    const orderItem = await prisma.contractOrderItem.findFirst({ where: { id: orderItemId, deletedAt: null } })
+    const orderItem = await prisma.contractOrderItem.findFirst({
+      where: { id: orderItemId, deletedAt: null },
+      include: { contract: { select: { ownerId: true } } }
+    })
     if (!orderItem) {
       return res.status(404).json({ error: '订货明细不存在' })
+    }
+    if (orderItem.contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此订货明细' })
     }
 
     const createdFiles = await Promise.all(
@@ -163,7 +184,7 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    const filePath = path.resolve(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
     }
@@ -182,7 +203,7 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    const filePath = path.resolve(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
     }
@@ -235,9 +256,15 @@ router.delete('/:id', authenticateToken, logOperation('合同订货', 'DELETE'),
   try {
     const id = parseInt(req.params.id as string)
 
-    const existing = await prisma.contractOrderItem.findFirst({ where: { id, deletedAt: null } })
+    const existing = await prisma.contractOrderItem.findFirst({
+      where: { id, deletedAt: null },
+      include: { contract: { select: { ownerId: true } } }
+    })
     if (!existing) {
       return res.status(404).json({ error: '订货明细不存在' })
+    }
+    if (existing.contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此订货明细' })
     }
 
     // 软删除订货明细

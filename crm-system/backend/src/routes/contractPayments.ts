@@ -53,6 +53,15 @@ router.post('/', authenticateToken, logOperation('合同付款', 'CREATE'), asyn
       return res.status(400).json({ error: '缺少必填字段' })
     }
 
+    // 检查用户是否有权操作该合同（合同所有者或管理员）
+    const contract = await prisma.contract.findFirst({ where: { id: contractId, deletedAt: null } })
+    if (!contract) {
+      return res.status(404).json({ error: '合同不存在' })
+    }
+    if (contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此合同的付款记录' })
+    }
+
     const payment = await prisma.contractPayment.create({
       data: {
         contractId,
@@ -79,9 +88,15 @@ router.put('/:id', authenticateToken, logOperation('合同付款', 'UPDATE'), as
     const id = parseInt(req.params.id as string)
     const { amount, paymentDate, paymentMethod, paymentType, status, invoiceNo, remarks } = req.body
 
-    const existing = await prisma.contractPayment.findFirst({ where: { id, deletedAt: null } })
+    const existing = await prisma.contractPayment.findFirst({
+      where: { id, deletedAt: null },
+      include: { contract: { select: { ownerId: true } } }
+    })
     if (!existing) {
       return res.status(404).json({ error: '付款记录不存在' })
+    }
+    if (existing.contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此付款记录' })
     }
 
     const payment = await prisma.contractPayment.update({
@@ -164,7 +179,7 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    const filePath = path.resolve(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
     }
@@ -183,7 +198,7 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    const filePath = path.resolve(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
     }
@@ -230,9 +245,15 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('合同付�
 router.delete('/:id', authenticateToken, logOperation('合同付款', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
-    const existing = await prisma.contractPayment.findFirst({ where: { id, deletedAt: null } })
+    const existing = await prisma.contractPayment.findFirst({
+      where: { id, deletedAt: null },
+      include: { contract: { select: { ownerId: true } } }
+    })
     if (!existing) {
       return res.status(404).json({ error: '付款记录不存在' })
+    }
+    if (existing.contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此付款记录' })
     }
     await prisma.contractPayment.update({ where: { id }, data: { deletedAt: new Date() } })
     // 级联软删除关联文件

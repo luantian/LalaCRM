@@ -296,30 +296,38 @@ router.put('/:id', authenticateToken, checkPermission('edit_invoices'), logOpera
       partyName, partyTaxNo, remarks
     } = req.body
 
+    // 先检查发票是否存在
+    const existing = await prisma.invoice.findFirst({ where: { id, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '发票不存在' })
+    }
+
+    // 使用现有值作为 fallback，防止部分更新时金额被清零
+    const amountNum = amount !== undefined ? parseFloat(amount) : Number(existing.amount)
+    const taxRateNum = taxRate !== undefined ? parseFloat(taxRate) : Number(existing.taxRate)
+
     // 重新计算税额（使用 toFixed 避免浮点精度问题）
-    const amountNum = parseFloat(amount) || 0
-    const taxRateNum = parseFloat(taxRate) || 0
     const taxAmount = parseFloat((amountNum * taxRateNum / 100).toFixed(2))
     const totalAmount = parseFloat((amountNum + taxAmount).toFixed(2))
 
     const invoice = await prisma.invoice.update({
       where: { id },
       data: {
-        invoiceNo,
-        invoiceType: invoiceType as any,
-        category,
+        invoiceNo: invoiceNo !== undefined ? invoiceNo : existing.invoiceNo,
+        invoiceType: invoiceType !== undefined ? invoiceType as any : existing.invoiceType,
+        category: category !== undefined ? category : existing.category,
         amount: amountNum,
         taxRate: taxRateNum,
         taxAmount,
         totalAmount,
-        invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
-        status,
-        projectId: projectId ? parseInt(projectId) : null,
-        contractId: contractId ? parseInt(contractId) : null,
-        procurementId: procurementId ? parseInt(procurementId) : null,
-        partyName,
-        partyTaxNo,
-        remarks
+        invoiceDate: invoiceDate !== undefined ? (invoiceDate ? new Date(invoiceDate) : null) : existing.invoiceDate,
+        status: status !== undefined ? status : existing.status,
+        projectId: projectId !== undefined ? (projectId ? parseInt(projectId) : null) : existing.projectId,
+        contractId: contractId !== undefined ? (contractId ? parseInt(contractId) : null) : existing.contractId,
+        procurementId: procurementId !== undefined ? (procurementId ? parseInt(procurementId) : null) : existing.procurementId,
+        partyName: partyName !== undefined ? partyName : existing.partyName,
+        partyTaxNo: partyTaxNo !== undefined ? partyTaxNo : existing.partyTaxNo,
+        remarks: remarks !== undefined ? remarks : existing.remarks
       }
     })
 
@@ -334,6 +342,10 @@ router.put('/:id', authenticateToken, checkPermission('edit_invoices'), logOpera
 router.delete('/:id', authenticateToken, checkPermission('edit_invoices'), logOperation('发票管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+    const existing = await prisma.invoice.findFirst({ where: { id, deletedAt: null } })
+    if (!existing) {
+      return res.status(404).json({ error: '发票不存在' })
+    }
     await prisma.invoiceFile.updateMany({ where: { invoiceId: id }, data: { deletedAt: new Date() } })
     await prisma.invoice.update({ where: { id }, data: { deletedAt: new Date() } })
     res.json({ message: '删除成功' })

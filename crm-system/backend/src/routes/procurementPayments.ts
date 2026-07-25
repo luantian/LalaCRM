@@ -48,6 +48,18 @@ router.post('/', authenticateToken, logOperation('采购付款', 'CREATE'), asyn
       return res.status(400).json({ error: '缺少必填字段' })
     }
 
+    // 检查用户是否有权操作该采购单（项目负责人或管理员）
+    const procurement = await prisma.procurement.findFirst({
+      where: { id: procurementId, deletedAt: null },
+      include: { project: { select: { ownerId: true } } }
+    })
+    if (!procurement) {
+      return res.status(404).json({ error: '采购单不存在' })
+    }
+    if (procurement.project?.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此采购单的付款记录' })
+    }
+
     const payment = await prisma.procurementPayment.create({
       data: {
         procurementId,
@@ -74,6 +86,17 @@ router.put('/:id', authenticateToken, logOperation('采购付款', 'UPDATE'), as
     const id = parseInt(req.params.id as string)
     const { amount, paymentDate, paymentMethod, paymentType, status, invoiceNo, remarks } = req.body
 
+    const existing = await prisma.procurementPayment.findFirst({
+      where: { id, deletedAt: null },
+      include: { procurement: { include: { project: { select: { ownerId: true } } } } }
+    })
+    if (!existing) {
+      return res.status(404).json({ error: '付款记录不存在' })
+    }
+    if (existing.procurement.project?.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此付款记录' })
+    }
+
     const payment = await prisma.procurementPayment.update({
       where: { id },
       data: {
@@ -98,6 +121,16 @@ router.put('/:id', authenticateToken, logOperation('采购付款', 'UPDATE'), as
 router.delete('/:id', authenticateToken, logOperation('采购付款', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+    const existing = await prisma.procurementPayment.findFirst({
+      where: { id, deletedAt: null },
+      include: { procurement: { include: { project: { select: { ownerId: true } } } } }
+    })
+    if (!existing) {
+      return res.status(404).json({ error: '付款记录不存在' })
+    }
+    if (existing.procurement.project?.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权操作此付款记录' })
+    }
     await prisma.procurementPayment.update({ where: { id }, data: { deletedAt: new Date() } })
     res.json({ message: '删除成功' })
   } catch (error) {

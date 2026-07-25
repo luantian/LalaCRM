@@ -706,7 +706,7 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
       return res.status(404).json({ error: '文件不存在' })
     }
 
-    const filePath = path.resolve(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于服务器' })
     }
@@ -731,7 +731,7 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
       return res.status(404).json({ error: '文件不存在' })
     }
 
-    const filePath = path.resolve(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于服务器' })
     }
@@ -759,7 +759,7 @@ router.get('/records/files/:fileId/download', authenticateToken, async (req: Aut
       return res.status(404).json({ error: '文件不存在' })
     }
 
-    const filePath = path.resolve(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于服务器' })
     }
@@ -784,7 +784,7 @@ router.get('/records/files/:fileId/preview', authenticateToken, async (req: Auth
       return res.status(404).json({ error: '文件不存在' })
     }
 
-    const filePath = path.resolve(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于服务器' })
     }

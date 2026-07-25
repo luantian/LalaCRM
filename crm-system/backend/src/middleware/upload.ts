@@ -52,17 +52,15 @@ const fileFilter = (req: any, file: any, cb: any) => {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.ms-powerpoint',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    // 图片
+    // 图片（排除 svg+xml 和 html，防止 XSS）
     'image/jpeg',
     'image/png',
     'image/gif',
     'image/webp',
-    'image/svg+xml',
     'image/bmp',
     // 文本
     'text/plain',
     'text/csv',
-    'text/html',
     'application/json',
     // 压缩包
     'application/zip',
@@ -73,9 +71,9 @@ const fileFilter = (req: any, file: any, cb: any) => {
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    // 不抛出 Error，而是允许上传但在后续处理中提示
-    // 这样避免 multer 的 500 错误
-    cb(null, true);
+    const err: any = new Error('FILE_TYPE_REJECTED')
+    err.code = 'FILE_TYPE_REJECTED'
+    cb(err)
   }
 };
 
