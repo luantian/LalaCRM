@@ -290,6 +290,17 @@ function OpportunityDetail() {
     }
   }
 
+  // ===== 关闭商机 / 标记丢单 =====
+  const handleCloseOpportunity = async (newStatus: 'CLOSED' | 'LOST') => {
+    try {
+      await updateOpportunity(parseInt(id!), { status: newStatus })
+      message.success(newStatus === 'LOST' ? '已标记为丢单' : '商机已关闭')
+      refreshDetail()
+    } catch (error: any) {
+      message.error(error?.error || '操作失败')
+    }
+  }
+
   if (loading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}><Spin size="large" tip="加载中..." /></div>
   }
@@ -524,7 +535,7 @@ function OpportunityDetail() {
             </div>
           </Col>
           <Col flex="none">
-            <Space>
+            <Space wrap>
               {opportunity.project ? (
                 <>
                   <Button
@@ -566,6 +577,30 @@ function OpportunityDetail() {
                     转化为项目
                   </Button>
                 </Popconfirm>
+              )}
+              {opportunity.status !== 'CLOSED' && opportunity.status !== 'LOST' && opportunity.status !== 'WON' && (
+                <>
+                  <Popconfirm
+                    title="确定关闭此商机？"
+                    description="关闭后商机将无法重新打开"
+                    onConfirm={() => handleCloseOpportunity('CLOSED')}
+                    okText="确定"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button danger icon={<CloseOutlined />}>关闭商机</Button>
+                  </Popconfirm>
+                  <Popconfirm
+                    title="确定标记为丢单？"
+                    description="标记后商机将无法重新打开"
+                    onConfirm={() => handleCloseOpportunity('LOST')}
+                    okText="确定"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button danger>标记丢单</Button>
+                  </Popconfirm>
+                </>
               )}
               <Button
                 type="primary"

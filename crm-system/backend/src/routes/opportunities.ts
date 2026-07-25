@@ -146,7 +146,7 @@ router.get('/:id', authenticateToken, checkPermission('view_opportunities'), asy
         files: {
           orderBy: { uploadedAt: 'desc' }
         },
-        project: { select: { id: true, name: true } }
+        project: { select: { id: true, name: true, status: true } }
       }
     })
 
