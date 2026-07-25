@@ -165,8 +165,8 @@ function ProjectArchive() {
     },
     {
       title: '客户',
-      dataIndex: ['customer', 'name'],
-      key: 'customer',
+      dataIndex: ['organization', 'name'],
+      key: 'organization',
     },
     {
       title: '状态',
@@ -229,8 +229,8 @@ function ProjectArchive() {
     },
     {
       title: '客户',
-      dataIndex: ['customer', 'name'],
-      key: 'customer',
+      dataIndex: ['organization', 'name'],
+      key: 'organization',
     },
     {
       title: '预算',

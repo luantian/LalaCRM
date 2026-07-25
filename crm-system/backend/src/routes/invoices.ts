@@ -443,4 +443,36 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
   }
 })
 
+// 预览发票附件（图片和PDF）
+router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const fileId = parseInt(req.params.fileId as string)
+    const file = await prisma.invoiceFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    if (!file) {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: '文件不存在于磁盘' })
+    }
+
+    const ext = file.fileName.split('.').pop()?.toLowerCase()
+    const mimeTypes: Record<string, string> = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+      gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp',
+      pdf: 'application/pdf'
+    }
+
+    const mimeType = mimeTypes[ext || ''] || 'application/octet-stream'
+    res.setHeader('Content-Type', mimeType)
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.fileName)}"`)
+
+    const stream = fs.createReadStream(filePath)
+    stream.pipe(res)
+  } catch (error) {
+    logger.error('Preview invoice file error:', error)
+    res.status(500).json({ error: '预览附件失败' })
+  }
+})
+
 export default router

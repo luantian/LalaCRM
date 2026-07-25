@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Image, Spin, Result } from 'antd'
-import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, FileTextOutlined, ScheduleOutlined, CheckOutlined, EyeOutlined } from '@ant-design/icons'
-import { getOpportunityDetail, updateOpportunity, convertOpportunity, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getCustomers, getUsers, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, safeJsonParse } from '../services/api'
+import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, FileTextOutlined, ScheduleOutlined, CheckOutlined, EyeOutlined, CloseOutlined } from '@ant-design/icons'
+import { getOpportunityDetail, updateOpportunity, convertOpportunity, closeOpportunityProject, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getOrganizations, getUserDropdown, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
 const { TextArea } = Input
@@ -32,7 +32,7 @@ function OpportunityDetail() {
   // 编辑状态
   const [modalVisible, setModalVisible] = useState(false)
   const [form] = Form.useForm()
-  const [customers, setCustomers] = useState<any[]>([])
+  const [organizations, setOrganizations] = useState<any[]>([])
 
   // 团队成员状态
   const [users, setUsers] = useState<any[]>([])
@@ -79,23 +79,23 @@ function OpportunityDetail() {
   useEffect(() => {
     if (id) {
       fetchFiles()
-      fetchCustomers()
+      fetchOrganizations()
       fetchUsers()
       fetchRecords()
     }
   }, [id])
 
-  const fetchCustomers = async () => {
+  const fetchOrganizations = async () => {
     try {
-      const response: any = await getCustomers({ pageSize: 1000 })
-      setCustomers(response.data || [])
-    } catch (error) { console.error('获取客户列表失败:', error) }
+      const response: any = await getOrganizations({ pageSize: 1000 })
+      setOrganizations(response.data || [])
+    } catch (error) { console.error('获取组织列表失败:', error) }
   }
 
   const fetchUsers = async () => {
     try {
-      const data: any = await getUsers()
-      setUsers(data || [])
+      const data: any = await getUserDropdown()
+      setUsers(Array.isArray(data) ? data : [])
     } catch (error) { console.error('获取用户列表失败:', error) }
   }
 
@@ -124,7 +124,7 @@ function OpportunityDetail() {
   const handleEdit = () => {
     form.setFieldsValue({
       name: opportunity.name,
-      customerId: opportunity.customerId,
+      organizationId: opportunity.organizationId,
       application: opportunity.application || '',
       budget: opportunity.budget ? Number(opportunity.budget) : null,
       decisionMaker: opportunity.decisionMaker || '',
@@ -279,6 +279,17 @@ function OpportunityDetail() {
     }
   }
 
+  // ===== 关闭项目 =====
+  const handleCloseProject = async () => {
+    try {
+      const res: any = await closeOpportunityProject(parseInt(id!))
+      message.success(res?.message || '项目已关闭')
+      refreshDetail()
+    } catch (error: any) {
+      message.error(error?.error || '关闭项目失败')
+    }
+  }
+
   if (loading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}><Spin size="large" tip="加载中..." /></div>
   }
@@ -348,7 +359,7 @@ function OpportunityDetail() {
           <Card title="商机详情">
             <Descriptions column={2} bordered>
               <Descriptions.Item label="商机名称">{opportunity.name}</Descriptions.Item>
-              <Descriptions.Item label="客户">{opportunity.customer?.name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="客户">{opportunity.organization?.name || '-'}</Descriptions.Item>
               <Descriptions.Item label="应用领域">{opportunity.application || '-'}</Descriptions.Item>
               <Descriptions.Item label="预算金额">{opportunity.budget ? `${Number(opportunity.budget)}元` : '-'}</Descriptions.Item>
               <Descriptions.Item label="客户决策人">{opportunity.decisionMaker || '-'}</Descriptions.Item>
@@ -366,7 +377,7 @@ function OpportunityDetail() {
           </Card>
 
           <Card title="信息记录" style={{ marginTop: 16 }} extra={
-            <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleAddRecord}>添加记录</Button>
+            <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleAddRecord}>Notes信息</Button>
           }>
             {records.length === 0 ? (
               <Empty description="暂无信息记录" />
@@ -507,7 +518,7 @@ function OpportunityDetail() {
               )}
             </div>
             <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
-              {opportunity.customer?.name || '暂无客户'}
+              {opportunity.organization?.name || '暂无客户'}
               {opportunity.expectedStart && <> · 预计开始: {dayjs(opportunity.expectedStart).format('YYYY-MM-DD')}</>}
               {opportunity.expectedEnd && <> · 预计结束: {dayjs(opportunity.expectedEnd).format('YYYY-MM-DD')}</>}
             </div>
@@ -515,12 +526,31 @@ function OpportunityDetail() {
           <Col flex="none">
             <Space>
               {opportunity.project ? (
-                <Button
-                  icon={<FileTextOutlined />}
-                  onClick={() => navigate(`/projects/${opportunity.project.id}`)}
-                >
-                  查看项目
-                </Button>
+                <>
+                  <Button
+                    icon={<FileTextOutlined />}
+                    onClick={() => navigate(`/projects/${opportunity.project.id}`)}
+                  >
+                    查看项目
+                  </Button>
+                  {opportunity.project.status !== 'CANCELLED' && (
+                    <Popconfirm
+                      title="确定关闭此项目？"
+                      description="关闭后项目状态将变为已取消"
+                      onConfirm={handleCloseProject}
+                      okText="确定"
+                      cancelText="取消"
+                      okButtonProps={{ danger: true }}
+                    >
+                      <Button
+                        danger
+                        icon={<CloseOutlined />}
+                      >
+                        关闭项目
+                      </Button>
+                    </Popconfirm>
+                  )}
+                </>
               ) : (
                 <Popconfirm
                   title="确定将此商机转化为项目？"
@@ -565,9 +595,9 @@ function OpportunityDetail() {
           <Form.Item name="name" label="商机名称" rules={[{ required: true, message: '请输入商机名称' }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="customerId" label="客户" rules={[{ required: true, message: '请选择客户' }]}>
+          <Form.Item name="organizationId" label="客户" rules={[{ required: true, message: '请选择客户' }]}>
             <Select showSearch optionFilterProp="children">
-              {customers.map((c: any) => (
+              {organizations.map((c: any) => (
                 <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
               ))}
             </Select>
@@ -624,7 +654,7 @@ function OpportunityDetail() {
 
       {/* 信息记录 Modal */}
       <Modal
-        title={editingRecord ? '编辑信息记录' : '添加信息记录'}
+        title={editingRecord ? '编辑信息记录' : 'Notes信息'}
         open={recordModalVisible}
         onOk={handleRecordSubmit}
         onCancel={() => {

@@ -14,7 +14,7 @@ const prisma = new PrismaClient()
 // 获取所有费用报销记录
 router.get('/', authenticateToken, checkPermission('view_expenses'), applyDataScope('ownerId'), clampPagination(), async (req: AuthRequest, res) => {
   try {
-    const { page = '1', pageSize = '10', status = '', category = '', search = '' } = req.query
+    const { page = '1', pageSize = '10', status = '', category = '', search = '', tripId = '' } = req.query
 
     const skip = (parseInt(page as string) - 1) * parseInt(pageSize as string)
     const take = parseInt(pageSize as string)
@@ -34,6 +34,10 @@ router.get('/', authenticateToken, checkPermission('view_expenses'), applyDataSc
 
     if (category) {
       conditions.push({ category: category as string })
+    }
+
+    if (tripId) {
+      conditions.push({ tripId: parseInt(tripId as string) })
     }
 
     if (search) {
@@ -56,9 +60,10 @@ router.get('/', authenticateToken, checkPermission('view_expenses'), applyDataSc
     const expenses = await prisma.expense.findMany({
       where,
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } },
-        owner: { select: { id: true, name: true } }
+        owner: { select: { id: true, name: true } },
+        trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } }
       },
       orderBy: { expenseDate: 'desc' },
       skip,
@@ -141,9 +146,10 @@ router.get('/:id', authenticateToken, checkPermission('view_expenses'), async (r
     const expense = await prisma.expense.findFirst({
       where: { id, deletedAt: null },
       include: {
-        customer: true,
+        organization: true,
         project: true,
-        owner: { select: { id: true, name: true } }
+        owner: { select: { id: true, name: true } },
+        trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } }
       }
     })
 
@@ -162,8 +168,9 @@ router.post('/', authenticateToken, checkPermission('submit_expenses'), logOpera
   try {
     const {
       title,
-      customerId,
+      organizationId,
       projectId,
+      tripId,
       category,
       amount,
       expenseDate,
@@ -178,8 +185,9 @@ router.post('/', authenticateToken, checkPermission('submit_expenses'), logOpera
     const expense = await prisma.expense.create({
       data: {
         title,
-        customerId: customerId || null,
+        organizationId: organizationId || null,
         projectId: projectId || null,
+        tripId: tripId || null,
         category,
         amount: parseFloat(amount),
         expenseDate: new Date(expenseDate),
@@ -189,8 +197,9 @@ router.post('/', authenticateToken, checkPermission('submit_expenses'), logOpera
         // status 默认为 DRAFT，由 schema 控制
       },
       include: {
-        customer: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } }
+        organization: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
+        trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } }
       }
     })
 
@@ -207,8 +216,9 @@ router.put('/:id', authenticateToken, checkPermission('submit_expenses'), logOpe
     const id = parseInt(req.params.id as string)
     const {
       title,
-      customerId,
+      organizationId,
       projectId,
+      tripId,
       category,
       amount,
       expenseDate,
@@ -230,8 +240,9 @@ router.put('/:id', authenticateToken, checkPermission('submit_expenses'), logOpe
       where: { id },
       data: {
         title,
-        customerId: customerId || null,
+        organizationId: organizationId || null,
         projectId: projectId || null,
+        tripId: tripId !== undefined ? (tripId || null) : existing.tripId,
         category,
         amount: amount ? parseFloat(amount) : existing.amount,
         expenseDate: expenseDate ? new Date(expenseDate) : existing.expenseDate,
@@ -289,7 +300,7 @@ router.post('/:id/submit', authenticateToken, checkPermission('submit_expenses')
       where: { id },
       data: { status: 'SUBMITTED' },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -335,7 +346,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_expenses
         description: (expense.description || '') + remarkText
       },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -379,7 +390,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_expenses'
         description: (expense.description || '') + rejectText
       },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -418,7 +429,7 @@ router.post('/:id/resubmit', authenticateToken, checkPermission('submit_expenses
         approvedAt: null
       },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -448,7 +459,7 @@ router.post('/:id/pay', authenticateToken, checkPermission('approve_expenses'), 
       where: { id },
       data: { status: 'PAID' },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -465,7 +476,7 @@ const columns = [
   { key: 'category', label: '类别' },
   { key: 'amount', label: '金额' },
   { key: 'expenseDate', label: '费用日期' },
-  { key: 'customer.name', label: '客户' },
+  { key: 'organization.name', label: '组织' },
   { key: 'project.name', label: '项目' },
   { key: 'status', label: '状态' },
   { key: 'owner.name', label: '负责人' }
@@ -484,7 +495,7 @@ router.get('/export/excel', authenticateToken, checkPermission('view_expenses'),
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.expense.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, customer: { select: { name: true } }, project: { select: { name: true } } },
+      include: { owner: { select: { name: true } }, organization: { select: { name: true } }, project: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }
     })
     exportExcel(res, 'expenses.xlsx', '费用报销', columns, data)

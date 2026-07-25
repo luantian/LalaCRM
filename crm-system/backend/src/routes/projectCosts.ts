@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 
 // 检查用户是否有权限访问项目
 async function checkProjectAccess(projectId: number, userId: number, role?: string): Promise<boolean> {
-  if (role === 'ADMIN' || role === 'MANAGER') return true;
+  if (role === 'ADMIN' || role === 'MANAGER' || role === 'PROJECT_MANAGER' || role === 'PROJECT_DIRECTOR') return true;
 
   const project = await prisma.project.findFirst({
     where: { id: projectId, deletedAt: null },

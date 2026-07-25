@@ -20,7 +20,7 @@ router.get('/', authenticateToken, checkPermission('view_projects'), applyDataSc
       page = '1',
       pageSize = '10',
       status = '',
-      customerId = '',
+      organizationId = '',
       search = '',
       isArchived = '',
       fullyPaid = '',
@@ -44,8 +44,8 @@ router.get('/', authenticateToken, checkPermission('view_projects'), applyDataSc
       where.status = status as string
     }
 
-    if (customerId) {
-      where.customerId = parseInt(customerId as string)
+    if (organizationId) {
+      where.organizationId = parseInt(organizationId as string)
     }
 
     if (search) {
@@ -57,7 +57,7 @@ router.get('/', authenticateToken, checkPermission('view_projects'), applyDataSc
       const allProjects = await prisma.project.findMany({
         where,
         include: {
-          customer: { select: { id: true, name: true } },
+          organization: { select: { id: true, name: true } },
           owner: { select: { id: true, name: true } },
           contracts: {
             select: {
@@ -101,7 +101,7 @@ router.get('/', authenticateToken, checkPermission('view_projects'), applyDataSc
     const projects = await prisma.project.findMany({
       where,
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } },
         _count: {
           select: { contracts: true }
@@ -131,9 +131,8 @@ router.get('/', authenticateToken, checkPermission('view_projects'), applyDataSc
 router.get('/stats/overview', authenticateToken, checkPermission('view_projects'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
-    const [total, pending, inProgress, completed, cancelled] = await Promise.all([
+    const [total, inProgress, completed, cancelled] = await Promise.all([
       prisma.project.count({ where: { deletedAt: null, ...dataScopeWhere } }),
-      prisma.project.count({ where: { deletedAt: null, status: 'PENDING', ...dataScopeWhere } }),
       prisma.project.count({ where: { deletedAt: null, status: 'IN_PROGRESS', ...dataScopeWhere } }),
       prisma.project.count({ where: { deletedAt: null, status: 'COMPLETED', ...dataScopeWhere } }),
       prisma.project.count({ where: { deletedAt: null, status: 'CANCELLED', ...dataScopeWhere } })
@@ -148,7 +147,6 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_projects'
 
     res.json({
       total,
-      pending,
       inProgress,
       completed,
       cancelled,
@@ -168,10 +166,40 @@ router.get('/:id', authenticateToken, checkPermission('view_projects'), async (r
     const project = await prisma.project.findFirst({
       where: { id: parseInt(id), deletedAt: null },
       include: {
-        customer: true,
+        organization: true,
         owner: { select: { id: true, name: true } },
         contracts: {
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
+          include: {
+            files: {
+              where: { deletedAt: null },
+              select: { id: true }
+            },
+            orderItems: {
+              include: {
+                files: {
+                  where: { deletedAt: null },
+                  select: { id: true }
+                }
+              }
+            },
+            payments: {
+              include: {
+                files: {
+                  where: { deletedAt: null },
+                  select: { id: true }
+                }
+              }
+            },
+            shipments: {
+              include: {
+                files: {
+                  where: { deletedAt: null },
+                  select: { id: true }
+                }
+              }
+            }
+          }
         },
         teamMembers: {
           include: {
@@ -198,17 +226,17 @@ router.get('/:id', authenticateToken, checkPermission('view_projects'), async (r
 // 创建项目
 router.post('/', authenticateToken, checkPermission('create_projects'), logOperation('项目管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    const { name, customerId, status, budget, startDate, endDate, description } = req.body
+    const { name, organizationId, status, budget, startDate, endDate, description } = req.body
 
-    if (!name || !customerId) {
-      return res.status(400).json({ error: '项目名称和客户ID不能为空' })
+    if (!name || !organizationId) {
+      return res.status(400).json({ error: '项目名称和组织ID不能为空' })
     }
 
     const project = await prisma.project.create({
       data: {
         name,
-        customerId,
-        status: status || 'PENDING',
+        organizationId,
+        status: status || 'IN_PROGRESS',
         budget,
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
@@ -216,7 +244,7 @@ router.post('/', authenticateToken, checkPermission('create_projects'), logOpera
         ownerId: req.user!.id
       },
       include: {
-        customer: { select: { id: true, name: true } }
+        organization: { select: { id: true, name: true } }
       }
     })
 
@@ -231,13 +259,11 @@ router.post('/', authenticateToken, checkPermission('create_projects'), logOpera
 router.put('/:id', authenticateToken, checkPermission('edit_projects'), logOperation('项目管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
-    const { name, customerId, status, budget, startDate, endDate, description, progress } = req.body
+    const { name, organizationId, status, budget, startDate, endDate, description, progress } = req.body
 
     // 项目状态流转规则
     const validTransitions: Record<string, string[]> = {
-      'PENDING': ['IN_PROGRESS', 'CANCELLED'],
-      'IN_PROGRESS': ['COMPLETED', 'ON_HOLD', 'CANCELLED'],
-      'ON_HOLD': ['IN_PROGRESS', 'CANCELLED'],
+      'IN_PROGRESS': ['COMPLETED', 'CANCELLED'],
       'COMPLETED': [],
       'CANCELLED': []
     }
@@ -264,7 +290,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_projects'), logOpera
       where: { id: parseInt(id) },
       data: {
         name,
-        customerId,
+        organizationId,
         status,
         budget,
         startDate: startDate ? new Date(startDate) : null,
@@ -631,7 +657,7 @@ router.delete('/:id/team/:memberId', authenticateToken, checkPermission('edit_pr
 
 const projectColumns = [
   { key: 'name', label: '项目名称' },
-  { key: 'customer.name', label: '客户' },
+  { key: 'organization.name', label: '组织' },
   { key: 'status', label: '状态' },
   { key: 'budget', label: '预算' },
   { key: 'progress', label: '进度(%)' },
@@ -653,7 +679,7 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.project.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
     exportExcel(res, '项目列表.xlsx', '项目', projectColumns, data)
@@ -669,7 +695,7 @@ router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (r
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.project.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
     exportCSV(res, '项目列表.csv', projectColumns, data)
@@ -694,8 +720,8 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
         await prisma.project.create({
           data: {
             name: mapped.name || '未命名项目',
-            customerId: 0,
-            status: mapped.status || 'PENDING',
+            organizationId: 0,
+            status: mapped.status || 'IN_PROGRESS',
             budget: mapped.budget ? Number(mapped.budget) : null,
             progress: mapped.progress ? Number(mapped.progress) : 0,
             ownerId: req.user!.id,

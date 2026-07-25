@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Tooltip, Descriptions, Empty, Divider, Popconfirm, TimePicker, Upload, Dropdown } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, DownloadOutlined, EyeOutlined, CheckCircleOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, exportDailyReports, exportDailyReportsExcel, importDailyReports, getDailyReportItems, createDailyReportItem, updateDailyReportItem, deleteDailyReportItem } from '../services/api'
+import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, exportDailyReports, exportDailyReportsExcel, importDailyReports, getDailyReportItems, createDailyReportItem, updateDailyReportItem, deleteDailyReportItem, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
 
 function DailyReportList() {
+  const user = safeJsonParse(localStorage.getItem('user'), {})
   const [reports, setReports] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -441,15 +442,22 @@ function DailyReportList() {
       key: 'action',
       width: 240,
       fixed: 'right' as const,
-      render: (_: any, record: any) => (
-        <Space size={0}>
-          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleView(record)}>查看</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
-        </Space>
-      )
+      render: (_: any, record: any) => {
+        const isOwner = record.userId === user?.id
+        return (
+          <Space size={0}>
+            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleView(record)}>查看</Button>
+            {isOwner && (
+              <>
+                <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+                <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                </Popconfirm>
+              </>
+            )}
+          </Space>
+        )
+      }
     }
   ]
 
@@ -702,15 +710,17 @@ function DailyReportList() {
                 )}
               </Space>
             </Divider>
-            <Button
-              type="primary"
-              size="small"
-              icon={<PlusOutlined />}
-              onClick={handleAddItem}
-              style={{ marginBottom: 16 }}
-            >
-              添加工作记录
-            </Button>
+            {viewingReport?.userId === user?.id && (
+              <Button
+                type="primary"
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={handleAddItem}
+                style={{ marginBottom: 16 }}
+              >
+                添加工作记录
+              </Button>
+            )}
             {itemsLoading ? (
               <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>加载中...</div>
             ) : items.length === 0 ? (
@@ -828,12 +838,14 @@ function DailyReportList() {
                             )}
                           </div>
                         </div>
-                        <Space size={2} style={{ flexShrink: 0 }}>
-                          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleViewItem(item)} style={{ color: '#1890ff' }} />
-                          <Popconfirm title="确定删除此工作记录吗？" onConfirm={() => handleDeleteItem(item.id)} okText="确定" cancelText="取消">
-                            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-                          </Popconfirm>
-                        </Space>
+                        {viewingReport?.userId === user?.id && (
+                          <Space size={2} style={{ flexShrink: 0 }}>
+                            <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleViewItem(item)} style={{ color: '#1890ff' }} />
+                            <Popconfirm title="确定删除此工作记录吗？" onConfirm={() => handleDeleteItem(item.id)} okText="确定" cancelText="取消">
+                              <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                            </Popconfirm>
+                          </Space>
+                        )}
                       </div>
                       {/* 底部行：项目 + 时间 + 成果 */}
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 10, paddingLeft: 36, fontSize: 12, color: '#8c8c8c' }}>

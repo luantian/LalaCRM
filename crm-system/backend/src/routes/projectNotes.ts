@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { logOperation } from '../middleware/logOperation';
 import { upload } from '../middleware/upload';
 import logger from '../utils/logger';
+import { autoWriteProjectNote } from '../utils/autoDailyReport';
 import fs from 'fs';
 import path from 'path';
 
@@ -12,8 +13,8 @@ const prisma = new PrismaClient();
 
 // 检查用户是否有权限访问项目
 async function checkProjectAccess(projectId: number, userId: number, role?: string): Promise<boolean> {
-  // 管理员和经理可以访问所有项目
-  if (role === 'ADMIN' || role === 'MANAGER') return true;
+  // 管理员、总监、项目经理可以访问所有项目
+  if (role === 'ADMIN' || role === 'MANAGER' || role === 'PROJECT_MANAGER' || role === 'PROJECT_DIRECTOR') return true;
 
   const project = await prisma.project.findFirst({
     where: { id: projectId, deletedAt: null },
@@ -105,6 +106,22 @@ router.post('/notes', authenticateToken, logOperation('项目备注', 'CREATE'),
         },
       },
     });
+
+    // 自动写入日报：项目备注
+    const project = await prisma.project.findFirst({
+      where: { id: pid, deletedAt: null },
+      select: { name: true }
+    });
+    if (project) {
+      await autoWriteProjectNote(
+        req.user!.id,
+        project.name,
+        title,
+        content || '',
+        noteType || 'GENERAL',
+        pid
+      );
+    }
 
     res.status(201).json(note);
   } catch (error) {

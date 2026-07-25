@@ -11,7 +11,6 @@ import authRoutes from './routes/auth'
 import userRoutes from './routes/users'
 import roleRoutes from './routes/roles'
 import menuRoutes from './routes/menus'
-import customerRoutes from './routes/customers'
 import saleRoutes from './routes/sales'
 import projectRoutes from './routes/projects'
 import contractRoutes from './routes/contracts'
@@ -32,9 +31,7 @@ import dictRoutes from './routes/dicts'
 import operationLogRoutes from './routes/operationLogs'
 import loginLogRoutes from './routes/loginLogs'
 import projectNoteRoutes from './routes/projectNotes'
-import customerContactRoutes from './routes/customerContacts'
 import projectCostRoutes from './routes/projectCosts'
-import customerFollowUpRoutes from './routes/customerFollowUps'
 import dailyReportTemplateRoutes from './routes/dailyReportTemplates'
 import weeklyReportRoutes from './routes/weeklyReports'
 import monthlyReportRoutes from './routes/monthlyReports'
@@ -101,7 +98,6 @@ app.use('/api/auth', authRoutes)
 app.use('/api/users', userRoutes)
 app.use('/api/roles', roleRoutes)
 app.use('/api/menus', menuRoutes)
-app.use('/api/customers', customerRoutes)
 app.use('/api/sales', saleRoutes)
 app.use('/api/projects', projectRoutes)
 app.use('/api/contracts', contractRoutes)
@@ -122,9 +118,7 @@ app.use('/api/dicts', dictRoutes)
 app.use('/api/operation-logs', operationLogRoutes)
 app.use('/api/login-logs', loginLogRoutes)
 app.use('/api/project-notes', projectNoteRoutes)
-app.use('/api/customer-contacts', customerContactRoutes)
 app.use('/api/project-costs', projectCostRoutes)
-app.use('/api/customer-follow-ups', customerFollowUpRoutes)
 app.use('/api/daily-report-templates', dailyReportTemplateRoutes)
 app.use('/api/weekly-reports', weeklyReportRoutes)
 app.use('/api/monthly-reports', monthlyReportRoutes)

@@ -21,7 +21,7 @@ router.get('/', authenticateToken, checkPermission('view_quotations'), applyData
       pageSize = '10',
       status = '',
       opportunityId = '',
-      customerId = '',
+      organizationId = '',
       search = '',
       sortBy = 'createdAt',
       sortOrder = 'desc'
@@ -35,7 +35,7 @@ router.get('/', authenticateToken, checkPermission('view_quotations'), applyData
 
     if (status) where.status = status as string
     if (opportunityId) where.opportunityId = parseInt(opportunityId as string)
-    if (customerId) where.customerId = parseInt(customerId as string)
+    if (organizationId) where.organizationId = parseInt(organizationId as string)
 
     if (search) {
       where.OR = [
@@ -50,7 +50,7 @@ router.get('/', authenticateToken, checkPermission('view_quotations'), applyData
       where,
       include: {
         opportunity: { select: { id: true, name: true } },
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } },
         _count: { select: { items: true, files: true } }
       },
@@ -130,7 +130,7 @@ router.get('/:id', authenticateToken, checkPermission('view_quotations'), async 
       where: { id, deletedAt: null },
       include: {
         opportunity: { select: { id: true, name: true } },
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } },
         items: { orderBy: { id: 'asc' } },
         files: { orderBy: { uploadedAt: 'desc' } }
@@ -151,10 +151,10 @@ router.get('/:id', authenticateToken, checkPermission('view_quotations'), async 
 // 创建报价单
 router.post('/', authenticateToken, checkPermission('edit_quotations'), logOperation('报价管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    const { name, opportunityId, customerId, validUntil, notes, items } = req.body
+    const { name, opportunityId, organizationId, validUntil, notes, items } = req.body
 
-    if (!name || !opportunityId || !customerId) {
-      return res.status(400).json({ error: '报价单名称、商机ID和客户ID不能为空' })
+    if (!name || !opportunityId || !organizationId) {
+      return res.status(400).json({ error: '报价单名称、商机ID和组织ID不能为空' })
     }
 
     // 检查商机是否存在
@@ -187,7 +187,7 @@ router.post('/', authenticateToken, checkPermission('edit_quotations'), logOpera
         name,
         version: nextVersion,
         opportunityId: parseInt(opportunityId),
-        customerId: parseInt(customerId),
+        organizationId: parseInt(organizationId),
         totalAmount,
         validUntil: validUntil ? new Date(validUntil) : null,
         notes,
@@ -206,7 +206,7 @@ router.post('/', authenticateToken, checkPermission('edit_quotations'), logOpera
       },
       include: {
         opportunity: { select: { id: true, name: true } },
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         items: true
       }
     })
@@ -460,7 +460,7 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
 const quotationColumns = [
   { key: 'name', label: '报价单' },
   { key: 'version', label: '版本' },
-  { key: 'customer.name', label: '客户' },
+  { key: 'organization.name', label: '组织' },
   { key: 'totalAmount', label: '报价总额' },
   { key: 'status', label: '状态' },
   { key: 'validUntil', label: '有效期' },
@@ -479,7 +479,7 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.quotation.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
     exportExcel(res, '报价单列表.xlsx', '报价单', quotationColumns, data)
@@ -495,7 +495,7 @@ router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (r
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.quotation.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
     exportCSV(res, '报价单列表.csv', quotationColumns, data)
@@ -522,7 +522,7 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
             name: mapped.name || '未命名报价单',
             version: 1,
             opportunityId: 0,
-            customerId: 0,
+            organizationId: 0,
             totalAmount: mapped.totalAmount ? Number(mapped.totalAmount) : 0,
             status: mapped.status || 'DRAFT',
             ownerId: req.user!.id,

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, Spin, Result } from 'antd'
-import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons'
-import { getBusinessTripDetail, updateBusinessTrip, getCustomers, getProjects } from '../services/api'
+import { Card, Descriptions, Tag, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, Spin, Result, Table } from 'antd'
+import { ArrowLeftOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { getBusinessTripDetail, updateBusinessTrip, getOrganizations, getProjects } from '../services/api'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -17,7 +17,7 @@ function BusinessTripDetail() {
   // 编辑状态
   const [modalVisible, setModalVisible] = useState(false)
   const [form] = Form.useForm()
-  const [customers, setCustomers] = useState<any[]>([])
+  const [organizations, setOrganizations] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
 
   useEffect(() => {
@@ -37,17 +37,17 @@ function BusinessTripDetail() {
 
   useEffect(() => {
     if (id) {
-      fetchCustomers()
+      fetchOrganizations()
       fetchProjects()
     }
   }, [id])
 
-  const fetchCustomers = async () => {
+  const fetchOrganizations = async () => {
     try {
-      const response: any = await getCustomers({ pageSize: 1000 })
-      setCustomers(response.data || [])
+      const response: any = await getOrganizations({ pageSize: 1000 })
+      setOrganizations(response.data || [])
     } catch (error) {
-      console.error('获取客户列表失败:', error)
+      console.error('获取组织列表失败:', error)
     }
   }
 
@@ -145,7 +145,7 @@ function BusinessTripDetail() {
               <span style={{ color: '#6b7280', fontSize: 13 }}>天数: <strong style={{ color: '#2563eb' }}>{trip.days || 0}天</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>日期: <strong style={{ color: '#7c3aed' }}>{trip.startDate ? dayjs(trip.startDate).format('MM-DD') : '-'} ~ {trip.endDate ? dayjs(trip.endDate).format('MM-DD') : '-'}</strong></span>
             </div>
-            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{trip.destination}{trip.customer?.name ? ` · ${trip.customer.name}` : ''}</div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{trip.destination}{trip.organization?.name ? ` · ${trip.organization.name}` : ''}</div>
           </Col>
           <Col flex="none">
             <Space>
@@ -159,7 +159,7 @@ function BusinessTripDetail() {
         <Descriptions column={2}>
           <Descriptions.Item label="出差标题">{trip.title}</Descriptions.Item>
           <Descriptions.Item label="目的地">{trip.destination}</Descriptions.Item>
-          <Descriptions.Item label="客户">{trip.customer?.name || '-'}</Descriptions.Item>
+          <Descriptions.Item label="客户">{trip.organization?.name || '-'}</Descriptions.Item>
           <Descriptions.Item label="项目">{trip.project?.name || '-'}</Descriptions.Item>
           <Descriptions.Item label="出差目的" span={2}>{trip.purpose || '-'}</Descriptions.Item>
           <Descriptions.Item label="开始日期">
@@ -180,7 +180,7 @@ function BusinessTripDetail() {
         </Descriptions>
       </Card>
 
-      <Card title="费用明细">
+      <Card title="费用明细" style={{ marginBottom: 16 }}>
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={6}>
             <Statistic
@@ -228,6 +228,92 @@ function BusinessTripDetail() {
         </Row>
       </Card>
 
+      <Card
+        title={
+          <Space>
+            <span>关联费用报销</span>
+            <Tag color="blue">{trip.expenses?.length || 0} 条</Tag>
+          </Space>
+        }
+        extra={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => navigate('/expenses/new', { state: { tripId: trip.id, tripTitle: trip.title } })}
+          >
+            添加费用
+          </Button>
+        }
+      >
+        {trip.expenses && trip.expenses.length > 0 ? (
+          <Table
+            dataSource={trip.expenses}
+            rowKey="id"
+            pagination={false}
+            size="small"
+            columns={[
+              {
+                title: '费用标题',
+                dataIndex: 'title',
+                key: 'title',
+                width: 200,
+              },
+              {
+                title: '费用类别',
+                dataIndex: 'category',
+                key: 'category',
+                width: 120,
+              },
+              {
+                title: '金额',
+                dataIndex: 'amount',
+                key: 'amount',
+                width: 120,
+                render: (amount: any) => <span style={{ color: '#f5222d', fontWeight: 600 }}>{Number(amount).toFixed(2)} 元</span>,
+              },
+              {
+                title: '费用日期',
+                dataIndex: 'expenseDate',
+                key: 'expenseDate',
+                width: 120,
+                render: (date: string) => date ? dayjs(date).format('YYYY-MM-DD') : '-',
+              },
+              {
+                title: '状态',
+                dataIndex: 'status',
+                key: 'status',
+                width: 100,
+                render: (status: string) => {
+                  const statusConfig: Record<string, { text: string; color: string }> = {
+                    DRAFT: { text: '草稿', color: 'default' },
+                    SUBMITTED: { text: '待审批', color: 'orange' },
+                    APPROVED: { text: '已批准', color: 'blue' },
+                    REJECTED: { text: '已驳回', color: 'red' },
+                    PAID: { text: '已支付', color: 'green' }
+                  }
+                  const config = statusConfig[status] || { text: status, color: 'default' }
+                  return <Tag color={config.color}>{config.text}</Tag>
+                },
+              },
+              {
+                title: '操作',
+                key: 'action',
+                width: 100,
+                render: (_: any, record: any) => (
+                  <Button type="link" size="small" onClick={() => navigate(`/expenses/${record.id}`)}>
+                    查看
+                  </Button>
+                ),
+              },
+            ]}
+          />
+        ) : (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+            暂无关联费用报销记录
+          </div>
+        )}
+      </Card>
+
       {/* 编辑 Modal */}
       <Modal
         title="编辑出差"
@@ -242,9 +328,9 @@ function BusinessTripDetail() {
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="customerId" label="客户">
+              <Form.Item name="organizationId" label="客户">
                 <Select placeholder="请选择客户（可选）" allowClear showSearch optionFilterProp="children">
-                  {customers.map(c => (
+                  {organizations.map(c => (
                     <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
                   ))}
                 </Select>

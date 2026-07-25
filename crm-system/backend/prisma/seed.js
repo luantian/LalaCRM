@@ -17,10 +17,10 @@ async function main() {
     // 工作台
     { id: 1,  key: 'dashboard',      icon: 'DashboardOutlined',    label: '仪表盘',   order: 1,  menuType: 'MENU',      path: '/',                component: 'Dashboard' },
     // 售前
-    { id: 5,  key: 'opportunities',   icon: 'FundOutlined',         label: '商机管理', order: 2,  menuType: 'MENU',      path: '/opportunities',  component: 'OpportunityList',  perm: 'view_opportunities' },
+    { id: 5,  key: 'opportunities',   icon: 'FundOutlined',         label: '售前管理', order: 2,  menuType: 'MENU',      path: '/opportunities',  component: 'OpportunityList',  perm: 'view_opportunities' },
     { id: 20, key: 'quotations',      icon: 'FileTextOutlined',     label: '报价单',   order: 3,  menuType: 'MENU',      path: '/quotations',     component: 'QuotationList',    perm: 'view_quotations' },
     // 客户与项目
-    { id: 2,  key: 'customers',       icon: 'TeamOutlined',         label: '客户管理', order: 4,  menuType: 'MENU',      path: '/customers',      component: 'CustomerList',     perm: 'view_customers' },
+    { id: 2,  key: 'organizations',   icon: 'TeamOutlined',         label: '客户管理', order: 4,  menuType: 'MENU',      path: '/organizations',  component: 'OrganizationList', perm: 'view_organizations' },
     { id: 4,  key: 'projects',        icon: 'ProjectOutlined',      label: '项目管理', order: 5,  menuType: 'MENU',      path: '/projects',       component: 'ProjectList',      perm: 'view_projects' },
     // 财务相关（平铺）
     { id: 3,  key: 'sales',           icon: 'DollarOutlined',       label: '项目归档', order: 6,  menuType: 'MENU',      path: '/sales',          component: 'SaleList' },

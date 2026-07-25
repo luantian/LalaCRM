@@ -48,9 +48,9 @@ function RoleManagement() {
   const permissionDefs = [
     // 系统
     { key: 'manage_system', label: '系统管理', group: '系统' },
-    // 客户
-    { key: 'view_customers', label: '查看客户', group: '客户' },
-    { key: 'edit_customers', label: '编辑客户', group: '客户' },
+    // 组织
+    { key: 'view_organizations', label: '查看组织', group: '组织' },
+    { key: 'edit_organizations', label: '编辑组织', group: '组织' },
     // 项目
     { key: 'view_projects', label: '查看项目', group: '项目' },
     { key: 'edit_projects', label: '编辑项目', group: '项目' },

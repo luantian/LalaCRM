@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Slider, Avatar, Empty, Image, Spin, Result } from 'antd'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Slider, Avatar, Empty, Image, Spin, Result, Upload } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, EyeOutlined } from '@ant-design/icons'
-import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getCustomers, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, getShipments, createShipment, updateShipment, deleteShipment, getProcurements, createProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUsers, safeJsonParse } from '../services/api'
+import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizations, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, uploadPaymentFiles, deletePaymentFile, downloadPaymentFileUrl, previewPaymentFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl } from '../services/api'
 import dayjs from 'dayjs'
 
 const { TextArea } = Input
@@ -36,6 +36,7 @@ function ProjectDetail() {
   const [editingPayment, setEditingPayment] = useState<any>(null)
   const [paymentForm] = Form.useForm()
   const [paymentContractId, setPaymentContractId] = useState<number | null>(null)
+  const [paymentUploading, setPaymentUploading] = useState<Record<number, boolean>>({})
 
   // 发货记录状态
   const [shipments, setShipments] = useState<any[]>([])
@@ -43,6 +44,19 @@ function ProjectDetail() {
   const [editingShipment, setEditingShipment] = useState<any>(null)
   const [shipmentForm] = Form.useForm()
   const [shipmentContractId, setShipmentContractId] = useState<number | null>(null)
+  const [shipmentUploading, setShipmentUploading] = useState<Record<number, boolean>>({})
+
+  // 开票记录状态
+  const [invoices, setInvoices] = useState<any[]>([])
+  const [invoiceModalVisible, setInvoiceModalVisible] = useState(false)
+  const [editingInvoice, setEditingInvoice] = useState<any>(null)
+  const [invoiceForm] = Form.useForm()
+  const [invoiceContractId, setInvoiceContractId] = useState<number | null>(null)
+  const [invoiceUploading, setInvoiceUploading] = useState<Record<number, boolean>>({})
+
+  // 合同附件状态
+  const [contractFiles, setContractFiles] = useState<Record<number, any[]>>({})
+  const [contractFileUploading, setContractFileUploading] = useState<Record<number, boolean>>({})
 
   // 文件管理状态
   const [, setFiles] = useState<any[]>([])
@@ -61,10 +75,23 @@ function ProjectDetail() {
   const [editingProcPayment, setEditingProcPayment] = useState<any>(null)
   const [procPaymentForm] = Form.useForm()
 
+  // 采购附件状态（和合同附件一致，按采购单ID存储）
+  const [procFiles, setProcFiles] = useState<Record<number, any[]>>({})
+  const [procFileUploading, setProcFileUploading] = useState<Record<number, boolean>>({})
+  const [editingProcurement, setEditingProcurement] = useState<any>(null)
+
+  // 采购明细附件状态
+  const [procItemFiles, setProcItemFiles] = useState<Record<number, any[]>>({})
+  const [procItemFileUploading, setProcItemFileUploading] = useState<Record<number, boolean>>({})
+
+  // 采购付款记录附件状态
+  const [procPaymentFiles, setProcPaymentFiles] = useState<Record<number, any[]>>({})
+  const [procPaymentFileUploading, setProcPaymentFileUploading] = useState<Record<number, boolean>>({})
+
   // 项目编辑状态
   const [projectModalVisible, setProjectModalVisible] = useState(false)
   const [projectForm] = Form.useForm()
-  const [customers, setCustomers] = useState<any[]>([])
+  const [organizations, setOrganizations] = useState<any[]>([])
 
   // 项目备注状态 (removed - notes/versions UI removed)
 
@@ -98,6 +125,14 @@ function ProjectDetail() {
     } catch (e) { console.error('获取信息记录失败:', e) }
   }
 
+  // 采购管理（提前定义以便在 useEffect 中调用）
+  const fetchProcurements = async () => {
+    try {
+      const res: any = await getProcurements({ projectId: parseInt(id!) })
+      setProcurements(res.data || [])
+    } catch (e) { console.error(e) }
+  }
+
   useEffect(() => {
     const fetchDetail = async () => {
       try {
@@ -113,11 +148,11 @@ function ProjectDetail() {
     fetchDetail()
   }, [id])
 
-  const fetchCustomers = async () => {
+  const fetchOrganizations = async () => {
     try {
-      const response: any = await getCustomers({ pageSize: 1000 })
-      setCustomers(response.data || [])
-    } catch (error) { console.error('获取客户列表失败:', error) }
+      const response: any = await getOrganizations({ pageSize: 1000 })
+      setOrganizations(response.data || [])
+    } catch (error) { console.error('获取组织列表失败:', error) }
   }
 
   const fetchFiles = async () => {
@@ -130,8 +165,9 @@ function ProjectDetail() {
   useEffect(() => {
     if (id) {
       fetchFiles()
-      fetchCustomers()
+      fetchOrganizations()
       fetchInfoRecords()
+      fetchProcurements()
     }
   }, [id])
 
@@ -174,11 +210,11 @@ function ProjectDetail() {
     } catch (error) { message.error('更新失败') }
   }
 
-  if (loading) return <div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'60vh'}}><Spin size="large" tip="加载中..." /></div>
+  if (loading) return <div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'60vh'}}><Spin size="large" tip="加载中..."><div style={{ padding: 48 }} /></Spin></div>
   if (error || !project) return <div style={{textAlign:'center',padding:80}}><Result status="error" title="加载失败" subTitle="请返回重试" extra={<Button type="primary" onClick={() => navigate('/projects')}>返回列表</Button>} /></div>
 
   const statusConfig: Record<string, { text: string; color: string }> = {
-    PENDING: { text: '待开始', color: 'default' }, IN_PROGRESS: { text: '进行中', color: 'processing' },
+    IN_PROGRESS: { text: '进行中', color: 'processing' },
     COMPLETED: { text: '已完成', color: 'success' }, CANCELLED: { text: '已取消', color: 'error' }
   }
   const projectStatus = statusConfig[project.status] || { text: project.status, color: 'default' }
@@ -204,7 +240,7 @@ function ProjectDetail() {
     try {
       const values = await contractForm.validateFields()
       const [cStartDate, cEndDate] = values.dateRange || []
-      const data = { ...values, name: values.name || `${project.name} - 合同`, customerId: project.customerId, projectId: parseInt(id!), signDate: values.signDate ? values.signDate.toDate() : null, startDate: cStartDate ? cStartDate.toDate() : null, endDate: cEndDate ? cEndDate.toDate() : null }
+      const data = { ...values, name: values.name || `${project.name} - 合同`, organizationId: project.organizationId, projectId: parseInt(id!), signDate: values.signDate ? values.signDate.toDate() : null, startDate: cStartDate ? cStartDate.toDate() : null, endDate: cEndDate ? cEndDate.toDate() : null }
       if (editingContract) { await updateContract(editingContract.id, data); message.success('更新成功') }
       else { await createContract(data); message.success('创建成功') }
       setContractModalVisible(false); refreshProject()
@@ -247,6 +283,15 @@ function ProjectDetail() {
       setPaymentModalVisible(false); if (paymentContractId) fetchPayments(paymentContractId)
     } catch (error) { message.error('操作失败') }
   }
+  const handlePaymentFileUpload = async (paymentId: number, fileList: FileList) => {
+    setPaymentUploading(prev => ({ ...prev, [paymentId]: true }))
+    try { await uploadPaymentFiles(paymentId, fileList); message.success('上传成功'); if (paymentContractId) fetchPayments(paymentContractId) }
+    catch (e: any) { message.error(e?.error || e?.message || '上传失败') } finally { setPaymentUploading(prev => ({ ...prev, [paymentId]: false })) }
+  }
+  const handlePaymentFileDelete = async (paymentId: number, fileId: number) => {
+    try { await deletePaymentFile(paymentId, fileId); message.success('删除成功'); if (paymentContractId) fetchPayments(paymentContractId) }
+    catch (e) { message.error('删除失败') }
+  }
 
   // ===== 发货记录 =====
   const fetchShipments = async (contractId: number) => {
@@ -261,6 +306,76 @@ function ProjectDetail() {
       setShipmentModalVisible(false); if (shipmentContractId) fetchShipments(shipmentContractId)
     } catch (error) { message.error('操作失败') }
   }
+  const handleShipmentFileUpload = async (shipmentId: number, fileList: FileList) => {
+    setShipmentUploading(prev => ({ ...prev, [shipmentId]: true }))
+    try { await uploadShipmentFiles(shipmentId, fileList); message.success('上传成功'); if (shipmentContractId) fetchShipments(shipmentContractId) }
+    catch (e: any) { message.error(e?.error || e?.message || '上传失败') } finally { setShipmentUploading(prev => ({ ...prev, [shipmentId]: false })) }
+  }
+  const handleShipmentFileDelete = async (shipmentId: number, fileId: number) => {
+    try { await deleteShipmentFile(shipmentId, fileId); message.success('删除成功'); if (shipmentContractId) fetchShipments(shipmentContractId) }
+    catch (e) { message.error('删除失败') }
+  }
+
+  // ===== 开票记录 =====
+  const fetchInvoices = async (contractId: number) => {
+    try { const data: any = await getInvoices({ contractId }); setInvoices(data?.data || data || []) } catch (e) { console.error(e) }
+  }
+  const handleAddInvoice = () => {
+    setEditingInvoice(null)
+    invoiceForm.resetFields()
+    invoiceForm.setFieldsValue({ invoiceType: 'INCOME', category: 'VAT_SPECIAL', taxRate: 13, status: 'PENDING' })
+    setInvoiceModalVisible(true)
+  }
+  const handleEditInvoice = (record: any) => {
+    setEditingInvoice(record)
+    invoiceForm.setFieldsValue({
+      ...record,
+      invoiceDate: record.invoiceDate ? dayjs(record.invoiceDate) : null,
+      amount: Number(record.amount),
+      taxRate: Number(record.taxRate),
+    })
+    setInvoiceModalVisible(true)
+  }
+  const handleInvoiceSubmit = async () => {
+    try {
+      const values = await invoiceForm.validateFields()
+      const data = {
+        ...values,
+        contractId: invoiceContractId,
+        invoiceDate: values.invoiceDate ? values.invoiceDate.toDate() : null,
+      }
+      if (editingInvoice) { await updateInvoice(editingInvoice.id, data); message.success('更新成功') }
+      else { await createInvoice(data); message.success('添加成功') }
+      setInvoiceModalVisible(false); if (invoiceContractId) fetchInvoices(invoiceContractId)
+    } catch (error) { console.error(error); message.error('操作失败') }
+  }
+  const handleDeleteInvoice = async (id: number) => {
+    try { await deleteInvoice(id); message.success('删除成功'); if (invoiceContractId) fetchInvoices(invoiceContractId) }
+    catch (e) { message.error('删除失败') }
+  }
+  const handleInvoiceFileUpload = async (invoiceId: number, fileList: FileList) => {
+    setInvoiceUploading(prev => ({ ...prev, [invoiceId]: true }))
+    try { await uploadInvoiceFiles(invoiceId, fileList); message.success('上传成功'); if (invoiceContractId) fetchInvoices(invoiceContractId) }
+    catch (e: any) { message.error(e?.response?.data?.error || e?.message || '上传失败') } finally { setInvoiceUploading(prev => ({ ...prev, [invoiceId]: false })) }
+  }
+  const handleInvoiceFileDelete = async (invoiceId: number, fileId: number) => {
+    try { await deleteInvoiceFile(invoiceId, fileId); message.success('删除成功'); if (invoiceContractId) fetchInvoices(invoiceContractId) }
+    catch (e) { message.error('删除失败') }
+  }
+
+  // ===== 合同附件 =====
+  const fetchContractFiles = async (contractId: number) => {
+    try { const data: any = await getContractFiles(contractId); setContractFiles(prev => ({ ...prev, [contractId]: Array.isArray(data) ? data : [] })) } catch (e) { console.error(e) }
+  }
+  const handleContractFileUpload = async (contractId: number, fileList: FileList) => {
+    setContractFileUploading(prev => ({ ...prev, [contractId]: true }))
+    try { await uploadContractFiles(contractId, fileList); message.success('上传成功'); fetchContractFiles(contractId) }
+    catch (e: any) { message.error(e?.error || e?.message || '上传失败') } finally { setContractFileUploading(prev => ({ ...prev, [contractId]: false })) }
+  }
+  const handleContractFileDelete = async (contractId: number, fileId: number) => {
+    try { await deleteContractFile(contractId, fileId); message.success('删除成功'); fetchContractFiles(contractId) }
+    catch (e) { message.error('删除失败') }
+  }
 
   // ===== 采购管理 =====
 
@@ -271,9 +386,18 @@ function ProjectDetail() {
   }
 
   // 打开文件预览
-  const handlePreviewFile = (fileId: number, fileName: string) => {
+  const handlePreviewFile = (fileId: number, fileName: string, fileType: string = 'project') => {
     const token = localStorage.getItem('token')
-    const url = `${import.meta.env.VITE_API_URL || '/api'}/projects/files/${fileId}/preview`
+    const baseUrl = import.meta.env.VITE_API_URL || '/api'
+    const previewUrls: Record<string, string> = {
+      project: `${baseUrl}/projects/files/${fileId}/preview`,
+      orderItem: `${baseUrl}/contract-order-items/files/${fileId}/preview`,
+      payment: `${baseUrl}/contract-payments/files/${fileId}/preview`,
+      shipment: `${baseUrl}/contract-shipments/files/${fileId}/preview`,
+      contract: `${baseUrl}/contracts/files/${fileId}/preview`,
+      invoice: `${baseUrl}/invoices/files/${fileId}/preview`,
+    }
+    const url = previewUrls[fileType] || previewUrls.project
     fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => {
         if (!r.ok) throw new Error('预览失败')
@@ -314,6 +438,18 @@ function ProjectDetail() {
     { title: '金额', dataIndex: 'amount', key: 'amount', render: (v: number) => <span style={{ color: '#1890ff', fontWeight: 'bold' }}>{Number(v)}元</span> },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => { const c = contractStatusConfig[s] || { text: s, color: 'default' }; return <Tag color={c.color}>{c.text}</Tag> } },
     { title: '签订日期', dataIndex: 'signDate', key: 'signDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
+    {
+      title: '附件',
+      key: 'files',
+      width: 80,
+      align: 'center' as const,
+      render: (_: any, r: any) => {
+        const count = r.files?.length || 0
+        return count > 0
+          ? <span style={{ color: '#1890ff', cursor: 'pointer' }} title={`${count}个附件`}><FileOutlined /> {count}</span>
+          : <span style={{ color: '#d9d9d9' }}>-</span>
+      }
+    },
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
         <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditContract(r)}>编辑</Button>
@@ -334,6 +470,18 @@ function ProjectDetail() {
     { title: '联系人', dataIndex: 'contactName', key: 'contactName', render: (v: string) => v || '-' },
     { title: '联系电话', dataIndex: 'contactPhone', key: 'contactPhone', render: (v: string) => v || '-' },
     { title: '交货日期', dataIndex: 'deliveryDate', key: 'deliveryDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
+    {
+      title: '附件',
+      key: 'files',
+      width: 80,
+      align: 'center' as const,
+      render: (_: any, r: any) => {
+        const count = r.files?.length || 0
+        return count > 0
+          ? <span style={{ color: '#1890ff', cursor: 'pointer' }} title={`${count}个附件`}><FileOutlined /> {count}</span>
+          : <span style={{ color: '#d9d9d9' }}>-</span>
+      }
+    },
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
         <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingOrderItem(r); orderForm.setFieldsValue({ ...r, unitPrice: Number(r.unitPrice), deliveryDate: r.deliveryDate ? dayjs(r.deliveryDate) : null }); setOrderModalVisible(true) }}>编辑</Button>
@@ -351,6 +499,18 @@ function ProjectDetail() {
     { title: '付款日期', dataIndex: 'paymentDate', key: 'paymentDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={s === 'RECEIVED' ? 'success' : s === 'CONFIRMED' ? 'processing' : 'default'}>{{ PENDING: '待付款', CONFIRMED: '已确认', RECEIVED: '已到账' }[s] || s}</Tag> },
     { title: '发票号', dataIndex: 'invoiceNo', key: 'invoiceNo', render: (v: string) => v || '-' },
+    {
+      title: '附件',
+      key: 'files',
+      width: 80,
+      align: 'center' as const,
+      render: (_: any, r: any) => {
+        const count = r.files?.length || 0
+        return count > 0
+          ? <span style={{ color: '#1890ff', cursor: 'pointer' }} title={`${count}个附件`}><FileOutlined /> {count}</span>
+          : <span style={{ color: '#d9d9d9' }}>-</span>
+      }
+    },
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
         <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingPayment(r); paymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setPaymentModalVisible(true) }}>编辑</Button>
@@ -370,6 +530,18 @@ function ProjectDetail() {
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={s === 'DELIVERED' ? 'success' : s === 'IN_TRANSIT' ? 'processing' : s === 'SHIPPED' ? 'blue' : 'default'}>{{ PENDING: '待发货', SHIPPED: '已发货', IN_TRANSIT: '运输中', DELIVERED: '已签收' }[s] || s}</Tag> },
     { title: '签收日期', dataIndex: 'receiveDate', key: 'receiveDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
     { title: '签收人', dataIndex: 'receiver', key: 'receiver', render: (v: string) => v || '-' },
+    {
+      title: '附件',
+      key: 'files',
+      width: 80,
+      align: 'center' as const,
+      render: (_: any, r: any) => {
+        const count = r.files?.length || 0
+        return count > 0
+          ? <span style={{ color: '#1890ff', cursor: 'pointer' }} title={`${count}个附件`}><FileOutlined /> {count}</span>
+          : <span style={{ color: '#d9d9d9' }}>-</span>
+      }
+    },
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
         <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingShipment(r); shipmentForm.setFieldsValue({ ...r, shipDate: dayjs(r.shipDate), receiveDate: r.receiveDate ? dayjs(r.receiveDate) : null }); setShipmentModalVisible(true) }}>编辑</Button>
@@ -380,13 +552,38 @@ function ProjectDetail() {
     ) }
   ]
 
-  // ===== 采购管理 =====
-  const fetchProcurements = async () => {
-    try {
-      const res: any = await getProcurements({ projectId: parseInt(id!) })
-      setProcurements(res.data || [])
-    } catch (e) { console.error(e) }
-  }
+  const invoiceColumns = [
+    { title: '发票号码', dataIndex: 'invoiceNo', key: 'invoiceNo' },
+    { title: '发票类型', dataIndex: 'invoiceType', key: 'invoiceType', render: (t: string) => <Tag color={t === 'INCOME' ? 'success' : 'warning'}>{{ INCOME: '出项', EXPENSE: '进项' }[t] || t}</Tag> },
+    { title: '发票类别', dataIndex: 'category', key: 'category', render: (c: string) => ({ VAT_SPECIAL: '增值税专用', VAT_NORMAL: '增值税普通', VAT_ELECTRONIC: '电子发票', RECEIPT: '收据', OTHER: '其他' }[c] || c) },
+    { title: '不含税金额', dataIndex: 'amount', key: 'amount', render: (v: number) => `${Number(v).toFixed(2)}元` },
+    { title: '税率', dataIndex: 'taxRate', key: 'taxRate', render: (v: number) => `${Number(v)}%` },
+    { title: '税额', dataIndex: 'taxAmount', key: 'taxAmount', render: (v: number) => `${Number(v).toFixed(2)}元` },
+    { title: '价税合计', dataIndex: 'totalAmount', key: 'totalAmount', render: (v: number) => <span style={{ color: '#f5222d', fontWeight: 600 }}>{Number(v).toFixed(2)}元</span> },
+    { title: '开票日期', dataIndex: 'invoiceDate', key: 'invoiceDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
+    { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={s === 'CONFIRMED' ? 'success' : s === 'ISSUED' ? 'processing' : s === 'CANCELLED' ? 'error' : 'default'}>{{ PENDING: '待开', ISSUED: '已开', CONFIRMED: '已确认', CANCELLED: '已作废' }[s] || s}</Tag> },
+    { title: '对方单位', dataIndex: 'partyName', key: 'partyName', render: (v: string) => v || '-' },
+    {
+      title: '附件',
+      key: 'files',
+      width: 80,
+      align: 'center' as const,
+      render: (_: any, r: any) => {
+        const count = r.files?.length || 0
+        return count > 0
+          ? <span style={{ color: '#1890ff', cursor: 'pointer' }} title={`${count}个附件`}><FileOutlined /> {count}</span>
+          : <span style={{ color: '#d9d9d9' }}>-</span>
+      }
+    },
+    { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
+      <Space size={0}>
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditInvoice(r)}>编辑</Button>
+        <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteInvoice(r.id)}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+        </Popconfirm>
+      </Space>
+    ) }
+  ]
 
   // ===== 基本信息-信息记录 =====
   const handleInfoSubmit = async () => {
@@ -438,8 +635,8 @@ function ProjectDetail() {
   }
   const fetchAllUsers = async () => {
     try {
-      const res: any = await getUsers({ pageSize: 1000 })
-      setAllUsers(res.data || res || [])
+      const res: any = await getUserDropdown()
+      setAllUsers(Array.isArray(res) ? res : (res.data || []))
     } catch {}
   }
   const handleAddTeamMember = () => {
@@ -486,13 +683,31 @@ function ProjectDetail() {
     })
   }
 
-  const handleAddProcurement = () => { procurementForm.resetFields(); setProcurementModalVisible(true) }
+  const handleAddProcurement = () => {
+    setEditingProcurement(null)
+    procurementForm.resetFields()
+    setProcurementModalVisible(true)
+  }
+  const handleEditProcurement = async (proc: any) => {
+    setEditingProcurement(proc)
+    procurementForm.setFieldsValue({
+      ...proc,
+      expectedDate: proc.expectedDate ? dayjs(proc.expectedDate) : null
+    })
+    setProcurementModalVisible(true)
+  }
   const handleProcurementSubmit = async () => {
     try {
       const values = await procurementForm.validateFields()
-      await createProcurement({ ...values, projectId: parseInt(id!), expectedDate: values.expectedDate ? values.expectedDate.toDate() : null })
-      message.success('采购单创建成功')
+      if (editingProcurement) {
+        await updateProcurement(editingProcurement.id, { ...values, expectedDate: values.expectedDate ? values.expectedDate.toDate() : null })
+        message.success('采购单更新成功')
+      } else {
+        await createProcurement({ ...values, projectId: parseInt(id!), expectedDate: values.expectedDate ? values.expectedDate.toDate() : null })
+        message.success('采购单创建成功')
+      }
       setProcurementModalVisible(false)
+      setEditingProcurement(null)
       fetchProcurements()
     } catch (e) { message.error('操作失败') }
   }
@@ -500,7 +715,32 @@ function ProjectDetail() {
     setCurrentProcurement(proc)
     const items: any = await getProcurementItems(proc.id)
     setProcurementItems(items || [])
-    fetchProcPayments(proc.id)
+    // 提取每个采购明细的附件数量
+    const itemFilesMap: Record<number, any[]> = {}
+    if (Array.isArray(items)) {
+      items.forEach((item: any) => {
+        if (item.files && Array.isArray(item.files)) {
+          itemFilesMap[item.id] = item.files
+        }
+      })
+    }
+    setProcItemFiles(prev => ({ ...prev, ...itemFilesMap }))
+    // 获取付款记录
+    const paymentsRes: any = await getProcurementPayments(proc.id)
+    const payments = paymentsRes?.data?.data || paymentsRes?.data || []
+    setProcPayments(payments)
+    // 提取每个付款记录的附件数量
+    const paymentFilesMap: Record<number, any[]> = {}
+    if (Array.isArray(payments)) {
+      payments.forEach((payment: any) => {
+        if (payment.files && Array.isArray(payment.files)) {
+          paymentFilesMap[payment.id] = payment.files
+        }
+      })
+    }
+    setProcPaymentFiles(prev => ({ ...prev, ...paymentFilesMap }))
+    // 获取采购单附件
+    fetchProcFiles(proc.id)
   }
   const handleProcItemSubmit = async () => {
     try {
@@ -533,6 +773,66 @@ function ProjectDetail() {
     } catch (e) { message.error('操作失败') }
   }
 
+  // 采购附件（和合同附件同模式）
+  const fetchProcFiles = async (procurementId: number) => {
+    try { const data: any = await getProcurementFiles(procurementId); setProcFiles(prev => ({ ...prev, [procurementId]: Array.isArray(data) ? data : [] })) } catch (e) { console.error(e) }
+  }
+  const handleProcFileUpload = async (procurementId: number, fileList: FileList) => {
+    setProcFileUploading(prev => ({ ...prev, [procurementId]: true }))
+    try {
+      const formData = new FormData()
+      Array.from(fileList).forEach(f => formData.append('files', f))
+      await uploadProcurementFiles(procurementId, formData)
+      message.success('上传成功')
+      fetchProcFiles(procurementId)
+    } catch (e: any) { message.error(e?.error || e?.message || '上传失败') }
+    finally { setProcFileUploading(prev => ({ ...prev, [procurementId]: false })) }
+  }
+  const handleProcFileDelete = async (procurementId: number, fileId: number) => {
+    try { await deleteProcurementFile(fileId); message.success('删除成功'); fetchProcFiles(procurementId) }
+    catch (e) { message.error('删除失败') }
+  }
+
+  // 采购明细附件
+  const fetchProcItemFiles = async (itemId: number) => {
+    try { const data: any = await getProcurementItemFiles(itemId); setProcItemFiles(prev => ({ ...prev, [itemId]: Array.isArray(data) ? data : [] })) } catch (e) { console.error(e) }
+  }
+  const handleProcItemFileUpload = async (itemId: number, fileList: FileList) => {
+    setProcItemFileUploading(prev => ({ ...prev, [itemId]: true }))
+    try {
+      const formData = new FormData()
+      Array.from(fileList).forEach(f => formData.append('files', f))
+      await uploadProcurementItemFiles(itemId, formData)
+      message.success('上传成功')
+      fetchProcItemFiles(itemId)
+    } catch (e: any) { message.error(e?.error || e?.message || '上传失败') }
+    finally { setProcItemFileUploading(prev => ({ ...prev, [itemId]: false })) }
+  }
+  const handleProcItemFileDelete = async (itemId: number, fileId: number) => {
+    try { await deleteProcurementItemFile(fileId); message.success('删除成功'); fetchProcItemFiles(itemId) }
+    catch (e) { message.error('删除失败') }
+  }
+
+  // 采购付款记录附件
+  const fetchProcPaymentFiles = async (paymentId: number) => {
+    try { const data: any = await getProcurementPaymentFiles(paymentId); setProcPaymentFiles(prev => ({ ...prev, [paymentId]: Array.isArray(data) ? data : [] })) } catch (e) { console.error(e) }
+  }
+  const handleProcPaymentFileUpload = async (paymentId: number, fileList: FileList) => {
+    setProcPaymentFileUploading(prev => ({ ...prev, [paymentId]: true }))
+    try {
+      const formData = new FormData()
+      Array.from(fileList).forEach(f => formData.append('files', f))
+      await uploadProcurementPaymentFiles(paymentId, formData)
+      message.success('上传成功')
+      fetchProcPaymentFiles(paymentId)
+    } catch (e: any) { message.error(e?.error || e?.message || '上传失败') }
+    finally { setProcPaymentFileUploading(prev => ({ ...prev, [paymentId]: false })) }
+  }
+  const handleProcPaymentFileDelete = async (paymentId: number, fileId: number) => {
+    try { await deleteProcurementPaymentFile(fileId); message.success('删除成功'); fetchProcPaymentFiles(paymentId) }
+    catch (e) { message.error('删除失败') }
+  }
+
   // ===== Tab 项 =====
   const tabItems = [
     { key: 'info', label: '基本信息', children: (
@@ -540,7 +840,7 @@ function ProjectDetail() {
         <Card title="项目详情">
           <Descriptions column={2} bordered>
             <Descriptions.Item label="项目名称">{project.name}</Descriptions.Item>
-            <Descriptions.Item label="客户">{project.customer?.name || '-'}</Descriptions.Item>
+            <Descriptions.Item label="客户">{project.organization?.name || '-'}</Descriptions.Item>
             <Descriptions.Item label="状态"><Tag color={projectStatus.color}>{projectStatus.text}</Tag></Descriptions.Item>
             <Descriptions.Item label="预算">{project.budget ? `${Number(project.budget)}元` : '-'}</Descriptions.Item>
             <Descriptions.Item label="开始日期">{project.startDate ? dayjs(project.startDate).format('YYYY-MM-DD') : '-'}</Descriptions.Item>
@@ -552,7 +852,7 @@ function ProjectDetail() {
         </Card>
 
         <Card title="信息记录" style={{ marginTop: 16 }} extra={
-          <Button type="primary" icon={<PlusOutlined />} size="small" onClick={() => { infoForm.resetFields(); setEditingInfoRecord(null); setInfoModalVisible(true) }}>添加信息</Button>
+          <Button type="primary" icon={<PlusOutlined />} size="small" onClick={() => { infoForm.resetFields(); setEditingInfoRecord(null); setInfoModalVisible(true) }}>Notes信息</Button>
         }>
           {infoRecords.length === 0 ? (
             <Empty description="暂无信息记录" />
@@ -627,11 +927,38 @@ function ProjectDetail() {
           pagination={false}
           locale={{ emptyText: '暂无合同' }}
           expandable={{
-            expandedRowRender: (_record: any) => (
-              <Tabs
-                defaultActiveKey="orders"
-                items={[
-                  { key: 'orders', label: '订货明细', children: (
+            expandedRowRender: (record: any) => {
+              const contractFileInputRef = { current: null as HTMLInputElement | null }
+              return (
+                <div>
+                  {/* 合同级别附件 */}
+                  <div style={{ padding: '12px 16px', marginBottom: 16, background: '#fafafa', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>📎 合同附件</span>
+                      <input type="file" multiple ref={el => { contractFileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleContractFileUpload(record.id, e.target.files); e.target.value = '' } }} />
+                      <Button icon={<UploadOutlined />} loading={contractFileUploading[record.id]} size="small" onClick={() => contractFileInputRef.current?.click()}>上传附件</Button>
+                    </div>
+                    {contractFiles[record.id] && contractFiles[record.id].length > 0 ? (
+                      <List size="small" dataSource={contractFiles[record.id]} renderItem={(file: any) => (
+                        <List.Item actions={[
+                          isPreviewableFile(file.fileName) && (
+                            <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreviewFile(file.id, file.fileName, 'contract')} />
+                          ),
+                          <a key="dl" href={downloadContractFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                          <Popconfirm key="del" title="确定删除？" onConfirm={() => handleContractFileDelete(record.id, file.id)}>
+                            <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                          </Popconfirm>
+                        ].filter(Boolean)}>
+                          <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
+                        </List.Item>
+                      )} />
+                    ) : <span style={{ color: '#999', fontSize: 13 }}>暂无合同附件</span>}
+                  </div>
+                  {/* 子Tab */}
+                  <Tabs
+                    defaultActiveKey="orders"
+                    items={[
+                  { key: 'orders', label: '订货明细(售出)', children: (
                     <div>
                       <div style={{ marginBottom: 12 }}>
                         <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingOrderItem(null); orderForm.resetFields(); setOrderModalVisible(true) }}>添加明细</Button>
@@ -675,7 +1002,37 @@ function ProjectDetail() {
                         <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentForm.resetFields(); paymentForm.setFieldsValue({ paymentType: 'PROGRESS', status: 'PENDING' }); setPaymentModalVisible(true) }}>添加付款</Button>
                         {paymentSummary.totalPaid > 0 && <span style={{ marginLeft: 16 }}><Statistic title="已付款总额" value={paymentSummary.totalPaid} precision={2} suffix="元" valueStyle={{ color: '#52c41a' }} /></span>}
                       </div>
-                      <Table columns={paymentColumns} dataSource={payments} rowKey="id" pagination={false} size="small" locale={{ emptyText: '暂无付款记录' }} />
+                      <Table columns={paymentColumns} dataSource={payments} rowKey="id" pagination={false} size="small" locale={{ emptyText: '暂无付款记录' }}
+                        expandable={{
+                          expandedRowRender: (payment: any) => {
+                            const fileInputRef = { current: null as HTMLInputElement | null }
+                            return (
+                              <div style={{ padding: '8px 0' }}>
+                                <div style={{ marginBottom: 12 }}>
+                                  <input type="file" multiple ref={el => { fileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handlePaymentFileUpload(payment.id, e.target.files); e.target.value = '' } }} />
+                                  <Button icon={<UploadOutlined />} loading={paymentUploading[payment.id]} size="small" onClick={() => fileInputRef.current?.click()}>上传附件</Button>
+                                </div>
+                                {payment.files && payment.files.length > 0 ? (
+                                  <List size="small" dataSource={payment.files} renderItem={(file: any) => (
+                                    <List.Item actions={[
+                                      isPreviewableFile(file.fileName) && (
+                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreviewFile(file.id, file.fileName, 'payment')} />
+                                      ),
+                                      <a key="dl" href={downloadPaymentFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                      <Popconfirm key="del" title="确定删除？" onConfirm={() => handlePaymentFileDelete(payment.id, file.id)}>
+                                        <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                                      </Popconfirm>
+                                    ].filter(Boolean)}>
+                                      <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
+                                    </List.Item>
+                                  )} />
+                                ) : <span style={{ color: '#999' }}>暂无附件</span>}
+                              </div>
+                            )
+                          },
+                          rowExpandable: () => true
+                        }}
+                      />
                     </div>
                   )},
                   { key: 'shipments', label: '发货记录', children: (
@@ -683,20 +1040,103 @@ function ProjectDetail() {
                       <div style={{ marginBottom: 12 }}>
                         <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingShipment(null); shipmentForm.resetFields(); shipmentForm.setFieldsValue({ status: 'SHIPPED' }); setShipmentModalVisible(true) }}>添加发货</Button>
                       </div>
-                      <Table columns={shipmentColumns} dataSource={shipments} rowKey="id" pagination={false} size="small" locale={{ emptyText: '暂无发货记录' }} />
+                      <Table columns={shipmentColumns} dataSource={shipments} rowKey="id" pagination={false} size="small" locale={{ emptyText: '暂无发货记录' }}
+                        expandable={{
+                          expandedRowRender: (shipment: any) => {
+                            const fileInputRef = { current: null as HTMLInputElement | null }
+                            return (
+                              <div style={{ padding: '8px 0' }}>
+                                <div style={{ marginBottom: 12 }}>
+                                  <input type="file" multiple ref={el => { fileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleShipmentFileUpload(shipment.id, e.target.files); e.target.value = '' } }} />
+                                  <Button icon={<UploadOutlined />} loading={shipmentUploading[shipment.id]} size="small" onClick={() => fileInputRef.current?.click()}>上传附件</Button>
+                                </div>
+                                {shipment.files && shipment.files.length > 0 ? (
+                                  <List size="small" dataSource={shipment.files} renderItem={(file: any) => (
+                                    <List.Item actions={[
+                                      isPreviewableFile(file.fileName) && (
+                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreviewFile(file.id, file.fileName, 'shipment')} />
+                                      ),
+                                      <a key="dl" href={downloadShipmentFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                      <Popconfirm key="del" title="确定删除？" onConfirm={() => handleShipmentFileDelete(shipment.id, file.id)}>
+                                        <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                                      </Popconfirm>
+                                    ].filter(Boolean)}>
+                                      <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
+                                    </List.Item>
+                                  )} />
+                                ) : <span style={{ color: '#999' }}>暂无附件</span>}
+                              </div>
+                            )
+                          },
+                          rowExpandable: () => true
+                        }}
+                      />
+                    </div>
+                  )},
+                  { key: 'invoices', label: '开票记录', children: (
+                    <div>
+                      <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Button type="primary" icon={<PlusOutlined />} onClick={handleAddInvoice}>添加开票</Button>
+                        {invoices.length > 0 && (
+                          <div style={{ display: 'flex', gap: 16 }}>
+                            <span style={{ padding: '4px 12px', background: '#f6ffed', borderRadius: 6, fontSize: 13 }}>
+                              合计税额：<strong style={{ color: '#f5222d' }}>{invoices.reduce((s, i) => s + Number(i.taxAmount), 0).toFixed(2)}元</strong>
+                            </span>
+                            <span style={{ padding: '4px 12px', background: '#fff7e6', borderRadius: 6, fontSize: 13 }}>
+                              价税合计：<strong style={{ color: '#f5222d' }}>{invoices.reduce((s, i) => s + Number(i.totalAmount), 0).toFixed(2)}元</strong>
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <Table columns={invoiceColumns} dataSource={invoices} rowKey="id" pagination={false} size="small" locale={{ emptyText: '暂无开票记录' }}
+                        expandable={{
+                          expandedRowRender: (invoice: any) => {
+                            const fileInputRef = { current: null as HTMLInputElement | null }
+                            return (
+                              <div style={{ padding: '8px 0' }}>
+                                <div style={{ marginBottom: 12 }}>
+                                  <input type="file" multiple ref={el => { fileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleInvoiceFileUpload(invoice.id, e.target.files); e.target.value = '' } }} />
+                                  <Button icon={<UploadOutlined />} loading={invoiceUploading[invoice.id]} size="small" onClick={() => fileInputRef.current?.click()}>上传附件</Button>
+                                </div>
+                                {invoice.files && invoice.files.length > 0 ? (
+                                  <List size="small" dataSource={invoice.files} renderItem={(file: any) => (
+                                    <List.Item actions={[
+                                      isPreviewableFile(file.fileName) && (
+                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreviewFile(file.id, file.fileName, 'invoice')} />
+                                      ),
+                                      <a key="dl" href={downloadInvoiceFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                      <Popconfirm key="del" title="确定删除？" onConfirm={() => handleInvoiceFileDelete(invoice.id, file.id)}>
+                                        <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                                      </Popconfirm>
+                                    ].filter(Boolean)}>
+                                      <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
+                                    </List.Item>
+                                  )} />
+                                ) : <span style={{ color: '#999' }}>暂无附件</span>}
+                              </div>
+                            )
+                          },
+                          rowExpandable: () => true
+                        }}
+                      />
                     </div>
                   )}
                 ]}
               />
-            ),
+                </div>
+              )
+            },
             onExpand: (expanded: boolean, record: any) => {
               if (expanded) {
                 setOrderContractId(record.id)
                 setPaymentContractId(record.id)
                 setShipmentContractId(record.id)
+                setInvoiceContractId(record.id)
                 fetchOrderItems(record.id)
                 fetchPayments(record.id)
                 fetchShipments(record.id)
+                fetchInvoices(record.id)
+                fetchContractFiles(record.id)
               }
             }
           }}
@@ -714,8 +1154,32 @@ function ProjectDetail() {
           pagination={false}
           locale={{ emptyText: '暂无采购单' }}
           expandable={{
-            expandedRowRender: (record: any) => (
-              <Tabs size="small" defaultActiveKey="items" items={[
+            expandedRowRender: (record: any) => {
+              const procFileInputRef = { current: null as HTMLInputElement | null }
+              return (
+                <div>
+                  {/* 采购附件 */}
+                  <div style={{ padding: '12px 16px', marginBottom: 16, background: '#fafafa', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>📎 采购附件</span>
+                      <input type="file" multiple ref={el => { procFileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleProcFileUpload(record.id, e.target.files); e.target.value = '' } }} />
+                      <Button icon={<UploadOutlined />} loading={procFileUploading[record.id]} size="small" onClick={() => procFileInputRef.current?.click()}>上传附件</Button>
+                    </div>
+                    {procFiles[record.id] && procFiles[record.id].length > 0 ? (
+                      <List size="small" dataSource={procFiles[record.id]} renderItem={(file: any) => (
+                        <List.Item actions={[
+                          <a key="dl" href={`/api/procurements/files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                          <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcFileDelete(record.id, file.id)}>
+                            <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                          </Popconfirm>
+                        ]}>
+                          <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
+                        </List.Item>
+                      )} />
+                    ) : <span style={{ color: '#999', fontSize: 13 }}>暂无采购附件</span>}
+                  </div>
+                  {/* 子Tab */}
+                  <Tabs size="small" defaultActiveKey="items" items={[
                 { key: 'items', label: '采购明细', children: (
                   <div>
                     <div style={{ marginBottom: 12 }}>
@@ -727,6 +1191,35 @@ function ProjectDetail() {
                       rowKey="id"
                       pagination={false}
                       locale={{ emptyText: '暂无采购明细' }}
+                      expandable={{
+                        expandedRowRender: (item: any) => {
+                          const itemFileInputRef = { current: null as HTMLInputElement | null }
+                          return (
+                            <div style={{ padding: '8px 16px', background: '#fafafa', borderRadius: 8 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <span style={{ fontWeight: 600, fontSize: 13 }}>📎 明细附件</span>
+                                <input type="file" multiple ref={el => { itemFileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleProcItemFileUpload(item.id, e.target.files); e.target.value = '' } }} />
+                                <Button icon={<UploadOutlined />} loading={procItemFileUploading[item.id]} size="small" onClick={() => itemFileInputRef.current?.click()}>上传附件</Button>
+                              </div>
+                              {procItemFiles[item.id] && procItemFiles[item.id].length > 0 ? (
+                                <List size="small" dataSource={procItemFiles[item.id]} renderItem={(file: any) => (
+                                  <List.Item actions={[
+                                    <a key="dl" href={`/api/procurements/item-files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                    <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcItemFileDelete(item.id, file.id)}>
+                                      <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                                    </Popconfirm>
+                                  ]}>
+                                    <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
+                                  </List.Item>
+                                )} />
+                              ) : <span style={{ color: '#999', fontSize: 13 }}>暂无附件</span>}
+                            </div>
+                          )
+                        },
+                        onExpand: (expanded: boolean, item: any) => {
+                          if (expanded) fetchProcItemFiles(item.id)
+                        }
+                      }}
                       columns={[
                         { title: '名称', dataIndex: 'name', key: 'name' },
                         { title: '规格', dataIndex: 'spec', key: 'spec', render: (v: string) => v || '-' },
@@ -734,6 +1227,18 @@ function ProjectDetail() {
                         { title: '单位', dataIndex: 'unit', key: 'unit' },
                         { title: '单价', dataIndex: 'unitPrice', key: 'unitPrice', render: (v: number) => `${Number(v)}元` },
                         { title: '总价', dataIndex: 'totalPrice', key: 'totalPrice', render: (v: number) => <span style={{ color: '#1890ff' }}>{Number(v)}元</span> },
+                        {
+                          title: '附件',
+                          key: 'files',
+                          width: 80,
+                          align: 'center' as const,
+                          render: (_: any, r: any) => {
+                            const count = procItemFiles[r.id]?.length || 0
+                            return count > 0
+                              ? <span style={{ color: '#1890ff', cursor: 'pointer' }} title={`${count}个附件`}><FileOutlined /> {count}</span>
+                              : <span style={{ color: '#d9d9d9' }}>-</span>
+                          }
+                        },
                         { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
                           <Space size={0}>
                             <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteProcurementItem(r.id); handleViewProcurement(record) }}>
@@ -766,12 +1271,53 @@ function ProjectDetail() {
                       rowKey="id"
                       pagination={false}
                       locale={{ emptyText: '暂无付款记录' }}
+                      expandable={{
+                        expandedRowRender: (payment: any) => {
+                          const paymentFileInputRef = { current: null as HTMLInputElement | null }
+                          return (
+                            <div style={{ padding: '8px 16px', background: '#fafafa', borderRadius: 8 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <span style={{ fontWeight: 600, fontSize: 13 }}>📎 付款附件</span>
+                                <input type="file" multiple ref={el => { paymentFileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleProcPaymentFileUpload(payment.id, e.target.files); e.target.value = '' } }} />
+                                <Button icon={<UploadOutlined />} loading={procPaymentFileUploading[payment.id]} size="small" onClick={() => paymentFileInputRef.current?.click()}>上传附件</Button>
+                              </div>
+                              {procPaymentFiles[payment.id] && procPaymentFiles[payment.id].length > 0 ? (
+                                <List size="small" dataSource={procPaymentFiles[payment.id]} renderItem={(file: any) => (
+                                  <List.Item actions={[
+                                    <a key="dl" href={`/api/procurements/payment-files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                    <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcPaymentFileDelete(payment.id, file.id)}>
+                                      <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                                    </Popconfirm>
+                                  ]}>
+                                    <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
+                                  </List.Item>
+                                )} />
+                              ) : <span style={{ color: '#999', fontSize: 13 }}>暂无附件</span>}
+                            </div>
+                          )
+                        },
+                        onExpand: (expanded: boolean, payment: any) => {
+                          if (expanded) fetchProcPaymentFiles(payment.id)
+                        }
+                      }}
                       columns={[
                         { title: '金额', dataIndex: 'amount', render: (v: number) => <span style={{ color: '#f5222d', fontWeight: 'bold' }}>{Number(v)}元</span> },
                         { title: '类型', dataIndex: 'paymentType', render: (t: string) => ({ ADVANCE: '预付款', PROGRESS: '进度款', FINAL: '尾款', FULL: '全款' }[t] || t) },
                         { title: '方式', dataIndex: 'paymentMethod', render: (v: string) => v || '-' },
                         { title: '日期', dataIndex: 'paymentDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
                         { title: '状态', dataIndex: 'status', render: (s: string) => <Tag color={s === 'RECEIVED' ? 'success' : s === 'CONFIRMED' ? 'processing' : 'default'}>{{ PENDING: '待付款', CONFIRMED: '已确认', RECEIVED: '已到账' }[s] || s}</Tag> },
+                        {
+                          title: '附件',
+                          key: 'files',
+                          width: 80,
+                          align: 'center' as const,
+                          render: (_: any, r: any) => {
+                            const count = procPaymentFiles[r.id]?.length || 0
+                            return count > 0
+                              ? <span style={{ color: '#1890ff', cursor: 'pointer' }} title={`${count}个附件`}><FileOutlined /> {count}</span>
+                              : <span style={{ color: '#d9d9d9' }}>-</span>
+                          }
+                        },
                         { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
                           <Space size={0}>
                             <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setCurrentProcurement(record); setEditingProcPayment(r); procPaymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setProcPaymentModalVisible(true) }}>编辑</Button>
@@ -785,7 +1331,9 @@ function ProjectDetail() {
                   </div>
                 )}
               ]} />
-            ),
+                </div>
+              )
+            },
             onExpand: (expanded: boolean, record: any) => {
               if (expanded) {
                 handleViewProcurement(record)
@@ -798,6 +1346,26 @@ function ProjectDetail() {
             { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount', render: (v: any) => v ? `${Number(v)}元` : '-' },
             { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={s === 'RECEIVED' ? 'success' : s === 'IN_TRANSIT' ? 'processing' : s === 'ORDERED' ? 'blue' : 'default'}>{{ PLANNED: '计划中', ORDERED: '已下单', IN_TRANSIT: '运输中', RECEIVED: '已到货', CANCELLED: '已取消' }[s] || s}</Tag> },
             { title: '预计到货', dataIndex: 'expectedDate', key: 'expectedDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
+            {
+              title: '附件',
+              key: 'files',
+              width: 80,
+              align: 'center' as const,
+              render: (_: any, r: any) => {
+                const count = procFiles[r.id]?.length || 0
+                return count > 0
+                  ? <span style={{ color: '#1890ff', cursor: 'pointer' }} title={`${count}个附件`}><FileOutlined /> {count}</span>
+                  : <span style={{ color: '#d9d9d9' }}>-</span>
+              }
+            },
+            { title: '操作', key: 'action', width: 160, render: (_: any, record: any) => (
+              <Space size={0}>
+                <Button type="link" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEditProcurement(record) }}>编辑</Button>
+                <Popconfirm title="确定删除此采购单？" onConfirm={async (e) => { e?.stopPropagation(); await deleteProcurement(record.id); fetchProcurements() }}>
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()}>删除</Button>
+                </Popconfirm>
+              </Space>
+            )},
           ]}
         />
       </div>
@@ -850,7 +1418,7 @@ function ProjectDetail() {
               <span style={{ color: '#6b7280', fontSize: 13 }}>合同总额: <strong style={{ color: '#2563eb' }}>{totalContractAmount}元</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>进度: <strong style={{ color: '#7c3aed' }}>{project.progress || 0}%</strong></span>
             </div>
-            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{project.customer?.name || '暂无客户'} · 合同 {contractCount} 份</div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{project.organization?.name || '暂无客户'} · 合同 {contractCount} 份</div>
           </Col>
           <Col flex="none">
             <Space>
@@ -866,10 +1434,10 @@ function ProjectDetail() {
       <Modal title="编辑项目" open={projectModalVisible} onOk={handleProjectSubmit} onCancel={() => setProjectModalVisible(false)} width={600}>
         <Form form={projectForm} layout="vertical">
           <Form.Item name="name" label="项目名称" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="customerId" label="客户" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="children">{customers.map(c => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}</Select>
+          <Form.Item name="organizationId" label="客户" rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="children">{organizations.map(c => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}</Select>
           </Form.Item>
-          <Form.Item name="status" label="状态"><Select><Select.Option value="PENDING">待开始</Select.Option><Select.Option value="IN_PROGRESS">进行中</Select.Option><Select.Option value="COMPLETED">已完成</Select.Option><Select.Option value="CANCELLED">已取消</Select.Option></Select></Form.Item>
+          <Form.Item name="status" label="状态"><Select><Select.Option value="IN_PROGRESS">进行中</Select.Option><Select.Option value="COMPLETED">已完成</Select.Option><Select.Option value="CANCELLED">已取消</Select.Option></Select></Form.Item>
           <Form.Item name="budget" label="预算"><InputNumber style={{ width: '100%' }} precision={2} /></Form.Item>
           <Form.Item name="dateRange" label="项目周期"><RangePicker style={{ width: '100%' }} /></Form.Item>
           <Form.Item name="acceptanceDate" label="调试验收时间"><DatePicker style={{ width: '100%' }} /></Form.Item>
@@ -922,8 +1490,56 @@ function ProjectDetail() {
         </Form>
       </Modal>
 
+      {/* 开票记录 Modal */}
+      <Modal title={editingInvoice ? '编辑开票记录' : '添加开票记录'} open={invoiceModalVisible} onOk={handleInvoiceSubmit} onCancel={() => setInvoiceModalVisible(false)} width={640}>
+        <Form form={invoiceForm} layout="vertical">
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="invoiceNo" label="发票号码" rules={[{ required: true, message: '请输入发票号码' }]}><Input placeholder="如：01234567" /></Form.Item></Col>
+            <Col span={12}><Form.Item name="invoiceType" label="发票类型" rules={[{ required: true }]}><Select><Select.Option value="INCOME">出项（开给客户）</Select.Option><Select.Option value="EXPENSE">进项（供应商开给我们）</Select.Option></Select></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="category" label="发票类别"><Select><Select.Option value="VAT_SPECIAL">增值税专用发票</Select.Option><Select.Option value="VAT_NORMAL">增值税普通发票</Select.Option><Select.Option value="VAT_ELECTRONIC">电子发票</Select.Option><Select.Option value="RECEIPT">收据</Select.Option><Select.Option value="OTHER">其他</Select.Option></Select></Form.Item></Col>
+            <Col span={12}><Form.Item name="invoiceDate" label="开票日期"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}><Form.Item name="amount" label="不含税金额" rules={[{ required: true, message: '请输入金额' }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="0.00" addonAfter="元" /></Form.Item></Col>
+            <Col span={4}><Form.Item name="taxRate" label="税率"><InputNumber style={{ width: '100%' }} min={0} max={100} precision={2} addonAfter="%" /></Form.Item></Col>
+            <Col span={12}>
+              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.amount !== cur.amount || prev.taxRate !== cur.taxRate}>
+                {({ getFieldValue }) => {
+                  const amt = Number(getFieldValue('amount')) || 0
+                  const rate = Number(getFieldValue('taxRate')) || 0
+                  const tax = parseFloat((amt * rate / 100).toFixed(2))
+                  const total = parseFloat((amt + tax).toFixed(2))
+                  return (
+                    <div style={{ padding: '8px 12px', background: '#fafafa', borderRadius: 6, marginTop: 30 }}>
+                      <div style={{ fontSize: 12, color: '#666' }}>税额：<strong style={{ color: '#f5222d' }}>{tax.toFixed(2)}元</strong></div>
+                      <div style={{ fontSize: 12, color: '#666' }}>价税合计：<strong style={{ color: '#f5222d' }}>{total.toFixed(2)}元</strong></div>
+                    </div>
+                  )
+                }}
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="partyName" label="对方单位名称"><Input placeholder="客户/供应商名称" /></Form.Item></Col>
+            <Col span={12}><Form.Item name="partyTaxNo" label="对方税号"><Input placeholder="纳税人识别号" /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="status" label="状态"><Select><Select.Option value="PENDING">待开</Select.Option><Select.Option value="ISSUED">已开</Select.Option><Select.Option value="CONFIRMED">已确认</Select.Option><Select.Option value="CANCELLED">已作废</Select.Option></Select></Form.Item></Col>
+          </Row>
+          <Form.Item name="remarks" label="备注"><TextArea rows={2} /></Form.Item>
+        </Form>
+      </Modal>
+
       {/* 采购单 Modal */}
-      <Modal title="新增采购单" open={procurementModalVisible} onOk={handleProcurementSubmit} onCancel={() => setProcurementModalVisible(false)} width={600}>
+      <Modal
+        title={editingProcurement ? '编辑采购单' : '新增采购单'}
+        open={procurementModalVisible}
+        onOk={handleProcurementSubmit}
+        onCancel={() => { setProcurementModalVisible(false); setEditingProcurement(null) }}
+        width={600}
+      >
         <Form form={procurementForm} layout="vertical">
           <Form.Item name="title" label="采购标题" rules={[{ required: true }]}><Input /></Form.Item>
           <Row gutter={16}>
@@ -978,7 +1594,7 @@ function ProjectDetail() {
       </Modal>
 
       {/* 基本信息-添加/编辑信息 Modal */}
-      <Modal title={editingInfoRecord ? "编辑信息" : "添加信息"} open={infoModalVisible} onOk={handleInfoSubmit} onCancel={() => { setInfoModalVisible(false); setInfoFiles([]); setEditingInfoRecord(null); infoForm.resetFields() }} width={500} confirmLoading={infoSubmitting}>
+      <Modal title={editingInfoRecord ? "编辑信息" : "Notes信息"} open={infoModalVisible} onOk={handleInfoSubmit} onCancel={() => { setInfoModalVisible(false); setInfoFiles([]); setEditingInfoRecord(null); infoForm.resetFields() }} width={500} confirmLoading={infoSubmitting}>
         <Form form={infoForm} layout="vertical">
           <Form.Item name="content" label="内容" rules={[{ required: true, message: '请输入内容' }]}>
             <TextArea rows={4} placeholder="信息内容" />

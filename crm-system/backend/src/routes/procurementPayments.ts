@@ -17,6 +17,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
 
     const payments = await prisma.procurementPayment.findMany({
       where: { procurementId, deletedAt: null },
+      include: { files: { where: { deletedAt: null }, select: { id: true } } },
       orderBy: { paymentDate: 'desc' }
     })
 

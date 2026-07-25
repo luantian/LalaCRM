@@ -19,16 +19,16 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
 
     // 1. 基础概览统计（使用聚合查询优化性能）
     const [
-      totalCustomers,
-      customerStats,
+      totalOrganizations,
+      organizationStats,
       salesAgg,
       activeProjects,
       activeContracts,
       totalOpportunities,
       opportunityStats
     ] = await Promise.all([
-      prisma.customer.count({ where: { deletedAt: null, status: { not: 'INACTIVE' }, ...dataScopeWhere } }),
-      prisma.customer.groupBy({
+      prisma.organization.count({ where: { deletedAt: null, status: { not: 'INACTIVE' }, ...dataScopeWhere } }),
+      prisma.organization.groupBy({
         by: ['status'],
         where: { deletedAt: null, ...dataScopeWhere },
         _count: { id: true }
@@ -57,9 +57,9 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
       })
     ])
 
-    // 客户状态统计
-    const customerStatusMap: Record<string, number> = {}
-    customerStats.forEach(s => { customerStatusMap[s.status] = s._count.id })
+    // 组织状态统计
+    const organizationStatusMap: Record<string, number> = {}
+    organizationStats.forEach(s => { organizationStatusMap[s.status] = s._count.id })
 
     // 商机漏斗统计
     const funnelMap: Record<string, number> = {}
@@ -99,7 +99,7 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
     monthStart.setDate(1)
     monthStart.setHours(0, 0, 0, 0)
 
-    const [monthIncome, monthExpense, monthNewCustomers, monthNewOpportunities] = await Promise.all([
+    const [monthIncome, monthExpense, monthNewOrganizations, monthNewOpportunities] = await Promise.all([
       prisma.sale.aggregate({
         _sum: { amount: true },
         where: { deletedAt: null, type: 'IN', date: { gte: monthStart }, ...dataScopeWhere }
@@ -108,7 +108,7 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
         _sum: { amount: true },
         where: { deletedAt: null, type: 'OUT', date: { gte: monthStart }, ...dataScopeWhere }
       }),
-      prisma.customer.count({ where: { deletedAt: null, createdAt: { gte: monthStart }, ...dataScopeWhere } }),
+      prisma.organization.count({ where: { deletedAt: null, createdAt: { gte: monthStart }, ...dataScopeWhere } }),
       prisma.opportunity.count({ where: { deletedAt: null, createdAt: { gte: monthStart }, ...dataScopeWhere } })
     ])
 
@@ -141,7 +141,7 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
         id: true,
         name: true,
         endDate: true,
-        customer: { select: { name: true } }
+        organization: { select: { name: true } }
       },
       orderBy: { endDate: 'asc' },
       take: 10
@@ -153,23 +153,8 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
     const threeDaysLater = new Date(now)
     threeDaysLater.setDate(threeDaysLater.getDate() + 3)
 
-    let followUpReminders: any[] = []
-    try {
-      followUpReminders = await prisma.customerFollowUp.findMany({
-        where: {
-          deletedAt: null,
-          userId,
-          nextDate: { lte: threeDaysLater }
-        },
-        include: {
-          customer: { select: { id: true, name: true } }
-        },
-        orderBy: { nextDate: 'asc' },
-        take: 10
-      })
-    } catch (e) {
-      // CustomerFollowUp 可能尚未创建
-    }
+    // 6. 跟进提醒（组织跟进功能已移除）
+    const followUpReminders: any[] = []
 
     // 7. 项目进度概览
     const projectStats = await prisma.project.groupBy({
@@ -186,18 +171,18 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
     })
 
     // 8. 最新数据
-    const [recentCustomers, recentSales, recentOpportunities] = await Promise.all([
-      prisma.customer.findMany({
+    const [recentOrganizations, recentSales, recentOpportunities] = await Promise.all([
+      prisma.organization.findMany({
         where: { deletedAt: null, ...dataScopeWhere },
         take: 5,
         orderBy: { createdAt: 'desc' },
-        select: { id: true, name: true, companyName: true, createdAt: true, status: true }
+        select: { id: true, name: true, type: true, createdAt: true, status: true }
       }),
       prisma.sale.findMany({
         where: { deletedAt: null, ...dataScopeWhere },
         take: 5,
         orderBy: { date: 'desc' },
-        select: { id: true, type: true, amount: true, date: true, customer: { select: { name: true } } }
+        select: { id: true, type: true, amount: true, date: true, organization: { select: { name: true } } }
       }),
       prisma.opportunity.findMany({
         where: { deletedAt: null, ...dataScopeWhere },
@@ -209,7 +194,7 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
 
     res.json({
       overview: {
-        totalCustomers,
+        totalOrganizations,
         totalIncome: salesAgg.totalIncome,
         totalExpense: salesAgg.totalExpense,
         netIncome: salesAgg.totalIncome - salesAgg.totalExpense,
@@ -223,13 +208,13 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
         income: Number(monthIncome._sum.amount || 0),
         expense: Number(monthExpense._sum.amount || 0),
         profit: Number(monthIncome._sum.amount || 0) - Number(monthExpense._sum.amount || 0),
-        newCustomers: monthNewCustomers,
+        newOrganizations: monthNewOrganizations,
         newOpportunities: monthNewOpportunities
       },
-      customerStats: [
-        { status: 'ACTIVE', _count: { id: customerStatusMap['ACTIVE'] || 0 } },
-        { status: 'INACTIVE', _count: { id: customerStatusMap['INACTIVE'] || 0 } },
-        { status: 'POTENTIAL', _count: { id: customerStatusMap['POTENTIAL'] || 0 } }
+      organizationStats: [
+        { status: 'ACTIVE', _count: { id: organizationStatusMap['ACTIVE'] || 0 } },
+        { status: 'INACTIVE', _count: { id: organizationStatusMap['INACTIVE'] || 0 } },
+        { status: 'POTENTIAL', _count: { id: organizationStatusMap['POTENTIAL'] || 0 } }
       ],
       opportunityFunnel: {
         open: funnelMap['OPEN'] || 0,
@@ -242,7 +227,6 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
         totalBudget
       },
       projectOverview: {
-        pending: projectStatusMap['PENDING'] || 0,
         inProgress: projectStatusMap['IN_PROGRESS'] || 0,
         completed: projectStatusMap['COMPLETED'] || 0,
         onHold: projectStatusMap['ON_HOLD'] || 0,
@@ -261,7 +245,7 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
       },
       monthlyData,
       recent: {
-        customers: recentCustomers,
+        organizations: recentOrganizations,
         sales: recentSales,
         opportunities: recentOpportunities
       }
@@ -269,6 +253,37 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
   } catch (error) {
     logger.error('Get dashboard stats error:', error)
     res.status(500).json({ error: '获取统计数据失败' })
+  }
+})
+
+// 获取当前用户参与的进行中项目
+router.get('/my-projects', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user?.id
+    if (!userId) return res.status(401).json({ error: '未登录' })
+
+    const myInProgressProjects = await prisma.project.findMany({
+      where: {
+        deletedAt: null,
+        status: { in: ['IN_PROGRESS'] },
+        OR: [
+          { ownerId: userId },
+          { teamMembers: { some: { userId, deletedAt: null } } }
+        ]
+      },
+      include: {
+        organization: { select: { id: true, name: true } },
+        owner: { select: { id: true, name: true } },
+        _count: { select: { teamMembers: true, tasks: true } }
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 10
+    })
+
+    res.json(myInProgressProjects)
+  } catch (error) {
+    logger.error('Get my in-progress projects error:', error)
+    res.status(500).json({ error: '获取项目列表失败' })
   }
 })
 

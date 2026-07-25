@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Popconfirm, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, CheckOutlined, CloseOutlined, MoreOutlined, SendOutlined, UndoOutlined, CheckCircleOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getCustomers, getProjects, safeJsonParse, exportBusinessTripsCsv, exportBusinessTripsExcel, importBusinessTrips } from '../services/api'
+import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getOrganizations, getProjects, safeJsonParse, exportBusinessTripsCsv, exportBusinessTripsExcel, importBusinessTrips } from '../services/api'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -10,7 +10,7 @@ const { RangePicker } = DatePicker
 function BusinessTripList() {
   const navigate = useNavigate()
   const [trips, setTrips] = useState<any[]>([])
-  const [customers, setCustomers] = useState<any[]>([])
+  const [organizations, setOrganizations] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
@@ -63,12 +63,12 @@ function BusinessTripList() {
     }
   }, [])
 
-  const fetchCustomers = async () => {
+  const fetchOrganizations = async () => {
     try {
-      const response: any = await getCustomers({ pageSize: 1000 })
-      setCustomers(response.data || [])
+      const response: any = await getOrganizations({ pageSize: 1000 })
+      setOrganizations(response.data || [])
     } catch (error) {
-      console.error('获取客户列表失败:', error)
+      console.error('获取组织列表失败:', error)
     }
   }
 
@@ -91,7 +91,7 @@ function BusinessTripList() {
   }
 
   useEffect(() => {
-    fetchCustomers()
+    fetchOrganizations()
     fetchProjects()
     fetchStats()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -263,9 +263,9 @@ function BusinessTripList() {
     }
   }
 
-  const getCustomerName = (customerId: number) => {
-    const customer = customers.find(c => c.id === customerId)
-    return customer ? customer.name : '-'
+  const getOrganizationName = (organizationId: number) => {
+    const organization = organizations.find(c => c.id === organizationId)
+    return organization ? organization.name : '-'
   }
 
   const handleExport = async (type: 'csv' | 'excel') => {
@@ -298,9 +298,9 @@ function BusinessTripList() {
     { title: '目的地', dataIndex: 'destination', key: 'destination' },
     {
       title: '客户',
-      dataIndex: 'customerId',
-      key: 'customerId',
-      render: (customerId: number) => getCustomerName(customerId)
+      dataIndex: 'organizationId',
+      key: 'organizationId',
+      render: (organizationId: number) => getOrganizationName(organizationId)
     },
     {
       title: '日期',
@@ -498,11 +498,11 @@ function BusinessTripList() {
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="customerId" label="客户">
+              <Form.Item name="organizationId" label="客户">
                 <Select placeholder="请选择客户（可选）" allowClear showSearch optionFilterProp="children">
-                  {customers.map(customer => (
-                    <Select.Option key={customer.id} value={customer.id}>
-                      {customer.name}
+                  {organizations.map(organization => (
+                    <Select.Option key={organization.id} value={organization.id}>
+                      {organization.name}
                     </Select.Option>
                   ))}
                 </Select>

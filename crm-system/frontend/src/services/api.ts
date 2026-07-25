@@ -61,16 +61,6 @@ api.interceptors.response.use(
 export const login = (data: { username: string; password: string }) =>
   api.post('/auth/login', data)
 
-// 客户
-export const getCustomers = (params?: any) => api.get('/customers', { params })
-export const getCustomerDetail = (id: number) => api.get(`/customers/${id}`)
-export const createCustomer = (data: any) => api.post('/customers', data)
-export const updateCustomer = (id: number, data: any) => api.put(`/customers/${id}`, data)
-export const deleteCustomer = (id: number) => api.delete(`/customers/${id}`)
-export const batchDeleteCustomers = (ids: number[]) => api.post('/customers/batch-delete', { ids })
-export const exportCustomers = () => api.get('/customers/export/csv', { responseType: 'blob' })
-export const getCustomerStats = () => api.get('/customers/stats/overview')
-
 // 销售
 export const getSales = (params?: any) => api.get('/sales', { params })
 export const getSaleDetail = (id: number) => api.get(`/sales/${id}`)
@@ -126,13 +116,57 @@ export const getPayments = (contractId: number) => api.get('/contract-payments',
 export const createPayment = (data: any) => api.post('/contract-payments', data)
 export const updatePayment = (id: number, data: any) => api.put(`/contract-payments/${id}`, data)
 export const deletePayment = (id: number) => api.delete(`/contract-payments/${id}`)
+export const uploadPaymentFiles = (paymentId: number, files: FileList) => {
+  const formData = new FormData()
+  for (let i = 0; i < files.length; i++) { formData.append('files', files[i]) }
+  return api.post(`/contract-payments/${paymentId}/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
+export const getPaymentFiles = (paymentId: number) => api.get(`/contract-payments/${paymentId}/files`)
+export const deletePaymentFile = (paymentId: number, fileId: number) => api.delete(`/contract-payments/${paymentId}/files/${fileId}`)
+export const downloadPaymentFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-payments/files/${fileId}/download`
+export const previewPaymentFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-payments/files/${fileId}/preview`
 
 // 合同发货记录
 export const getShipments = (contractId: number) => api.get('/contract-shipments', { params: { contractId } })
 export const createShipment = (data: any) => api.post('/contract-shipments', data)
 export const updateShipment = (id: number, data: any) => api.put(`/contract-shipments/${id}`, data)
 export const deleteShipment = (id: number) => api.delete(`/contract-shipments/${id}`)
+export const uploadShipmentFiles = (shipmentId: number, files: FileList) => {
+  const formData = new FormData()
+  for (let i = 0; i < files.length; i++) { formData.append('files', files[i]) }
+  return api.post(`/contract-shipments/${shipmentId}/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
+export const getShipmentFiles = (shipmentId: number) => api.get(`/contract-shipments/${shipmentId}/files`)
+export const deleteShipmentFile = (shipmentId: number, fileId: number) => api.delete(`/contract-shipments/${shipmentId}/files/${fileId}`)
+export const downloadShipmentFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-shipments/files/${fileId}/download`
+export const previewShipmentFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-shipments/files/${fileId}/preview`
+
+// 合同附件（合同级别）
+export const getContractFiles = (contractId: number) => api.get(`/contracts/${contractId}/files`)
+export const uploadContractFiles = (contractId: number, files: FileList) => {
+  const formData = new FormData()
+  for (let i = 0; i < files.length; i++) { formData.append('files', files[i]) }
+  return api.post(`/contracts/${contractId}/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
+export const deleteContractFile = (contractId: number, fileId: number) => api.delete(`/contracts/${contractId}/files/${fileId}`)
+export const downloadContractFileUrl = (fileId: number) => `${api.defaults.baseURL}/contracts/files/${fileId}/download`
+export const previewContractFileUrl = (fileId: number) => `${api.defaults.baseURL}/contracts/files/${fileId}/preview`
 export const downloadContractFile = (fileId: number) => `${api.defaults.baseURL}/contracts/files/${fileId}/download`
+
+// 开票记录（发票管理）
+export const getInvoices = (params: any) => api.get('/invoices', { params })
+export const createInvoice = (data: any) => api.post('/invoices', data)
+export const updateInvoice = (id: number, data: any) => api.put(`/invoices/${id}`, data)
+export const deleteInvoice = (id: number) => api.delete(`/invoices/${id}`)
+export const uploadInvoiceFiles = (invoiceId: number, files: FileList) => {
+  const formData = new FormData()
+  for (let i = 0; i < files.length; i++) { formData.append('files', files[i]) }
+  return api.post(`/invoices/${invoiceId}/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
+export const getInvoiceFiles = (invoiceId: number) => api.get(`/invoices/${invoiceId}/files`)
+export const deleteInvoiceFile = (invoiceId: number, fileId: number) => api.delete(`/invoices/${invoiceId}/files/${fileId}`)
+export const downloadInvoiceFileUrl = (fileId: number) => `${api.defaults.baseURL}/invoices/files/${fileId}/download`
+export const previewInvoiceFileUrl = (fileId: number) => `${api.defaults.baseURL}/invoices/files/${fileId}/preview`
 
 // 出差管理
 export const getBusinessTrips = (params?: any) => api.get('/business-trips', { params })
@@ -173,7 +207,7 @@ export const uploadExpenseFiles = (expenseId: number, files: FileList) => {
 export const getExpenseFiles = (expenseId: number) => api.get(`/expense-files/${expenseId}/files`)
 export const deleteExpenseFile = (expenseId: number, fileId: number) => api.delete(`/expense-files/${expenseId}/files/${fileId}`)
 
-// ==================== 售前/商机管理 ====================
+// ==================== 售前管理 ====================
 export const getOpportunities = (params?: any) => api.get('/opportunities', { params })
 export const getOpportunityDetail = (id: number) => api.get(`/opportunities/${id}`)
 export const createOpportunity = (data: any) => api.post('/opportunities', data)
@@ -181,6 +215,7 @@ export const updateOpportunity = (id: number, data: any) => api.put(`/opportunit
 export const deleteOpportunity = (id: number) => api.delete(`/opportunities/${id}`)
 export const getOpportunityStats = () => api.get('/opportunities/stats/overview')
 export const convertOpportunity = (id: number) => api.post(`/opportunities/${id}/convert`)
+export const closeOpportunityProject = (id: number) => api.post(`/opportunities/${id}/close-project`)
 // 商机团队
 export const addOpportunityTeamMember = (oppId: number, data: any) => api.post(`/opportunities/${oppId}/team`, data)
 export const removeOpportunityTeamMember = (oppId: number, memberId: number) => api.delete(`/opportunities/${oppId}/team/${memberId}`)
@@ -224,6 +259,22 @@ export const getProcurementPayments = (procurementId: number) => api.get('/procu
 export const createProcurementPayment = (data: any) => api.post('/procurement-payments', data)
 export const updateProcurementPayment = (id: number, data: any) => api.put(`/procurement-payments/${id}`, data)
 export const deleteProcurementPayment = (id: number) => api.delete(`/procurement-payments/${id}`)
+export const uploadProcurementFiles = (procId: number, files: FormData) => api.post(`/procurements/${procId}/files`, files, { headers: { 'Content-Type': 'multipart/form-data' } })
+export const getProcurementFiles = (procId: number) => api.get(`/procurements/${procId}/files`)
+export const downloadProcurementFile = (fileId: number) => api.get(`/procurements/files/${fileId}/download`, { responseType: 'blob' })
+export const deleteProcurementFile = (fileId: number) => api.delete(`/procurements/files/${fileId}`)
+
+// 采购明细附件
+export const uploadProcurementItemFiles = (itemId: number, files: FormData) => api.post(`/procurements/items/${itemId}/files`, files, { headers: { 'Content-Type': 'multipart/form-data' } })
+export const getProcurementItemFiles = (itemId: number) => api.get(`/procurements/items/${itemId}/files`)
+export const downloadProcurementItemFile = (fileId: number) => api.get(`/procurements/item-files/${fileId}/download`, { responseType: 'blob' })
+export const deleteProcurementItemFile = (fileId: number) => api.delete(`/procurements/item-files/${fileId}`)
+
+// 采购付款记录附件
+export const uploadProcurementPaymentFiles = (paymentId: number, files: FormData) => api.post(`/procurements/payments/${paymentId}/files`, files, { headers: { 'Content-Type': 'multipart/form-data' } })
+export const getProcurementPaymentFiles = (paymentId: number) => api.get(`/procurements/payments/${paymentId}/files`)
+export const downloadProcurementPaymentFile = (fileId: number) => api.get(`/procurements/payment-files/${fileId}/download`, { responseType: 'blob' })
+export const deleteProcurementPaymentFile = (fileId: number) => api.delete(`/procurements/payment-files/${fileId}`)
 
 // ==================== 工作日报 ====================
 export const getDailyReports = (params?: any) => api.get('/daily-reports', { params })
@@ -283,18 +334,12 @@ export const createProjectVersion = (data: any) => api.post('/project-notes/vers
 export const updateProjectVersion = (id: number, data: any) => api.put(`/project-notes/versions/${id}`, data)
 export const deleteProjectVersion = (id: number) => api.delete(`/project-notes/versions/${id}`)
 
-// ==================== 客户联系人 ====================
-export const getCustomerContacts = (customerId: number) => api.get('/customer-contacts', { params: { customerId } })
-export const createCustomerContact = (data: any) => api.post('/customer-contacts', data)
-export const updateCustomerContact = (id: number, data: any) => api.put(`/customer-contacts/${id}`, data)
-export const deleteCustomerContact = (id: number) => api.delete(`/customer-contacts/${id}`)
-export const setPrimaryContact = (id: number) => api.post(`/customer-contacts/${id}/set-primary`)
-
 // ==================== 项目费用汇总 ====================
 export const getProjectCostSummary = (projectId: number) => api.get(`/project-costs/${projectId}/summary`)
 
 // 仪表盘
 export const getDashboardStats = () => api.get('/dashboard/stats')
+export const getMyInProgressProjects = () => api.get('/dashboard/my-projects')
 
 // ==================== 项目团队管理 ====================
 export const getProjectTeam = (projectId: number) => api.get(`/projects/${projectId}/team`)
@@ -321,6 +366,7 @@ export const deleteQuotationFile = (id: number, fileId: number) => api.delete(`/
 export const downloadQuotationFile = (fileId: number) => `${api.defaults.baseURL}/quotations/files/${fileId}/download`
 
 // ==================== 组织管理 ====================
+export const getOrganizations = (params?: any) => api.get('/organizations', { params })
 export const getOrganizationTree = () => api.get('/organizations/tree')
 export const getOrganizationDetail = (id: number) => api.get(`/organizations/${id}`)
 export const createOrganization = (data: any) => api.post('/organizations', data)
@@ -337,13 +383,50 @@ export const createTask = (data: any) => api.post('/tasks', data)
 export const updateTask = (id: number, data: any) => api.put(`/tasks/${id}`, data)
 export const deleteTask = (id: number) => api.delete(`/tasks/${id}`)
 
+// 任务记录管理
+export const getTaskRecords = (taskId: number) => api.get(`/tasks/${taskId}/records`)
+export const createTaskRecord = (taskId: number, data: any) => api.post(`/tasks/${taskId}/records`, data)
+export const updateTaskRecord = (taskId: number, recordId: number, data: any) => api.put(`/tasks/${taskId}/records/${recordId}`, data)
+export const deleteTaskRecord = (taskId: number, recordId: number) => api.delete(`/tasks/${taskId}/records/${recordId}`)
+
+// 任务记录附件管理
+export const uploadTaskRecordFiles = (taskId: number, recordId: number, files: FileList | File[]) => {
+  const formData = new FormData()
+  const fileArray = files instanceof FileList ? Array.from(files) : files
+  for (let i = 0; i < fileArray.length; i++) {
+    formData.append('files', fileArray[i])
+  }
+  return api.post(`/tasks/${taskId}/records/${recordId}/files`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+export const getTaskRecordFiles = (taskId: number, recordId: number) => api.get(`/tasks/${taskId}/records/${recordId}/files`)
+export const deleteTaskRecordFile = (taskId: number, recordId: number, fileId: number) => api.delete(`/tasks/${taskId}/records/${recordId}/files/${fileId}`)
+export const downloadTaskRecordFileUrl = (fileId: number) => `${api.defaults.baseURL}/tasks/records/files/${fileId}/download`
+export const previewTaskRecordFileUrl = (fileId: number) => `${api.defaults.baseURL}/tasks/records/files/${fileId}/preview`
+
+// 任务文件管理
+export const uploadTaskFiles = (taskId: number, files: FileList | File[]) => {
+  const formData = new FormData()
+  const fileArray = files instanceof FileList ? Array.from(files) : files
+  for (let i = 0; i < fileArray.length; i++) {
+    formData.append('files', fileArray[i])
+  }
+  return api.post(`/tasks/${taskId}/files`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+export const getTaskFiles = (taskId: number) => api.get(`/tasks/${taskId}/files`)
+export const deleteTaskFile = (taskId: number, fileId: number) => api.delete(`/tasks/${taskId}/files/${fileId}`)
+export const downloadTaskFileUrl = (fileId: number) => `${api.defaults.baseURL}/tasks/files/${fileId}/download`
+export const previewTaskFileUrl = (fileId: number) => `${api.defaults.baseURL}/tasks/files/${fileId}/preview`
+
 // ==================== 通知管理 ====================
 export const getNotifications = (params?: any) => api.get('/notifications', { params })
 export const markNotificationRead = (id: number) => api.put(`/notifications/${id}/read`)
 export const markAllNotificationsRead = () => api.put('/notifications/read-all')
 
 // ==================== 导出(Excel) ====================
-export const exportCustomersExcel = () => api.get('/customers/export/excel', { responseType: 'blob' })
 export const exportProjectsExcel = () => api.get('/projects/export/excel', { responseType: 'blob' })
 export const exportOpportunitiesExcel = () => api.get('/opportunities/export/excel', { responseType: 'blob' })
 export const exportSalesExcel = () => api.get('/sales/export/excel', { responseType: 'blob' })
@@ -367,7 +450,6 @@ const importFile = (url: string, file: File) => {
   formData.append('file', file)
   return api.post(url, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 }
-export const importCustomers = (file: File) => importFile('/customers/import', file)
 export const importProjects = (file: File) => importFile('/projects/import', file)
 export const importOpportunities = (file: File) => importFile('/opportunities/import', file)
 export const importSales = (file: File) => importFile('/sales/import', file)

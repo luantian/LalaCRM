@@ -18,7 +18,7 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['a
       page = '1',
       pageSize = '10',
       type = '',
-      customerId = '',
+      organizationId = '',
       startDate = '',
       endDate = '',
       sortBy = 'date',
@@ -37,8 +37,8 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['a
       where.type = type as string
     }
 
-    if (customerId) {
-      where.customerId = parseInt(customerId as string)
+    if (organizationId) {
+      where.organizationId = parseInt(organizationId as string)
     }
 
     if (startDate || endDate) {
@@ -52,7 +52,7 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['a
     const sales = await prisma.sale.findMany({
       where,
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } }
       },
       orderBy: { [sortBy as string]: sortOrder as string },
@@ -132,7 +132,7 @@ router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), logOpera
     const sales = await prisma.sale.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
       include: {
-        customer: { select: { name: true } },
+        organization: { select: { name: true } },
         owner: { select: { name: true } }
       }
     })
@@ -149,7 +149,7 @@ router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), logOpera
     const rows = sales.map(s => [
       s.type === 'IN' ? '收入' : '支出',
       s.amount.toString(),
-      s.customer.name,
+      s.organization?.name || '',
       s.description || '',
       s.date.toISOString().split('T')[0],
       s.owner.name
@@ -175,7 +175,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
     const sale = await prisma.sale.findFirst({
       where: { id: parseInt(id), deletedAt: null },
       include: {
-        customer: true,
+        organization: true,
         owner: { select: { id: true, name: true } }
       }
     })
@@ -193,15 +193,15 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 // 创建销售记录
 router.post('/', authenticateToken, logOperation('销售管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    const { customerId, projectId, contractId, type, category, amount, description, date } = req.body
+    const { organizationId, projectId, contractId, type, category, amount, description, date } = req.body
 
-    if (!customerId || !type || !category || !amount || !date) {
+    if (!organizationId || !type || !category || !amount || !date) {
       return res.status(400).json({ error: '必填字段缺失' })
     }
 
     const sale = await prisma.sale.create({
       data: {
-        customerId,
+        organizationId,
         projectId: projectId || null,
         contractId: contractId || null,
         type,
@@ -212,7 +212,7 @@ router.post('/', authenticateToken, logOperation('销售管理', 'CREATE'), asyn
         ownerId: req.user!.id
       },
       include: {
-        customer: { select: { id: true, name: true } }
+        organization: { select: { id: true, name: true } }
       }
     })
 
@@ -227,7 +227,7 @@ router.post('/', authenticateToken, logOperation('销售管理', 'CREATE'), asyn
 router.put('/:id', authenticateToken, logOperation('销售管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
-    const { customerId, projectId, contractId, type, category, amount, description, date } = req.body
+    const { organizationId, projectId, contractId, type, category, amount, description, date } = req.body
 
     const existing = await prisma.sale.findFirst({ where: { id: parseInt(id), deletedAt: null } })
     if (!existing) {
@@ -237,7 +237,7 @@ router.put('/:id', authenticateToken, logOperation('销售管理', 'UPDATE'), as
     const sale = await prisma.sale.update({
       where: { id: parseInt(id) },
       data: {
-        customerId,
+        organizationId,
         projectId: projectId || null,
         contractId: contractId || null,
         type,
@@ -284,7 +284,7 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.sale.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { customer: { select: { name: true } }, owner: { select: { name: true } } },
+      include: { organization: { select: { name: true } }, owner: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }
     })
     const columns = [
@@ -293,7 +293,7 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
       { key: 'amount', label: '金额' },
       { key: 'description', label: '描述' },
       { key: 'date', label: '日期' },
-      { key: 'customer.name', label: '客户' },
+      { key: 'organization.name', label: '组织' },
       { key: 'owner.name', label: '负责人' }
     ]
     exportExcel(res, 'sales.xlsx', '销售记录', columns, data)
@@ -311,7 +311,7 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
     if (error) return res.status(400).json({ error })
     if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
 
-    const labelMap: Record<string, string> = { '类型': 'type', '分类': 'category', '金额': 'amount', '描述': 'description', '日期': 'date', '客户': 'customerId' }
+    const labelMap: Record<string, string> = { '类型': 'type', '分类': 'category', '金额': 'amount', '描述': 'description', '日期': 'date', '客户': 'organizationId' }
 
     let success = 0, failed = 0
     for (const row of data) {
@@ -325,7 +325,7 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
             amount: parseFloat(mapped.amount) || 0,
             description: mapped.description,
             date: mapped.date ? new Date(mapped.date) : new Date(),
-            customerId: mapped.customerId ? parseInt(mapped.customerId) : undefined,
+            organizationId: mapped.organizationId ? parseInt(mapped.organizationId) : undefined,
             ownerId: req.user!.id,
           } as any
         })

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Empty, Popconfirm, Upload } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, MoreOutlined, ThunderboltOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getOpportunities, createOpportunity, updateOpportunity, deleteOpportunity, getOpportunityStats, getCustomers, convertOpportunity, exportOpportunitiesCsv, exportOpportunitiesExcel, importOpportunities } from '../services/api'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, MoreOutlined, ThunderboltOutlined, DownloadOutlined, ImportOutlined, InboxOutlined, StopOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import { getOpportunities, createOpportunity, updateOpportunity, deleteOpportunity, getOpportunityStats, getOrganizations, convertOpportunity, exportOpportunitiesCsv, exportOpportunitiesExcel, importOpportunities } from '../services/api'
 import dayjs from 'dayjs'
 
 function OpportunityList() {
   const navigate = useNavigate()
   const [opportunities, setOpportunities] = useState<any[]>([])
-  const [customers, setCustomers] = useState<any[]>([])
+  const [organizations, setOrganizations] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editingOpportunity, setEditingOpportunity] = useState<any>(null)
@@ -47,12 +47,12 @@ function OpportunityList() {
     }
   }, [])
 
-  const fetchCustomers = async () => {
+  const fetchOrganizations = async () => {
     try {
-      const response: any = await getCustomers({ pageSize: 1000 })
-      setCustomers(response.data || [])
+      const response: any = await getOrganizations({ pageSize: 1000 })
+      setOrganizations(response.data || [])
     } catch (error) {
-      console.error('获取客户列表失败:', error)
+      console.error('获取组织列表失败:', error)
     }
   }
 
@@ -66,7 +66,7 @@ function OpportunityList() {
   }
 
   useEffect(() => {
-    fetchCustomers()
+    fetchOrganizations()
     fetchStats()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -175,6 +175,28 @@ function OpportunityList() {
     }
   }
 
+  const handleClose = async (id: number) => {
+    try {
+      await updateOpportunity(id, { status: 'CLOSED' })
+      message.success('已关闭')
+      fetchOpportunities(pagination.current, pagination.pageSize)
+      fetchStats()
+    } catch (error) {
+      message.error('关闭失败')
+    }
+  }
+
+  const handleLost = async (id: number) => {
+    try {
+      await updateOpportunity(id, { status: 'LOST' })
+      message.success('已标记为丢单')
+      fetchOpportunities(pagination.current, pagination.pageSize)
+      fetchStats()
+    } catch (error) {
+      message.error('操作失败')
+    }
+  }
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
@@ -198,9 +220,9 @@ function OpportunityList() {
     }
   }
 
-  const getCustomerName = (customerId: number) => {
-    const customer = customers.find(c => c.id === customerId)
-    return customer ? customer.name : '-'
+  const getOrganizationName = (organizationId: number) => {
+    const organization = organizations.find(c => c.id === organizationId)
+    return organization ? organization.name : '-'
   }
 
   const columns = [
@@ -214,9 +236,9 @@ function OpportunityList() {
     },
     {
       title: '客户',
-      dataIndex: 'customerId',
-      key: 'customerId',
-      render: (customerId: number, record: any) => record.customer?.name || getCustomerName(customerId)
+      dataIndex: 'organizationId',
+      key: 'organizationId',
+      render: (organizationId: number, record: any) => record.organization?.name || getOrganizationName(organizationId)
     },
     { title: '应用领域', dataIndex: 'application', key: 'application', render: (v: string) => v || '-' },
     { title: '预算', dataIndex: 'budget', key: 'budget', render: (v: number) => v ? `${v}元` : '-' },
@@ -259,7 +281,11 @@ function OpportunityList() {
           </Popconfirm>
           <Dropdown menu={{
             items: [
-              { key: 'convert', icon: <ThunderboltOutlined />, label: '转化为项目', onClick: () => handleConvert(record.id) },
+              ...(!['WON', 'LOST', 'CLOSED'].includes(record.status) ? [
+                { key: 'convert', icon: <ThunderboltOutlined />, label: '转化为项目', onClick: () => handleConvert(record.id) },
+                { key: 'close', icon: <StopOutlined />, label: '关闭', onClick: () => handleClose(record.id) },
+                { key: 'lost', icon: <CloseCircleOutlined />, label: '标记丢单', onClick: () => handleLost(record.id) },
+              ] : []),
             ]
           }}>
             <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
@@ -376,7 +402,7 @@ function OpportunityList() {
             <Input />
           </Form.Item>
           <Form.Item
-            name="customerId"
+            name="organizationId"
             label="客户"
             rules={[{ required: true, message: '请选择客户' }]}
           >
@@ -388,9 +414,9 @@ function OpportunityList() {
                 (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())
               }
             >
-              {customers.map(customer => (
-                <Select.Option key={customer.id} value={customer.id}>
-                  {customer.name} {customer.companyName ? `- ${customer.companyName}` : ''}
+              {organizations.map(organization => (
+                <Select.Option key={organization.id} value={organization.id}>
+                  {organization.name} {organization.companyName ? `- ${organization.companyName}` : ''}
                 </Select.Option>
               ))}
             </Select>

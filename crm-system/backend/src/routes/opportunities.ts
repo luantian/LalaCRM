@@ -7,6 +7,7 @@ import { logOperation } from '../middleware/logOperation'
 import { sortValidation, clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { autoWriteOpportunityRecord } from '../utils/autoDailyReport'
 import fs from 'fs'
 import path from 'path'
 
@@ -20,7 +21,7 @@ router.get('/', authenticateToken, checkPermission('view_opportunities'), applyD
       page = '1',
       pageSize = '10',
       status = '',
-      customerId = '',
+      organizationId = '',
       search = '',
       converted = '',
       sortBy = 'createdAt',
@@ -45,8 +46,8 @@ router.get('/', authenticateToken, checkPermission('view_opportunities'), applyD
       where.status = status as string
     }
 
-    if (customerId) {
-      where.customerId = parseInt(customerId as string)
+    if (organizationId) {
+      where.organizationId = parseInt(organizationId as string)
     }
 
     if (search) {
@@ -58,7 +59,7 @@ router.get('/', authenticateToken, checkPermission('view_opportunities'), applyD
     const opportunities = await prisma.opportunity.findMany({
       where,
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } },
         project: { select: { id: true, name: true, status: true } },
         _count: {
@@ -133,7 +134,7 @@ router.get('/:id', authenticateToken, checkPermission('view_opportunities'), asy
     const opportunity = await prisma.opportunity.findFirst({
       where: { id: parseInt(id), deletedAt: null },
       include: {
-        customer: true,
+        organization: true,
         owner: { select: { id: true, name: true } },
         teamMembers: {
           include: {
@@ -158,11 +159,11 @@ router.get('/:id', authenticateToken, checkPermission('view_opportunities'), asy
 })
 
 // 创建商机
-router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'CREATE'), dateValidation('expectedStart', 'expectedEnd'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'CREATE'), dateValidation('expectedStart', 'expectedEnd'), async (req: AuthRequest, res) => {
   try {
     const {
       name,
-      customerId,
+      organizationId,
       application,
       budget,
       decisionMaker,
@@ -176,14 +177,14 @@ router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOp
       notes
     } = req.body
 
-    if (!name || !customerId) {
-      return res.status(400).json({ error: '商机名称和客户ID不能为空' })
+    if (!name || !organizationId) {
+      return res.status(400).json({ error: '商机名称和组织ID不能为空' })
     }
 
     const opportunity = await prisma.opportunity.create({
       data: {
         name,
-        customerId,
+        organizationId,
         application,
         budget,
         decisionMaker,
@@ -198,7 +199,7 @@ router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOp
         ownerId: req.user!.id
       },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } }
       }
     })
@@ -211,13 +212,13 @@ router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOp
 })
 
 // 更新商机
-router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
     const numericId = parseInt(id)
     const {
       name,
-      customerId,
+      organizationId,
       application,
       budget,
       decisionMaker,
@@ -240,7 +241,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), log
       where: { id: numericId },
       data: {
         name,
-        customerId,
+        organizationId,
         application,
         budget,
         decisionMaker,
@@ -263,7 +264,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), log
 })
 
 // 删除商机
-router.delete('/:id', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
     const numericId = parseInt(id)
@@ -288,7 +289,7 @@ router.delete('/:id', authenticateToken, checkPermission('edit_opportunities'), 
 })
 
 // 添加团队成员
-router.post('/:id/team', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/:id/team', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const opportunityId = parseInt(req.params.id as string)
     const { userId, teamRole } = req.body
@@ -334,7 +335,7 @@ router.post('/:id/team', authenticateToken, checkPermission('edit_opportunities'
 })
 
 // 移除团队成员
-router.delete('/:id/team/:memberId', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id/team/:memberId', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const memberId = parseInt(req.params.memberId as string)
 
@@ -359,7 +360,7 @@ router.delete('/:id/team/:memberId', authenticateToken, checkPermission('edit_op
 })
 
 // 上传商机文件
-router.post('/:id/files', authenticateToken, checkPermission('edit_opportunities'), upload.array('files', 10), logOperation('商机管理', 'UPLOAD'), async (req: AuthRequest, res) => {
+router.post('/:id/files', authenticateToken, checkPermission('edit_opportunities'), upload.array('files', 10), logOperation('售前管理', 'UPLOAD'), async (req: AuthRequest, res) => {
   try {
     const opportunityId = parseInt(req.params.id as string)
     const files = req.files as Express.Multer.File[]
@@ -421,7 +422,7 @@ router.get('/:id/files', authenticateToken, checkPermission('edit_opportunities'
 })
 
 // 删除商机文件
-router.delete('/:id/files/:fileId', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
+router.delete('/:id/files/:fileId', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -480,7 +481,7 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('edit_o
 })
 
 // 商机转项目
-router.post('/:id/convert', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/:id/convert', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
 
@@ -498,15 +499,15 @@ router.post('/:id/convert', authenticateToken, checkPermission('edit_opportuniti
       project = await prisma.project.create({
         data: {
           name: opportunity.name,
-          customerId: opportunity.customerId,
+          organizationId: opportunity.organizationId,
           budget: opportunity.budget,
           ownerId: opportunity.ownerId,
           opportunityId: opportunity.id,
-          status: 'PENDING',
+          status: 'IN_PROGRESS',
           description: opportunity.notes
         },
         include: {
-          customer: { select: { id: true, name: true } },
+          organization: { select: { id: true, name: true } },
           owner: { select: { id: true, name: true } }
         }
       })
@@ -524,6 +525,46 @@ router.post('/:id/convert', authenticateToken, checkPermission('edit_opportuniti
   } catch (error) {
     logger.error('Convert opportunity error:', error)
     res.status(500).json({ error: '商机转项目失败' })
+  }
+})
+
+// 关闭商机关联的项目（将项目状态改为已取消）
+router.post('/:id/close-project', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'CLOSE_PROJECT'), async (req: AuthRequest, res) => {
+  try {
+    const id = req.params.id as string
+
+    const opportunity = await prisma.opportunity.findFirst({
+      where: { id: parseInt(id), deletedAt: null },
+      include: {
+        project: true
+      }
+    })
+
+    if (!opportunity) {
+      return res.status(404).json({ error: '商机不存在' })
+    }
+
+    if (!opportunity.project) {
+      return res.status(400).json({ error: '该商机未关联项目' })
+    }
+
+    // 将项目状态改为已取消
+    const updatedProject = await prisma.project.update({
+      where: { id: opportunity.project.id },
+      data: { status: 'CANCELLED' },
+      include: {
+        organization: { select: { id: true, name: true } },
+        owner: { select: { id: true, name: true } }
+      }
+    })
+
+    res.json({
+      message: '项目已关闭',
+      project: updatedProject
+    })
+  } catch (error) {
+    logger.error('Close project error:', error)
+    res.status(500).json({ error: '关闭项目失败' })
   }
 })
 
@@ -551,7 +592,7 @@ router.get('/:id/records', authenticateToken, checkPermission('view_opportunitie
 })
 
 // 创建商机信息记录
-router.post('/:id/records', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'CREATE_RECORD'), async (req: AuthRequest, res) => {
+router.post('/:id/records', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'CREATE_RECORD'), async (req: AuthRequest, res) => {
   try {
     const opportunityId = parseInt(req.params.id as string)
     const { content, nextPlan, nextDate } = req.body
@@ -583,6 +624,16 @@ router.post('/:id/records', authenticateToken, checkPermission('edit_opportuniti
       }
     })
 
+    // 自动写入日报：商机记录
+    await autoWriteOpportunityRecord(
+      req.user!.id,
+      opportunity.name,
+      content,
+      opportunityId,
+      nextPlan,
+      nextDate ? new Date(nextDate) : null
+    )
+
     res.status(201).json(record)
   } catch (error) {
     logger.error('Create opportunity record error:', error)
@@ -591,7 +642,7 @@ router.post('/:id/records', authenticateToken, checkPermission('edit_opportuniti
 })
 
 // 更新商机信息记录
-router.put('/:id/records/:recordId', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'UPDATE_RECORD'), async (req: AuthRequest, res) => {
+router.put('/:id/records/:recordId', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'UPDATE_RECORD'), async (req: AuthRequest, res) => {
   try {
     const recordId = parseInt(req.params.recordId as string)
     const { type, content, nextPlan, nextDate } = req.body
@@ -625,7 +676,7 @@ router.put('/:id/records/:recordId', authenticateToken, checkPermission('edit_op
 })
 
 // 删除商机信息记录
-router.delete('/:id/records/:recordId', authenticateToken, checkPermission('edit_opportunities'), logOperation('商机管理', 'DELETE_RECORD'), async (req: AuthRequest, res) => {
+router.delete('/:id/records/:recordId', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'DELETE_RECORD'), async (req: AuthRequest, res) => {
   try {
     const recordId = parseInt(req.params.recordId as string)
 
@@ -662,7 +713,7 @@ router.delete('/:id/records/:recordId', authenticateToken, checkPermission('edit
 })
 
 // 上传商机信息记录附件
-router.post('/:id/records/:recordId/files', authenticateToken, upload.array('files', 10), logOperation('商机管理', 'UPLOAD_RECORD_FILE'), async (req: AuthRequest, res) => {
+router.post('/:id/records/:recordId/files', authenticateToken, upload.array('files', 10), logOperation('售前管理', 'UPLOAD_RECORD_FILE'), async (req: AuthRequest, res) => {
   try {
     const recordId = parseInt(req.params.recordId as string)
     const files = req.files as Express.Multer.File[]
@@ -775,7 +826,7 @@ router.get('/records/files/:fileId/preview', authenticateToken, async (req: Auth
 })
 
 // 删除商机信息记录附件
-router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, logOperation('商机管理', 'DELETE_RECORD_FILE'), async (req: AuthRequest, res) => {
+router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, logOperation('售前管理', 'DELETE_RECORD_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.opportunityRecordFile.findFirst({
@@ -800,7 +851,7 @@ router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, logOper
 
 const opportunityColumns = [
   { key: 'name', label: '商机名称' },
-  { key: 'customer.name', label: '客户' },
+  { key: 'organization.name', label: '组织' },
   { key: 'application', label: '应用领域' },
   { key: 'budget', label: '预算' },
   { key: 'winRate', label: '赢单率(%)' },
@@ -822,7 +873,7 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.opportunity.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
     exportExcel(res, '商机列表.xlsx', '商机', opportunityColumns, data)
@@ -838,7 +889,7 @@ router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (r
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.opportunity.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, customer: { select: { name: true } } },
+      include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
     exportCSV(res, '商机列表.csv', opportunityColumns, data)
@@ -849,7 +900,7 @@ router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (r
 })
 
 // 导入商机
-router.post('/import', authenticateToken, upload.single('file'), logOperation('商机管理', 'IMPORT'), async (req: AuthRequest, res) => {
+router.post('/import', authenticateToken, upload.single('file'), logOperation('售前管理', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
     const { data, error } = parseImportFile(req.file)
@@ -863,7 +914,7 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
         await prisma.opportunity.create({
           data: {
             name: mapped.name || '未命名商机',
-            customerId: 0,
+            organizationId: 0,
             application: mapped.application || null,
             budget: mapped.budget ? Number(mapped.budget) : null,
             winRate: mapped.winRate ? Number(mapped.winRate) : 0,

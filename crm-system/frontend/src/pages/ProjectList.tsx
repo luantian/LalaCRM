@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Empty, Popconfirm, Dropdown, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getCustomers, exportProjectsCsv, exportProjectsExcel, importProjects } from '../services/api'
+import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getOrganizations, exportProjectsCsv, exportProjectsExcel, importProjects } from '../services/api'
 import dayjs from 'dayjs'
 
 function ProjectList() {
   const navigate = useNavigate()
   const [projects, setProjects] = useState<any[]>([])
-  const [customers, setCustomers] = useState<any[]>([])
+  const [organizations, setOrganizations] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editingProject, setEditingProject] = useState<any>(null)
@@ -21,6 +21,10 @@ function ProjectList() {
   const [stats, setStats] = useState<any>(null)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [searchText, setSearchText] = useState('')
+  const [filterStatus, setFilterStatus] = useState<string>('')
+  const [filterOrgId, setFilterOrgId] = useState<string>('')
+  const [filterArchived, setFilterArchived] = useState<string>('false')
+  const [filterFullyPaid, setFilterFullyPaid] = useState<string>('')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [importModalVisible, setImportModalVisible] = useState(false)
   const searchTextRef = useRef(searchText)
@@ -33,6 +37,10 @@ function ProjectList() {
       if (searchTextRef.current.trim()) {
         params.search = searchTextRef.current.trim()
       }
+      if (filterStatus) params.status = filterStatus
+      if (filterOrgId) params.organizationId = filterOrgId
+      if (filterArchived) params.isArchived = filterArchived
+      if (filterFullyPaid) params.fullyPaid = filterFullyPaid
       const response: any = await getProjects(params)
       setProjects(response.data || [])
       setPagination({
@@ -45,14 +53,14 @@ function ProjectList() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [filterStatus, filterOrgId, filterArchived, filterFullyPaid])
 
-  const fetchCustomers = async () => {
+  const fetchOrganizations = async () => {
     try {
-      const response: any = await getCustomers({ pageSize: 1000 })
-      setCustomers(response.data || [])
+      const response: any = await getOrganizations({ pageSize: 1000 })
+      setOrganizations(response.data || [])
     } catch (error) {
-      console.error('获取客户列表失败:', error)
+      console.error('获取组织列表失败:', error)
     }
   }
 
@@ -66,13 +74,13 @@ function ProjectList() {
   }
 
   useEffect(() => {
-    fetchCustomers()
+    fetchOrganizations()
     fetchStats()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchProjects()
-  }, [refreshTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refreshTrigger, fetchProjects]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = () => {
     fetchProjects(1, pagination.pageSize)
@@ -80,6 +88,10 @@ function ProjectList() {
 
   const handleReset = () => {
     setSearchText('')
+    setFilterStatus('')
+    setFilterOrgId('')
+    setFilterArchived('false')
+    setFilterFullyPaid('')
     setRefreshTrigger(prev => prev + 1)
   }
 
@@ -187,18 +199,18 @@ function ProjectList() {
     }
   }
 
-  const getCustomerName = (customerId: number) => {
-    const customer = customers.find(c => c.id === customerId)
-    return customer ? customer.name : '-'
+  const getOrganizationName = (organizationId: number) => {
+    const organization = organizations.find(c => c.id === organizationId)
+    return organization ? organization.name : '-'
   }
 
   const columns = [
     { title: '项目名称', dataIndex: 'name', key: 'name', render: (name: string, record: any) => <a onClick={() => navigate(`/projects/${record.id}`)} style={{ color: '#1890ff' }}>{name}</a> },
     {
       title: '客户',
-      dataIndex: 'customerId',
-      key: 'customerId',
-      render: (customerId: number) => getCustomerName(customerId)
+      dataIndex: 'organizationId',
+      key: 'organizationId',
+      render: (organizationId: number) => getOrganizationName(organizationId)
     },
     {
       title: '状态',
@@ -206,7 +218,6 @@ function ProjectList() {
       key: 'status',
       render: (status: string) => {
         const statusMap: Record<string, { text: string; color: string }> = {
-          PENDING: { text: '待开始', color: 'default' },
           IN_PROGRESS: { text: '进行中', color: 'processing' },
           COMPLETED: { text: '已完成', color: 'success' },
           CANCELLED: { text: '已取消', color: 'error' }
@@ -257,6 +268,7 @@ function ProjectList() {
           <span>项目总数: <strong>{stats?.total || 0}</strong></span>
           <span>进行中: <strong style={{ color: '#1890ff' }}>{stats?.inProgress || 0}</strong></span>
           <span>已完成: <strong style={{ color: '#52c41a' }}>{stats?.completed || 0}</strong></span>
+          <span>已取消: <strong style={{ color: '#ff4d4f' }}>{stats?.cancelled || 0}</strong></span>
           <span>完成率: <strong>{stats?.completionRate || 0}%</strong></span>
         </Space>
       </Card>
@@ -264,7 +276,7 @@ function ProjectList() {
       {/* 搜索 */}
       <Card size="small" style={{ marginBottom: 16, borderRadius: 12, border: 'none', background: '#f8fafc' }}>
         <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} sm={16}>
+          <Col xs={24} sm={8}>
             <Input
               placeholder="搜索项目名称"
               prefix={<SearchOutlined />}
@@ -274,7 +286,61 @@ function ProjectList() {
               allowClear
             />
           </Col>
-          <Col xs={24} sm={8}>
+          <Col xs={12} sm={4}>
+            <Select
+              placeholder="项目状态"
+              value={filterStatus || undefined}
+              onChange={(v) => setFilterStatus(v || '')}
+              allowClear
+              style={{ width: '100%' }}
+            >
+              <Select.Option value="IN_PROGRESS">进行中</Select.Option>
+              <Select.Option value="COMPLETED">已完成</Select.Option>
+              <Select.Option value="CANCELLED">已取消</Select.Option>
+            </Select>
+          </Col>
+          <Col xs={12} sm={4}>
+            <Select
+              placeholder="客户"
+              value={filterOrgId || undefined}
+              onChange={(v) => setFilterOrgId(v || '')}
+              allowClear
+              showSearch
+              optionFilterProp="children"
+              style={{ width: '100%' }}
+            >
+              {organizations.map(org => (
+                <Select.Option key={org.id} value={String(org.id)}>{org.name}</Select.Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={12} sm={4}>
+            <Select
+              placeholder="收款状态"
+              value={filterFullyPaid || undefined}
+              onChange={(v) => setFilterFullyPaid(v || '')}
+              allowClear
+              style={{ width: '100%' }}
+            >
+              <Select.Option value="true">已全额收款</Select.Option>
+              <Select.Option value="false">未全额收款</Select.Option>
+            </Select>
+          </Col>
+          <Col xs={12} sm={4}>
+            <Select
+              placeholder="归档状态"
+              value={filterArchived || undefined}
+              onChange={(v) => setFilterArchived(v || 'false')}
+              allowClear
+              style={{ width: '100%' }}
+            >
+              <Select.Option value="false">未归档</Select.Option>
+              <Select.Option value="true">已归档</Select.Option>
+            </Select>
+          </Col>
+        </Row>
+        <Row gutter={[16, 16]} align="middle" style={{ marginTop: 12 }}>
+          <Col>
             <Space>
               <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>搜索</Button>
               <Button icon={<ReloadOutlined />} onClick={handleReset}>重置</Button>
@@ -334,7 +400,7 @@ function ProjectList() {
             <Input />
           </Form.Item>
           <Form.Item
-            name="customerId"
+            name="organizationId"
             label="客户"
             rules={[{ required: true, message: '请选择客户' }]}
           >
@@ -346,16 +412,15 @@ function ProjectList() {
                 (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())
               }
             >
-              {customers.map(customer => (
-                <Select.Option key={customer.id} value={customer.id}>
-                  {customer.name} {customer.companyName ? `- ${customer.companyName}` : ''}
+              {organizations.map(organization => (
+                <Select.Option key={organization.id} value={organization.id}>
+                  {organization.name} {organization.companyName ? `- ${organization.companyName}` : ''}
                 </Select.Option>
               ))}
             </Select>
           </Form.Item>
-          <Form.Item name="status" label="状态" initialValue="PENDING">
+          <Form.Item name="status" label="状态" initialValue="IN_PROGRESS">
             <Select>
-              <Select.Option value="PENDING">待开始</Select.Option>
               <Select.Option value="IN_PROGRESS">进行中</Select.Option>
               <Select.Option value="COMPLETED">已完成</Select.Option>
               <Select.Option value="CANCELLED">已取消</Select.Option>

@@ -218,6 +218,11 @@ router.post('/', authenticateToken, logOperation('打卡管理', 'CHECKIN'), asy
         status: 'APPROVED',
         startDate: { lte: range.checkInDate },
         endDate: { gte: range.checkInDate }
+      },
+      select: {
+        id: true,
+        title: true,
+        destination: true
       }
     })
 

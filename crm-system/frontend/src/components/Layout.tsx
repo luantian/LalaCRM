@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Layout as AntLayout, Menu, Button, Spin, Avatar, Dropdown, Badge, Empty, Modal, Tag, Popconfirm, App as AntApp } from 'antd'
+import { Layout as AntLayout, Menu, Button, Spin, Avatar, Dropdown, Badge, Empty, Modal, Tag, Popconfirm, App as AntApp, Input } from 'antd'
 import {
   UserOutlined,
   LogoutOutlined,
@@ -54,6 +54,11 @@ function Layout() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [taskDetailVisible, setTaskDetailVisible] = useState(false)
   const [taskDetail, setTaskDetail] = useState<any>(null)
+  const [rejectionModalVisible, setRejectionModalVisible] = useState(false)
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [completionModalVisible, setCompletionModalVisible] = useState(false)
+  const [completionNote, setCompletionNote] = useState('')
+  const [submitNote, setSubmitNote] = useState('')
 
   const priorityMap: Record<string, { text: string; color: string }> = {
     LOW: { text: '低', color: 'default' },
@@ -151,6 +156,60 @@ function Layout() {
       setTaskDetail({ ...taskDetail, status, completedAt: status === 'COMPLETED' ? new Date().toISOString() : null })
       fetchNotifications()
     } catch (e) { message.error('操作失败') }
+  }
+
+  const handleRejectClick = () => {
+    setRejectionReason('')
+    setRejectionModalVisible(true)
+  }
+
+  const handleConfirmReject = async () => {
+    if (!taskDetail || !rejectionReason.trim()) {
+      message.warning('请填写驳回理由')
+      return
+    }
+    try {
+      await updateTask(taskDetail.id, { status: 'IN_PROGRESS', rejectionReason })
+      message.success('已驳回任务')
+      setRejectionModalVisible(false)
+      setRejectionReason('')
+      setTaskDetail({ ...taskDetail, status: 'IN_PROGRESS', rejectionReason })
+      fetchNotifications()
+    } catch (e) { message.error('驳回失败') }
+  }
+
+  const handleCompleteClick = () => {
+    setCompletionNote('')
+    setCompletionModalVisible(true)
+  }
+
+  const handleConfirmComplete = async () => {
+    if (!taskDetail || !completionNote.trim()) {
+      message.warning('请填写完成内容')
+      return
+    }
+    try {
+      await updateTask(taskDetail.id, { status: 'COMPLETED', completionNote })
+      message.success('任务已完成 🎉')
+      setCompletionModalVisible(false)
+      setCompletionNote('')
+      setTaskDetail({ ...taskDetail, status: 'COMPLETED', completedAt: new Date().toISOString(), completionNote })
+      fetchNotifications()
+    } catch (e) { message.error('操作失败') }
+  }
+
+  const handleConfirmSubmit = async () => {
+    if (!taskDetail || !submitNote.trim()) {
+      message.warning('请填写完成内容')
+      return
+    }
+    try {
+      await updateTask(taskDetail.id, { status: 'SUBMITTED', completionNote: submitNote })
+      message.success('任务已提交')
+      setSubmitNote('')
+      setTaskDetail({ ...taskDetail, status: 'SUBMITTED', completionNote: submitNote })
+      fetchNotifications()
+    } catch (e) { message.error('提交失败') }
   }
 
   const buildMenuItems = (menuList: MenuItem[]): MenuProps['items'] => {
@@ -400,7 +459,7 @@ function Layout() {
               onMouseEnter={e => { e.currentTarget.style.background = '#f0f0ff'; e.currentTarget.style.transform = 'scale(1.05)' }}
               onMouseLeave={e => { e.currentTarget.style.background = unreadCount > 0 ? '#eef2ff' : 'transparent'; e.currentTarget.style.transform = 'scale(1)' }}
             >
-              <Badge count={unreadCount} size="small" offset={[-8, 4]}>
+              <Badge count={unreadCount} size="small">
                 <BellOutlined style={{ fontSize: 18, color: unreadCount > 0 ? '#4f46e5' : '#64748b' }} />
               </Badge>
             </div>
@@ -480,7 +539,7 @@ function Layout() {
           return (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               {isAssignee && (taskDetail.status === 'PENDING' || taskDetail.status === 'IN_PROGRESS') && (
-                <Button type="primary" icon={<CheckOutlined />} style={{ background: '#059669', borderColor: '#059669', borderRadius: 8 }} onClick={() => handleTaskAction('SUBMITTED')}>提交完成</Button>
+                <Button type="primary" icon={<CheckOutlined />} style={{ background: '#059669', borderColor: '#059669', borderRadius: 8 }} onClick={handleConfirmSubmit}>提交完成</Button>
               )}
               {isAssignee && (taskDetail.status === 'PENDING' || taskDetail.status === 'IN_PROGRESS') && (
                 <Popconfirm title="确定取消此任务？" onConfirm={() => handleTaskAction('CANCELLED')}>
@@ -490,8 +549,8 @@ function Layout() {
 
               {isAssigner && taskDetail.status === 'SUBMITTED' && (
                 <>
-                  <Button type="primary" icon={<CheckOutlined />} style={{ background: '#059669', borderColor: '#059669', borderRadius: 8 }} onClick={() => handleTaskAction('COMPLETED')}>确认完成</Button>
-                  <Button danger icon={<StopOutlined />} style={{ borderRadius: 8 }} onClick={() => handleTaskAction('IN_PROGRESS')}>驳回</Button>
+                  <Button type="primary" icon={<CheckOutlined />} style={{ background: '#059669', borderColor: '#059669', borderRadius: 8 }} onClick={handleCompleteClick}>确认完成</Button>
+                  <Button danger icon={<StopOutlined />} style={{ borderRadius: 8 }} onClick={handleRejectClick}>驳回</Button>
                 </>
               )}
 
@@ -590,9 +649,98 @@ function Layout() {
                   <strong style={{ color: '#d97706' }}>已取消</strong>
                 </div>
               )}
+              {taskDetail.rejectionReason && (
+                <div style={{
+                  marginTop: 16,
+                  padding: '12px 16px',
+                  background: '#fef2f2',
+                  borderRadius: 10,
+                  border: '1px solid #fecaca',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                    <ExclamationCircleOutlined style={{ marginRight: 8, color: '#ef4444', fontSize: 14 }} />
+                    <strong style={{ color: '#ef4444', fontSize: 14 }}>驳回理由</strong>
+                  </div>
+                  <div style={{ color: '#7f1d1d', fontSize: 13, lineHeight: 1.6 }}>
+                    {taskDetail.rejectionReason}
+                  </div>
+                </div>
+              )}
             </div>
+            {(() => {
+              const isAssignee = taskDetail.assignees?.some((a: any) => a.id === user.id)
+              const canSubmit = isAssignee && (taskDetail.status === 'PENDING' || taskDetail.status === 'IN_PROGRESS')
+
+              if (!canSubmit) return null
+
+              return (
+                <div style={{
+                  marginTop: 20,
+                  padding: '16px',
+                  background: '#f0fdf4',
+                  borderRadius: 10,
+                  border: '1px solid #bbf7d0',
+                }}>
+                  <div style={{ marginBottom: 10, color: '#166534', fontSize: 14, fontWeight: 600 }}>
+                    <CheckOutlined style={{ marginRight: 6 }} />
+                    填写完成内容：
+                  </div>
+                  <Input.TextArea
+                    rows={4}
+                    value={submitNote}
+                    onChange={(e) => setSubmitNote(e.target.value)}
+                    placeholder="请描述你完成的工作内容、成果或备注信息..."
+                    style={{ borderRadius: 8 }}
+                  />
+                </div>
+              )
+            })()}
           </div>
         )}
+      </Modal>
+
+      {/* Rejection Modal */}
+      <Modal
+        title="驳回任务"
+        open={rejectionModalVisible}
+        onOk={handleConfirmReject}
+        onCancel={() => setRejectionModalVisible(false)}
+        okText="确认驳回"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, color: '#64748b', fontSize: 13 }}>请填写驳回理由：</div>
+          <Input.TextArea
+            rows={4}
+            value={rejectionReason}
+            onChange={(e) => setRejectionReason(e.target.value)}
+            placeholder="请说明驳回原因，帮助执行人改进..."
+            style={{ borderRadius: 8 }}
+          />
+        </div>
+      </Modal>
+
+      {/* Completion Modal */}
+      <Modal
+        title="确认完成任务"
+        open={completionModalVisible}
+        onOk={handleConfirmComplete}
+        onCancel={() => setCompletionModalVisible(false)}
+        okText="确认完成"
+        cancelText="取消"
+        okButtonProps={{ style: { background: '#059669', borderColor: '#059669' } }}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, color: '#64748b', fontSize: 13 }}>请填写完成内容：</div>
+          <Input.TextArea
+            rows={4}
+            value={completionNote}
+            onChange={(e) => setCompletionNote(e.target.value)}
+            placeholder="请描述完成的工作内容、成果或备注信息..."
+            style={{ borderRadius: 8 }}
+          />
+        </div>
       </Modal>
     </AntLayout>
   )

@@ -99,7 +99,7 @@ const QuotationDetail: React.FC = () => {
               <span style={{ color: '#6b7280', fontSize: 13 }}>有效期: <strong style={{ color: '#2563eb' }}>{quotation.validUntil ? dayjs(quotation.validUntil).format('YYYY-MM-DD') : '未设置'}</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>明细: <strong style={{ color: '#7c3aed' }}>{quotation.items?.length || 0}项</strong></span>
             </div>
-            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>商机: {quotation.opportunity?.name || '-'} · 客户: {quotation.customer?.name || '-'}</div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>商机: {quotation.opportunity?.name || '-'} · 客户: {quotation.organization?.name || '-'}</div>
           </Col>
           <Col flex="none" />
         </Row>
@@ -112,7 +112,7 @@ const QuotationDetail: React.FC = () => {
               <Descriptions.Item label="报价单名称">{quotation.name}</Descriptions.Item>
               <Descriptions.Item label="版本号">v{quotation.version}</Descriptions.Item>
               <Descriptions.Item label="关联商机">{quotation.opportunity?.name || '-'}</Descriptions.Item>
-              <Descriptions.Item label="客户">{quotation.customer?.name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="客户">{quotation.organization?.name || '-'}</Descriptions.Item>
               <Descriptions.Item label="创建人">{quotation.owner?.name}</Descriptions.Item>
               <Descriptions.Item label="创建时间">{dayjs(quotation.createdAt).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>
               <Descriptions.Item label="备注" span={2}>{quotation.notes || '-'}</Descriptions.Item>

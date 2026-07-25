@@ -20,7 +20,7 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['n
       page = '1',
       pageSize = '10',
       status = '',
-      customerId = '',
+      organizationId = '',
       search = '',
       sortBy = 'createdAt',
       sortOrder = 'desc'
@@ -38,8 +38,8 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['n
       where.status = status as string
     }
 
-    if (customerId) {
-      where.customerId = parseInt(customerId as string)
+    if (organizationId) {
+      where.organizationId = parseInt(organizationId as string)
     }
 
     if (search) {
@@ -51,7 +51,7 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['n
     const contracts = await prisma.contract.findMany({
       where,
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } }
       },
@@ -152,7 +152,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
     const contract = await prisma.contract.findFirst({
       where: { id: parseInt(id), deletedAt: null },
       include: {
-        customer: true,
+        organization: true,
         project: true,
         owner: { select: { id: true, name: true } }
       }
@@ -171,16 +171,16 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 // 创建合同
 router.post('/', authenticateToken, logOperation('合同管理', 'CREATE'), dateValidation('signDate', 'startDate', 'endDate'), async (req: AuthRequest, res) => {
   try {
-    const { name, customerId, projectId, opportunityId, amount, signDate, startDate, endDate, status, content } = req.body
+    const { name, organizationId, projectId, opportunityId, amount, signDate, startDate, endDate, status, content } = req.body
 
-    if (!name || !customerId || !amount) {
+    if (!name || !organizationId || !amount) {
       return res.status(400).json({ error: '必填字段缺失' })
     }
 
     const contract = await prisma.contract.create({
       data: {
         name,
-        customerId,
+        organizationId,
         projectId: projectId || null,
         opportunityId: opportunityId || null,
         amount,
@@ -192,7 +192,7 @@ router.post('/', authenticateToken, logOperation('合同管理', 'CREATE'), date
         ownerId: req.user!.id
       },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -245,7 +245,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
       where: { id },
       data: { status: status as any },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } },
         opportunity: { select: { id: true, name: true, budget: true, ownerId: true } }
       }
@@ -258,11 +258,11 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
         const newProject = await prisma.project.create({
           data: {
             name: updatedContract.opportunity!.name,
-            customerId: updatedContract.customerId,
+            organizationId: updatedContract.organizationId,
             budget: updatedContract.opportunity!.budget,
             ownerId: updatedContract.opportunity!.ownerId,
             opportunityId: updatedContract.opportunityId,
-            status: 'PENDING',
+            status: 'IN_PROGRESS',
             description: `由合同"${updatedContract.name}"自动创建`
           }
         })
@@ -303,7 +303,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
 router.put('/:id', authenticateToken, logOperation('合同管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
-    const { name, customerId, projectId, amount, signDate, startDate, endDate, status, content } = req.body
+    const { name, organizationId, projectId, amount, signDate, startDate, endDate, status, content } = req.body
 
     // 检查当前状态，不允许通过 PUT 直接修改状态
     const currentContract = await prisma.contract.findFirst({ where: { id: parseInt(id), deletedAt: null } })
@@ -318,7 +318,7 @@ router.put('/:id', authenticateToken, logOperation('合同管理', 'UPDATE'), as
       where: { id: parseInt(id) },
       data: {
         name,
-        customerId,
+        organizationId,
         projectId,
         amount,
         signDate: signDate ? new Date(signDate) : null,
@@ -471,12 +471,12 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.contract.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { customer: { select: { name: true } }, owner: { select: { name: true } } },
+      include: { organization: { select: { name: true } }, owner: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }
     })
     const columns = [
       { key: 'name', label: '合同名称' },
-      { key: 'customer.name', label: '客户' },
+      { key: 'organization.name', label: '组织' },
       { key: 'amount', label: '金额' },
       { key: 'signDate', label: '签订日期' },
       { key: 'status', label: '状态' },
@@ -505,14 +505,14 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
       try {
         const mapped = mapImportRow(row, labelMap)
         if (!mapped.name) { failed++; continue }
-        const customerId = req.body.customerId ? parseInt(req.body.customerId) : null
+        const organizationId = req.body.organizationId ? parseInt(req.body.organizationId) : null
         await prisma.contract.create({
           data: {
             name: mapped.name,
             amount: parseFloat(mapped.amount) || 0,
             signDate: mapped.signDate ? new Date(mapped.signDate) : null,
             status: mapped.status || 'DRAFT',
-            customerId: mapped.customerId || customerId || undefined,
+            organizationId: mapped.organizationId || organizationId || undefined,
             ownerId: req.user!.id,
           } as any
         })

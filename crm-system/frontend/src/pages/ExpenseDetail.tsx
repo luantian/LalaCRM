@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message } from 'antd'
 import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons'
-import { getExpenseDetail, updateExpense, getCustomers, getProjects } from '../services/api'
+import { getExpenseDetail, updateExpense, getOrganizations, getProjects, getBusinessTrips } from '../services/api'
 import dayjs from 'dayjs'
 
 function ExpenseDetail() {
@@ -14,8 +14,9 @@ function ExpenseDetail() {
   // 编辑状态
   const [modalVisible, setModalVisible] = useState(false)
   const [form] = Form.useForm()
-  const [customers, setCustomers] = useState<any[]>([])
+  const [organizations, setOrganizations] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
+  const [trips, setTrips] = useState<any[]>([])
 
   const expenseCategories = [
     '办公用品', '差旅费', '招待费', '交通费', '通讯费', '培训费', '其他'
@@ -37,17 +38,18 @@ function ExpenseDetail() {
 
   useEffect(() => {
     if (id) {
-      fetchCustomers()
+      fetchOrganizations()
       fetchProjects()
+      fetchTrips()
     }
   }, [id])
 
-  const fetchCustomers = async () => {
+  const fetchOrganizations = async () => {
     try {
-      const response: any = await getCustomers({ pageSize: 1000 })
-      setCustomers(response.data || [])
+      const response: any = await getOrganizations({ pageSize: 1000 })
+      setOrganizations(response.data || [])
     } catch (error) {
-      console.error('获取客户列表失败:', error)
+      console.error('获取组织列表失败:', error)
     }
   }
 
@@ -57,6 +59,15 @@ function ExpenseDetail() {
       setProjects(response.data || [])
     } catch (error) {
       console.error('获取项目列表失败:', error)
+    }
+  }
+
+  const fetchTrips = async () => {
+    try {
+      const response: any = await getBusinessTrips({ pageSize: 1000 })
+      setTrips(response.data || [])
+    } catch (error) {
+      console.error('获取出差列表失败:', error)
     }
   }
 
@@ -72,7 +83,8 @@ function ExpenseDetail() {
   const handleEdit = () => {
     form.setFieldsValue({
       ...expense,
-      expenseDate: dayjs(expense.expenseDate)
+      expenseDate: dayjs(expense.expenseDate),
+      tripId: expense.tripId || undefined
     })
     setModalVisible(true)
   }
@@ -129,7 +141,7 @@ function ExpenseDetail() {
               <span style={{ color: '#6b7280', fontSize: 13 }}>费用日期: <strong style={{ color: '#2563eb' }}>{expense.expenseDate ? dayjs(expense.expenseDate).format('YYYY-MM-DD') : '-'}</strong></span>
             </div>
             <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
-              {expense.customer?.name || '暂无客户'} | {expense.project?.name || '暂无项目'}
+              {expense.organization?.name || '暂无客户'} | {expense.project?.name || '暂无项目'}
             </div>
           </Col>
           <Col flex="none">
@@ -156,8 +168,19 @@ function ExpenseDetail() {
           <Descriptions.Item label="费用日期">
             {expense.expenseDate ? dayjs(expense.expenseDate).format('YYYY-MM-DD') : '-'}
           </Descriptions.Item>
-          <Descriptions.Item label="客户">{expense.customer?.name || '-'}</Descriptions.Item>
+          <Descriptions.Item label="客户">{expense.organization?.name || '-'}</Descriptions.Item>
           <Descriptions.Item label="项目">{expense.project?.name || '-'}</Descriptions.Item>
+          <Descriptions.Item label="关联出差" span={2}>
+            {expense.trip ? (
+              <Button
+                type="link"
+                style={{ padding: 0, height: 'auto' }}
+                onClick={() => navigate(`/business-trips/${expense.trip.id}`)}
+              >
+                {expense.trip.title} - {expense.trip.destination} ({dayjs(expense.trip.startDate).format('YYYY-MM-DD')} ~ {dayjs(expense.trip.endDate).format('YYYY-MM-DD')})
+              </Button>
+            ) : '-'}
+          </Descriptions.Item>
           <Descriptions.Item label="状态">
             <Tag color={status.color}>{status.text}</Tag>
           </Descriptions.Item>
@@ -198,6 +221,19 @@ function ExpenseDetail() {
             </Col>
           </Row>
           <Row gutter={16}>
+            <Col span={24}>
+              <Form.Item name="tripId" label="关联出差">
+                <Select placeholder="请选择关联出差（可选）" allowClear showSearch optionFilterProp="children">
+                  {trips.map(trip => (
+                    <Select.Option key={trip.id} value={trip.id}>
+                      {trip.title} - {trip.destination} ({dayjs(trip.startDate).format('YYYY-MM-DD')} ~ {dayjs(trip.endDate).format('YYYY-MM-DD')})
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="category" label="费用类别" rules={[{ required: true, message: '请选择费用类别' }]}>
                 <Select placeholder="请选择费用类别">
@@ -215,11 +251,11 @@ function ExpenseDetail() {
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="customerId" label="客户">
+              <Form.Item name="organizationId" label="客户">
                 <Select placeholder="请选择客户（可选）" allowClear showSearch optionFilterProp="children">
-                  {customers.map(customer => (
-                    <Select.Option key={customer.id} value={customer.id}>
-                      {customer.name}
+                  {organizations.map(organization => (
+                    <Select.Option key={organization.id} value={organization.id}>
+                      {organization.name}
                     </Select.Option>
                   ))}
                 </Select>

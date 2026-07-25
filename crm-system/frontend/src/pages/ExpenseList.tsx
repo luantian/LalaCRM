@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, List, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined, EyeOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getCustomers, getProjects, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses } from '../services/api'
+import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getOrganizations, getProjects, getBusinessTrips, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses } from '../services/api'
 import dayjs from 'dayjs'
 
 function ExpenseList() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [expenses, setExpenses] = useState<any[]>([])
-  const [customers, setCustomers] = useState<any[]>([])
+  const [organizations, setOrganizations] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
+  const [trips, setTrips] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editingExpense, setEditingExpense] = useState<any>(null)
@@ -74,12 +76,12 @@ function ExpenseList() {
     }
   }, [])
 
-  const fetchCustomers = async () => {
+  const fetchOrganizations = async () => {
     try {
-      const response: any = await getCustomers({ pageSize: 1000 })
-      setCustomers(response.data || [])
+      const response: any = await getOrganizations({ pageSize: 1000 })
+      setOrganizations(response.data || [])
     } catch (error) {
-      console.error('获取客户列表失败:', error)
+      console.error('获取组织列表失败:', error)
     }
   }
 
@@ -89,6 +91,15 @@ function ExpenseList() {
       setProjects(response.data || [])
     } catch (error) {
       console.error('获取项目列表失败:', error)
+    }
+  }
+
+  const fetchTrips = async () => {
+    try {
+      const response: any = await getBusinessTrips({ pageSize: 1000 })
+      setTrips(response.data || [])
+    } catch (error) {
+      console.error('获取出差列表失败:', error)
     }
   }
 
@@ -102,8 +113,9 @@ function ExpenseList() {
   }
 
   useEffect(() => {
-    fetchCustomers()
+    fetchOrganizations()
     fetchProjects()
+    fetchTrips()
     fetchStats()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -194,6 +206,11 @@ function ExpenseList() {
   const handleAdd = () => {
     setEditingExpense(null)
     form.resetFields()
+    // Check if we're coming from a business trip detail page
+    const state = location.state as any
+    if (state?.tripId) {
+      form.setFieldsValue({ tripId: state.tripId })
+    }
     setModalVisible(true)
   }
 
@@ -207,7 +224,8 @@ function ExpenseList() {
     setEditingExpense(expense)
     form.setFieldsValue({
       ...expense,
-      expenseDate: dayjs(expense.expenseDate)
+      expenseDate: dayjs(expense.expenseDate),
+      tripId: expense.tripId || undefined
     })
     setModalVisible(true)
   }
@@ -345,9 +363,9 @@ function ExpenseList() {
     }
   }
 
-  const getCustomerName = (customerId: number) => {
-    const customer = customers.find(c => c.id === customerId)
-    return customer ? customer.name : '-'
+  const getOrganizationName = (organizationId: number) => {
+    const organization = organizations.find(c => c.id === organizationId)
+    return organization ? organization.name : '-'
   }
 
   const getProjectName = (projectId: number | null) => {
@@ -404,15 +422,25 @@ function ExpenseList() {
     },
     {
       title: '客户',
-      dataIndex: 'customerId',
-      key: 'customerId',
-      render: (customerId: number) => getCustomerName(customerId)
+      dataIndex: 'organizationId',
+      key: 'organizationId',
+      render: (organizationId: number) => getOrganizationName(organizationId)
     },
     {
       title: '项目',
       dataIndex: 'projectId',
       key: 'projectId',
       render: (projectId: number | null) => getProjectName(projectId)
+    },
+    {
+      title: '关联出差',
+      dataIndex: 'trip',
+      key: 'trip',
+      render: (trip: any) => trip ? (
+        <a onClick={() => navigate(`/business-trips/${trip.id}`)} style={{ color: '#1890ff' }}>
+          {trip.title}
+        </a>
+      ) : '-'
     },
     {
       title: '费用日期',
@@ -626,6 +654,19 @@ function ExpenseList() {
             </Col>
           </Row>
           <Row gutter={16}>
+            <Col span={24}>
+              <Form.Item name="tripId" label="关联出差">
+                <Select placeholder="请选择关联出差（可选）" allowClear showSearch optionFilterProp="children">
+                  {trips.map(trip => (
+                    <Select.Option key={trip.id} value={trip.id}>
+                      {trip.title} - {trip.destination} ({dayjs(trip.startDate).format('YYYY-MM-DD')} ~ {dayjs(trip.endDate).format('YYYY-MM-DD')})
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="category" label="费用类别" rules={[{ required: true, message: '请选择费用类别' }]}>
                 <Select placeholder="请选择费用类别">
@@ -643,11 +684,11 @@ function ExpenseList() {
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="customerId" label="客户">
+              <Form.Item name="organizationId" label="客户">
                 <Select placeholder="请选择客户（可选）" allowClear showSearch optionFilterProp="children">
-                  {customers.map(customer => (
-                    <Select.Option key={customer.id} value={customer.id}>
-                      {customer.name}
+                  {organizations.map(organization => (
+                    <Select.Option key={organization.id} value={organization.id}>
+                      {organization.name}
                     </Select.Option>
                   ))}
                 </Select>

@@ -21,9 +21,8 @@ model User {
   updatedAt DateTime @updatedAt
   deptId    Int?     // 所属部门
   dept      Department? @relation(fields: [deptId], references: [id])
-  customers Customer[]
   sales     Sale[]
-  followUps CustomerFollowUp[] // 客户跟进
+  // 删除旧的 Customer 关联
   projects  Project[]
   contracts Contract[]
   businessTrips BusinessTrip[]
@@ -48,6 +47,7 @@ model User {
   checkIns     DailyCheckIn[]          // 每日打卡
   assignedTasks   Task[] @relation("TaskAssigner") // 我委派的任务
   receivedTasks   Task[] @relation("TaskAssignees") // 我被委派的任务
+  taskRecords     TaskRecord[] // 任务信息记录
   notifications   Notification[] // 我的通知
   organizations   Organization[] // 管理的组织
 }
@@ -113,6 +113,13 @@ model Organization {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   contacts    OrgContact[] // 联系人
+  sales       Sale[]       // 销售记录
+  projects    Project[]    // 项目
+  contracts   Contract[]   // 合同
+  businessTrips BusinessTrip[] // 出差
+  expenses    Expense[]    // 费用报销
+  opportunities Opportunity[] // 商机
+  quotations  Quotation[]  // 报价单
 
   @@index([parentId])
   @@index([type])
@@ -139,80 +146,31 @@ model OrgContact {
   @@index([organizationId])
 }
 
-// 客户表
-model Customer {
-  id          Int      @id @default(autoincrement())
-  name        String   // 客户名称
-  companyName String?  // 公司名称
-  phone       String?  // 电话
-  email       String?  // 邮箱
-  address     String?  // 地址
-  status      CustomerStatus @default(ACTIVE) // 客户状态
-  notes       String?  // 备注
-  ownerId     Int      // 负责人ID
-  owner       User     @relation(fields: [ownerId], references: [id])
-  deletedAt   DateTime? // 软删除标记
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  sales       Sale[]
-  projects    Project[]
-  contracts   Contract[]
-  businessTrips BusinessTrip[]
-  expenses    Expense[]
-  opportunities Opportunity[] // 商机
-  contacts    CustomerContact[] // 联系人
-  followUps   CustomerFollowUp[] // 跟进记录
-  quotations  Quotation[]        // 报价单
-
-  @@index([status])
-  @@index([ownerId])
-  @@index([createdAt])
-  @@index([name])
-}
-
-// 客户跟进记录
-model CustomerFollowUp {
-  id          Int      @id @default(autoincrement())
-  customerId  Int
-  customer    Customer @relation(fields: [customerId], references: [id])
-  userId      Int      // 跟进人
-  user        User     @relation(fields: [userId], references: [id])
-  type        FollowUpType // 跟进方式
-  content     String   // 跟进内容
-  nextPlan    String?  // 下次计划
-  nextDate    DateTime? // 下次跟进日期
-  result      String?  // 跟进结果
-  attachments String?  // 附件（JSON数组）
-  deletedAt   DateTime? // 软删除标记
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([customerId])
-  @@index([userId])
-  @@index([nextDate])
-}
+// 删除旧的 Customer 相关模型
+// Customer, CustomerContact, CustomerFollowUp 已移除
+// 所有关联已迁移到 Organization
 
 // 销售记录表（增强版）
 model Sale {
-  id          Int      @id @default(autoincrement())
-  customerId  Int
-  customer    Customer @relation(fields: [customerId], references: [id])
-  projectId   Int?     // 关联项目
-  project     Project? @relation(fields: [projectId], references: [id])
-  contractId  Int?     // 关联合同
-  contract    Contract? @relation(fields: [contractId], references: [id])
-  type        SaleType // IN: 收入, OUT: 支出
-  category    String   // 分类：产品销售、服务收入、出差费、住宿费、交通费、招待费等
-  amount      Decimal  @db.Decimal(12, 2)
-  description String?  // 描述
-  date        DateTime // 销售日期
-  ownerId     Int      // 负责人ID
-  owner       User     @relation(fields: [ownerId], references: [id])
-  deletedAt   DateTime? // 软删除标记
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             Int          @id @default(autoincrement())
+  organizationId Int?         // 暂时设为可选，用于数据迁移
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  projectId      Int?         // 关联项目
+  project        Project?     @relation(fields: [projectId], references: [id])
+  contractId     Int?         // 关联合同
+  contract       Contract?    @relation(fields: [contractId], references: [id])
+  type           SaleType     // IN: 收入, OUT: 支出
+  category       String       // 分类：产品销售、服务收入、出差费、住宿费、交通费、招待费等
+  amount         Decimal      @db.Decimal(12, 2)
+  description    String?      // 描述
+  date           DateTime     // 销售日期
+  ownerId        Int          // 负责人ID
+  owner          User         @relation(fields: [ownerId], references: [id])
+  deletedAt      DateTime?    // 软删除标记
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  @@index([customerId])
+  @@index([organizationId])
   @@index([type])
   @@index([date])
   @@index([ownerId])
@@ -221,11 +179,11 @@ model Sale {
 
 // 项目表
 model Project {
-  id              Int      @id @default(autoincrement())
-  name            String   // 项目名称
-  customerId      Int
-  customer        Customer @relation(fields: [customerId], references: [id])
-  status          ProjectStatus @default(PENDING)
+  id              Int           @id @default(autoincrement())
+  name            String        // 项目名称
+  organizationId  Int?          // 暂时设为可选，用于数据迁移
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  status          ProjectStatus @default(IN_PROGRESS)
   budget          Decimal? @db.Decimal(12, 2) // 预算
   progress        Int      @default(0) // 当前进度百分比 0-100
   startDate       DateTime?
@@ -254,18 +212,19 @@ model Project {
   versions        ProjectVersion[] // 版本记录
   invoices        Invoice[]        // 发票
   teamMembers     ProjectTeamMember[] // 项目团队成员
+  tasks           Task[]           // 项目任务
 }
 
 // 合同表
 model Contract {
-  id          Int      @id @default(autoincrement())
-  name        String   // 合同名称
-  customerId  Int
-  customer    Customer @relation(fields: [customerId], references: [id])
-  projectId   Int?
-  project     Project? @relation(fields: [projectId], references: [id])
-  opportunityId Int?   // 关联商机（售前→合同→项目联动）
-  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
+  id             Int           @id @default(autoincrement())
+  name           String        // 合同名称
+  organizationId Int?          // 暂时设为可选，用于数据迁移
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  projectId      Int?
+  project        Project?     @relation(fields: [projectId], references: [id])
+  opportunityId  Int?         // 关联商机（售前→合同→项目联动）
+  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id])
   amount      Decimal  @db.Decimal(12, 2) // 合同金额
   signDate    DateTime? // 签订日期
   startDate   DateTime?
@@ -286,7 +245,7 @@ model Contract {
   invoices     Invoice[]           // 发票
 
   @@index([status])
-  @@index([customerId])
+  @@index([organizationId])
   @@index([projectId])
   @@index([ownerId])
   @@index([createdAt])
@@ -356,6 +315,21 @@ model ContractPayment {
   deletedAt   DateTime? // 软删除标记
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  files       ContractPaymentFile[] // 付款记录附件
+}
+
+// 付款记录附件表
+model ContractPaymentFile {
+  id         Int             @id @default(autoincrement())
+  paymentId  Int
+  payment    ContractPayment @relation(fields: [paymentId], references: [id])
+  fileName   String   // 原始文件名
+  filePath   String   // 文件存储路径
+  fileSize   Int      // 文件大小（字节）
+  fileType   String   // 文件类型（MIME类型）
+  uploadedBy Int      // 上传人ID
+  deletedAt  DateTime? // 软删除标记
+  uploadedAt DateTime @default(now()) // 上传时间
 }
 
 // 合同发货记录表
@@ -375,6 +349,21 @@ model ContractShipment {
   deletedAt   DateTime? // 软删除标记
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  files       ContractShipmentFile[] // 发货记录附件
+}
+
+// 发货记录附件表
+model ContractShipmentFile {
+  id         Int              @id @default(autoincrement())
+  shipmentId Int
+  shipment   ContractShipment @relation(fields: [shipmentId], references: [id])
+  fileName   String   // 原始文件名
+  filePath   String   // 文件存储路径
+  fileSize   Int      // 文件大小（字节）
+  fileType   String   // 文件类型（MIME类型）
+  uploadedBy Int      // 上传人ID
+  deletedAt  DateTime? // 软删除标记
+  uploadedAt DateTime @default(now()) // 上传时间
 }
 
 // 项目文件表
@@ -394,12 +383,12 @@ model ProjectFile {
 
 // 出差记录表
 model BusinessTrip {
-  id              Int      @id @default(autoincrement())
-  title           String   // 出差标题
-  customerId      Int?
-  customer        Customer? @relation(fields: [customerId], references: [id])
-  projectId       Int?
-  project         Project? @relation(fields: [projectId], references: [id])
+  id               Int          @id @default(autoincrement())
+  title            String       // 出差标题
+  organizationId   Int?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  projectId        Int?
+  project          Project?     @relation(fields: [projectId], references: [id])
   destination     String   // 目的地
   purpose         String?  // 出差目的
   startDate       DateTime // 开始日期
@@ -423,12 +412,12 @@ model BusinessTrip {
 
 // 费用报销表
 model Expense {
-  id          Int      @id @default(autoincrement())
-  title       String   // 报销标题
-  customerId  Int?
-  customer    Customer? @relation(fields: [customerId], references: [id])
-  projectId   Int?
-  project     Project? @relation(fields: [projectId], references: [id])
+  id             Int          @id @default(autoincrement())
+  title          String       // 报销标题
+  organizationId Int?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  projectId      Int?
+  project        Project?     @relation(fields: [projectId], references: [id])
   category    String   // 费用类别
   amount      Decimal  @db.Decimal(12, 2) // 金额
   expenseDate DateTime // 费用发生日期
@@ -466,10 +455,10 @@ model ExpenseFile {
 
 // 商机表
 model Opportunity {
-  id              Int      @id @default(autoincrement())
-  name            String   // 商机名称
-  customerId      Int
-  customer        Customer @relation(fields: [customerId], references: [id])
+  id               Int           @id @default(autoincrement())
+  name             String        // 商机名称
+  organizationId   Int?          // 暂时设为可选，用于数据迁移
+  organization     Organization? @relation(fields: [organizationId], references: [id])
   application     String?  // 应用领域/应用
   budget          Decimal? @db.Decimal(12, 2) // 预算
   decisionMaker   String?  // 客户决策人
@@ -566,8 +555,8 @@ model Quotation {
   version         Int              @default(1)       // 版本号
   opportunityId   Int                                // 关联商机
   opportunity     Opportunity      @relation(fields: [opportunityId], references: [id])
-  customerId      Int                                // 关联客户
-  customer        Customer         @relation(fields: [customerId], references: [id])
+  organizationId  Int?                               // 暂时设为可选，用于数据迁移
+  organization    Organization?    @relation(fields: [organizationId], references: [id])
   totalAmount     Decimal          @db.Decimal(12,2) // 报价总额
   status          QuotationStatus  @default(DRAFT)
   validUntil      DateTime?                          // 报价有效期
@@ -582,7 +571,7 @@ model Quotation {
   files           QuotationFile[]
 
   @@index([opportunityId])
-  @@index([customerId])
+  @@index([organizationId])
   @@index([status])
 }
 
@@ -645,6 +634,21 @@ model Procurement {
   items         ProcurementItem[] // 采购明细
   payments      ProcurementPayment[] // 采购付款记录
   invoices      Invoice[]         // 发票
+  files         ProcurementFile[] // 采购附件
+}
+
+// 采购附件表
+model ProcurementFile {
+  id            Int         @id @default(autoincrement())
+  procurementId Int
+  procurement   Procurement @relation(fields: [procurementId], references: [id])
+  fileName      String      // 原始文件名
+  filePath      String      // 文件存储路径
+  fileSize      Int         // 文件大小（字节）
+  fileType      String      // 文件类型（MIME类型）
+  uploadedBy    Int         // 上传人ID
+  deletedAt     DateTime?   // 软删除标记
+  uploadedAt    DateTime    @default(now())
 }
 
 // 采购明细表
@@ -662,9 +666,9 @@ model ProcurementItem {
   deletedAt     DateTime? // 软删除标记
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  files         ProcurementItemFile[] // 采购明细附件
 }
 
-// 采购付款记录表
 model ProcurementPayment {
   id            Int         @id @default(autoincrement())
   procurementId Int
@@ -679,6 +683,35 @@ model ProcurementPayment {
   deletedAt     DateTime?   // 软删除标记
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+  files         ProcurementPaymentFile[] // 付款记录附件
+}
+
+// 采购明细附件表
+model ProcurementItemFile {
+  id               Int             @id @default(autoincrement())
+  procurementItemId Int
+  procurementItem  ProcurementItem @relation(fields: [procurementItemId], references: [id])
+  fileName         String          // 原始文件名
+  filePath         String          // 文件存储路径
+  fileSize         Int             // 文件大小（字节）
+  fileType         String          // 文件类型（MIME类型）
+  uploadedBy       Int             // 上传人ID
+  deletedAt        DateTime?       // 软删除标记
+  uploadedAt       DateTime        @default(now())
+}
+
+// 采购付款记录附件表
+model ProcurementPaymentFile {
+  id                  Int                @id @default(autoincrement())
+  procurementPaymentId Int
+  procurementPayment  ProcurementPayment @relation(fields: [procurementPaymentId], references: [id])
+  fileName            String             // 原始文件名
+  filePath            String             // 文件存储路径
+  fileSize            Int                // 文件大小（字节）
+  fileType            String             // 文件类型（MIME类型）
+  uploadedBy          Int                // 上传人ID
+  deletedAt           DateTime?          // 软删除标记
+  uploadedAt          DateTime           @default(now())
 }
 
 // ==================== 发票管理 ====================
@@ -1074,21 +1107,7 @@ enum Role {
   USER               // 普通用户
 }
 
-enum CustomerStatus {
-  ACTIVE    // 活跃
-  INACTIVE  // 不活跃
-  POTENTIAL // 潜在客户
-}
-
-enum FollowUpType {
-  PHONE       // 电话
-  VISIT       // 拜访
-  EMAIL       // 邮件
-  WECHAT      // 微信
-  MEETING     // 会议
-  DEMO        // 演示
-  OTHER       // 其他
-}
+// CustomerStatus 和 FollowUpType 已移除（旧客户系统）
 
 enum SaleType {
   IN   // 收入
@@ -1096,7 +1115,6 @@ enum SaleType {
 }
 
 enum ProjectStatus {
-  PENDING     // 待开始
   IN_PROGRESS // 进行中
   COMPLETED   // 已完成
   CANCELLED   // 已取消
@@ -1426,23 +1444,7 @@ model ProjectVersion {
   updatedAt   DateTime @updatedAt
 }
 
-// ==================== 客户联系人 ====================
-
-// 客户联系人表（一个客户多个联系人）
-model CustomerContact {
-  id          Int      @id @default(autoincrement())
-  customerId  Int
-  customer    Customer @relation(fields: [customerId], references: [id])
-  name        String   // 联系人姓名
-  title       String?  // 职务
-  phone       String?  // 电话
-  email       String?  // 邮箱
-  isPrimary   Boolean  @default(false) // 是否主要联系人
-  notes       String?  // 备注
-  deletedAt   DateTime? // 软删除标记
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
+// 客户联系人表已移除（使用 OrgContact 替代）
 
 // ==================== 每日打卡 ====================
 
@@ -1477,24 +1479,86 @@ model DailyCheckIn {
 
 // 任务表
 model Task {
-  id            Int          @id @default(autoincrement())
-  title         String       // 任务标题
-  description   String?      // 任务描述
-  assignerId    Int          // 委派人ID
-  assigner      User         @relation("TaskAssigner", fields: [assignerId], references: [id])
-  assignees     User[]       @relation("TaskAssignees") // 被委派人（支持多人）
-  priority      TaskPriority @default(MEDIUM) // 优先级
-  status        TaskStatus   @default(PENDING)
-  dueDate       DateTime?    // 截止日期
-  completedAt   DateTime?    // 完成时间
-  deletedAt     DateTime?    // 软删除标记
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id              Int          @id @default(autoincrement())
+  title           String       // 任务标题
+  description     String?      // 任务描述
+  type            TaskType     @default(DAILY_WORK) // 任务类型：日常工作/项目任务等
+  projectId       Int?         // 关联项目（非日常工作类型时必填）
+  project         Project?     @relation(fields: [projectId], references: [id])
+  assignerId      Int          // 委派人ID
+  assigner        User         @relation("TaskAssigner", fields: [assignerId], references: [id])
+  assignees       User[]       @relation("TaskAssignees") // 被委派人（支持多人）
+  priority        TaskPriority @default(MEDIUM) // 优先级
+  status          TaskStatus   @default(PENDING)
+  dueDate         DateTime?    // 截止日期
+  completedAt     DateTime?    // 完成时间
+  completionNote  String?      // 完成总结/工作记录
+  rejectionReason String?      // 驳回理由
+  deletedAt       DateTime?    // 软删除标记
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   notifications Notification[]
+  records       TaskRecord[]        // 任务信息记录
+  files         TaskFile[]          // 任务附件
 
   @@index([assignerId])
   @@index([status])
+  @@index([type])
+  @@index([projectId])
+}
+
+// 任务信息记录表
+model TaskRecord {
+  id          Int      @id @default(autoincrement())
+  taskId      Int
+  task        Task     @relation(fields: [taskId], references: [id])
+  userId      Int      // 记录人
+  user        User     @relation(fields: [userId], references: [id])
+  type        TaskRecordType // 记录类型：note/call/meeting/email/visit/other
+  content     String   // 记录内容
+  nextPlan    String?  // 下次计划
+  nextDate    DateTime? // 下次跟进日期
+  deletedAt   DateTime? // 软删除标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  files       TaskRecordFile[] // 记录附件
+
+  @@index([taskId])
+  @@index([userId])
+  @@index([nextDate])
+}
+
+// 任务信息记录附件表
+model TaskRecordFile {
+  id         Int          @id @default(autoincrement())
+  recordId   Int
+  record     TaskRecord   @relation(fields: [recordId], references: [id])
+  fileName   String
+  filePath   String
+  fileSize   Int
+  fileType   String
+  uploadedBy Int
+  deletedAt  DateTime?
+  uploadedAt DateTime     @default(now())
+
+  @@index([recordId])
+}
+
+// 任务附件表
+model TaskFile {
+  id         Int      @id @default(autoincrement())
+  taskId     Int
+  task       Task     @relation(fields: [taskId], references: [id])
+  fileName   String
+  filePath   String
+  fileSize   Int
+  fileType   String
+  uploadedBy Int
+  deletedAt  DateTime?
+  uploadedAt DateTime @default(now())
+
+  @@index([taskId])
 }
 
 // 通知表
@@ -1529,6 +1593,15 @@ enum TaskStatus {
   SUBMITTED      // 已提交，等待指派人确认完成
   COMPLETED
   CANCELLED
+}
+
+enum TaskRecordType {
+  NOTE       // 备注
+  CALL       // 电话
+  MEETING    // 会议
+  EMAIL      // 邮件
+  VISIT      // 拜访
+  OTHER      // 其他
 }
 
 enum DeptStatus {
@@ -1567,12 +1640,22 @@ enum CheckInType {
 
 enum OrgType {
   GROUP       // 集团
-  COMPANY     // 公司
-  BRANCH      // 分公司/部门
+  COMPANY     // 企业
+  BRANCH      // 个人
 }
 
 enum OrgStatus {
   ACTIVE      // 正常
   INACTIVE    // 停用
   PENDING     // 待审核
+}
+
+// ==================== 任务类型枚举 ====================
+
+enum TaskType {
+  DAILY_WORK      // 日常工作（不需要关联项目）
+  PROJECT_TASK    // 项目任务（必须关联项目）
+  MEETING         // 会议任务
+  TRAINING        // 培训任务
+  OTHER           // 其他任务
 }

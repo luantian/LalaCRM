@@ -54,12 +54,12 @@ interface TreeNodeData {
 
 // ───────────────────────── Helpers ─────────────────────────
 
-/** 将组织树数据转换为 Tree 组件所需的格式 */
+/** 将组织树数据转换为 Tree 组件所需的格式，保留所有原始字段 */
 const convertToTreeData = (orgs: Organization[]): TreeNodeData[] => {
   return orgs.map((org) => ({
-    key: org.id,
-    title: org.name,
-    type: org.type,
+    ...org,  // 保留所有原始字段（id, name, type, parentId, address 等）
+    key: org.id,  // Tree 组件需要的 key
+    title: org.name,  // Tree 组件需要的 title
     children: org.children ? convertToTreeData(org.children) : undefined,
   }))
 }
@@ -94,7 +94,7 @@ const typeIcon = (type?: string) => {
   switch (type) {
     case 'GROUP': return '🏢'
     case 'COMPANY': return '🏬'
-    case 'BRANCH': return '🏪'
+    case 'BRANCH': return '👤'
     default: return '🏢'
   }
 }
@@ -103,8 +103,8 @@ const typeIcon = (type?: string) => {
 const typeLabel = (type?: string) => {
   switch (type) {
     case 'GROUP': return '集团'
-    case 'COMPANY': return '公司'
-    case 'BRANCH': return '分支'
+    case 'COMPANY': return '企业'
+    case 'BRANCH': return '个人'
     default: return type || '-'
   }
 }
@@ -204,7 +204,7 @@ function OrganizationList() {
     setEditingOrg(null)
     orgForm.resetFields()
     setAddingParentId(parentId ?? null)
-    orgForm.setFieldsValue({ type: parentId ? 'BRANCH' : 'GROUP' })
+    orgForm.setFieldsValue({ type: parentId ? 'COMPANY' : 'GROUP' })
     setOrgModalVisible(true)
   }
 
@@ -438,43 +438,157 @@ function OrganizationList() {
           style={{ background: '#f8fafc', borderRight: '1px solid #e5e7eb', height: '100%' }}
         >
           {treeNodes.length > 0 ? (
-            <Tree
-              showLine
-              expandedKeys={expandedKeys}
-              autoExpandParent={autoExpandParent}
-              onExpand={(keys) => {
-                setExpandedKeys(keys as number[])
-                setAutoExpandParent(false)
-              }}
-              onSelect={handleTreeSelect}
-              selectedKeys={selectedOrg ? [selectedOrg.id] : []}
-              treeData={treeNodes}
-              titleRender={(nodeData: any) => {
-                if (!nodeData) return null
-                return (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                    <span>
-                      <span style={{ marginRight: 6 }}>{typeIcon(nodeData.type)}</span>
-                      <span>{nodeData.title as string}</span>
-                    </span>
-                    <Dropdown
-                      menu={{ items: getNodeMenuItems(nodeData as Organization) }}
-                      trigger={['click']}
-                    >
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        style={{ marginLeft: 8, cursor: 'pointer', color: '#94a3b8', fontSize: 12 }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MoreOutlined />
+            <>
+              <style>{`
+                /* 整体容器 */
+                .org-tree.ant-tree {
+                  width: 100%;
+                  background: transparent;
+                }
+
+                /* 虚拟滚动容器 */
+                .org-tree .ant-tree-list,
+                .org-tree .ant-tree-list-holder,
+                .org-tree .ant-tree-list-holder-inner {
+                  width: 100%;
+                }
+
+                /* 树节点 - 统一高度 */
+                .org-tree .ant-tree-treenode {
+                  width: 100%;
+                  display: flex !important;
+                  align-items: center !important;
+                  padding: 4px 0 !important;
+                  position: relative;
+                  height: auto !important;
+                }
+
+                /* 节点内容容器 */
+                .org-tree .ant-tree-node-content-wrapper {
+                  display: flex !important;
+                  align-items: center !important;
+                  width: 100%;
+                  padding: 0 10px !important;
+                  border-radius: 5px;
+                  transition: all 0.2s;
+                  height: 24px !important;
+                  box-sizing: border-box;
+                  line-height: 1 !important;
+                }
+
+                /* 缩进线 */
+                .org-tree .ant-tree-indent-unit {
+                  width: 20px;
+                }
+                .org-tree .ant-tree-indent-unit::before {
+                  border-right: 1px solid #e5e7eb;
+                }
+
+                /* 展开/折叠图标 - 完美居中 */
+                .org-tree .ant-tree-switcher {
+                  width: 20px !important;
+                  height: 24px !important;
+                  display: flex !important;
+                  align-items: center !important;
+                  justify-content: center !important;
+                  transition: all 0.2s;
+                  flex-shrink: 0;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  line-height: 1 !important;
+                }
+                .org-tree .ant-tree-switcher:hover {
+                  color: #6366f1;
+                }
+                .org-tree .ant-tree-switcher-icon,
+                .org-tree .ant-tree-switcher .anticon {
+                  font-size: 10px !important;
+                  color: #94a3b8;
+                  display: flex !important;
+                  align-items: center !important;
+                  justify-content: center !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  line-height: 1 !important;
+                  transform: none !important;
+                }
+
+                /* Hover 状态 */
+                .org-tree .ant-tree-treenode:hover .ant-tree-node-content-wrapper {
+                  background: #f8fafc;
+                }
+
+                /* 选中状态 */
+                .org-tree .ant-tree-treenode-selected .ant-tree-node-content-wrapper {
+                  background: #eef2ff;
+                  color: #4338ca;
+                  font-weight: 500;
+                }
+                .org-tree .ant-tree-treenode-selected .ant-tree-switcher-icon,
+                .org-tree .ant-tree-treenode-selected .ant-tree-switcher .anticon {
+                  color: #6366f1;
+                }
+
+                /* 选中 + Hover 状态 - 保持选中样式 */
+                .org-tree .ant-tree-treenode-selected:hover .ant-tree-node-content-wrapper {
+                  background: #e0e7ff;
+                  color: #4338ca;
+                  font-weight: 500;
+                }
+                .org-tree .ant-tree-treenode-selected:hover .ant-tree-switcher-icon,
+                .org-tree .ant-tree-treenode-selected:hover .ant-tree-switcher .anticon {
+                  color: #4f46e5;
+                }
+              `}</style>
+              <Tree
+                className="org-tree"
+                showLine={false}
+                blockNode
+                indent={20}
+                expandedKeys={expandedKeys}
+                autoExpandParent={autoExpandParent}
+                onExpand={(keys) => {
+                  setExpandedKeys(keys as number[])
+                  setAutoExpandParent(false)
+                }}
+                onSelect={handleTreeSelect}
+                selectedKeys={selectedOrg ? [selectedOrg.id] : []}
+                treeData={treeNodes}
+                titleRender={(nodeData: any) => {
+                  if (!nodeData) return null
+                  const isGroup = nodeData.type === 'GROUP'
+                  return (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      width: '100%',
+                      height: '100%'
+                    }}>
+                      <span style={{
+                        fontSize: isGroup ? 16 : 14,
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}>
+                        {typeIcon(nodeData.type)}
                       </span>
-                    </Dropdown>
-                  </div>
-                )
-              }}
-              style={{ width: '100%' }}
-            />
+                      <span style={{
+                        fontWeight: isGroup ? 600 : 500,
+                        fontSize: isGroup ? 14 : 13,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        color: isGroup ? '#1e293b' : '#475569'
+                      }}>
+                        {nodeData.title as string}
+                      </span>
+                    </span>
+                  )
+                }}
+                style={{ width: '100%' }}
+              />
+            </>
           ) : (
             <Empty
               description={loading ? '加载中...' : '暂无组织数据'}
@@ -611,8 +725,8 @@ function OrganizationList() {
                 <Select
                   options={[
                     { value: 'GROUP', label: '🏢 集团' },
-                    { value: 'COMPANY', label: '🏬 公司' },
-                    { value: 'BRANCH', label: '🏪 分支' },
+                    { value: 'COMPANY', label: '🏬 企业' },
+                    { value: 'BRANCH', label: '👤 个人' },
                   ]}
                 />
               </Form.Item>

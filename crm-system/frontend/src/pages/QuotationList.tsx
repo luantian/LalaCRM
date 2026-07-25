@@ -3,7 +3,7 @@ import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicke
 import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getCustomers, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations } from '../services/api'
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getOrganizations, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations } from '../services/api'
 
 const { Option } = Select
 
@@ -27,7 +27,7 @@ const QuotationList: React.FC = () => {
   const [filters, setFilters] = useState<any>({})
   const [stats, setStats] = useState<any>({})
   const [opportunities, setOpportunities] = useState<any[]>([])
-  const [customers, setCustomers] = useState<any[]>([])
+  const [organizations, setOrganizations] = useState<any[]>([])
   const [items, setItems] = useState<any[]>([])
   const [importModalVisible, setImportModalVisible] = useState(false)
 
@@ -52,10 +52,10 @@ const QuotationList: React.FC = () => {
     } catch (e) { console.error(e) }
   }
 
-  const fetchCustomers = async () => {
+  const fetchOrganizations = async () => {
     try {
-      const res: any = await getCustomers({ pageSize: 1000 })
-      setCustomers(res.data || [])
+      const res: any = await getOrganizations({ pageSize: 1000 })
+      setOrganizations(res.data || [])
     } catch (e) { console.error(e) }
   }
 
@@ -63,7 +63,7 @@ const QuotationList: React.FC = () => {
     fetchQuotations()
     fetchStats()
     fetchOpportunities()
-    fetchCustomers()
+    fetchOrganizations()
   }, [fetchQuotations, fetchStats]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExport = async (type: 'csv' | 'excel') => {
@@ -165,7 +165,7 @@ const QuotationList: React.FC = () => {
   const columns = [
     { title: '报价单', dataIndex: 'name', key: 'name', render: (text: string, r: any) => <a onClick={() => navigate(`/quotations/${r.id}`)}>{text} <Tag>v{r.version}</Tag></a> },
     { title: '关联商机', key: 'opportunity', render: (_: any, r: any) => r.opportunity?.name || '-' },
-    { title: '客户', key: 'customer', render: (_: any, r: any) => r.customer?.name || '-' },
+    { title: '客户', key: 'organization', render: (_: any, r: any) => r.organization?.name || '-' },
     { title: '报价总额', dataIndex: 'totalAmount', key: 'totalAmount', render: (v: number) => <strong>¥{Number(v).toLocaleString()}</strong> },
     { title: '有效期', dataIndex: 'validUntil', key: 'validUntil', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
     { title: '状态', dataIndex: 'status', key: 'status', width: 90,
@@ -238,9 +238,9 @@ const QuotationList: React.FC = () => {
             </Form.Item></Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}><Form.Item name="customerId" label="客户" rules={[{ required: true }]}>
+            <Col span={12}><Form.Item name="organizationId" label="客户" rules={[{ required: true }]}>
               <Select showSearch optionFilterProp="children">
-                {customers.map(c => <Option key={c.id} value={c.id}>{c.name}</Option>)}
+                {organizations.map(c => <Option key={c.id} value={c.id}>{c.name}</Option>)}
               </Select>
             </Form.Item></Col>
             <Col span={12}><Form.Item name="validUntil" label="报价有效期"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>

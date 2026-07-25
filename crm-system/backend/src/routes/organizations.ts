@@ -15,7 +15,7 @@ const prisma = new PrismaClient()
 const createOrgValidation = [
   body('name').trim().isLength({ min: 1, max: 200 }).withMessage('组织名称长度必须是1-200个字符'),
   body('type').isIn(['GROUP', 'COMPANY', 'BRANCH']).withMessage('类型必须是 GROUP/COMPANY/BRANCH'),
-  body('parentId').optional().isInt({ min: 1 }).withMessage('parentId必须是正整数'),
+  body('parentId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('parentId必须是正整数'),
   body('address').optional().trim(),
   body('phone').optional().trim(),
   body('email').optional().trim().isEmail().withMessage('邮箱格式不正确'),

@@ -122,44 +122,7 @@ export const createUserValidation = [
   validate
 ]
 
-// 客户验证规则
-export const createCustomerValidation = [
-  body('name')
-    .trim()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('客户名称长度必须是1-100个字符'),
-  body('email')
-    .optional()
-    .trim()
-    .isEmail()
-    .withMessage('邮箱格式不正确'),
-  body('phone')
-    .optional()
-    .trim()
-    .matches(/^1[3-9]\d{9}$/)
-    .withMessage('手机号格式不正确'),
-  validate
-]
-
-export const updateCustomerValidation = [
-  ...idValidation,
-  body('name')
-    .optional()
-    .trim()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('客户名称长度必须是1-100个字符'),
-  body('email')
-    .optional()
-    .trim()
-    .isEmail()
-    .withMessage('邮箱格式不正确'),
-  body('phone')
-    .optional()
-    .trim()
-    .matches(/^1[3-9]\d{9}$/)
-    .withMessage('手机号格式不正确'),
-  validate
-]
+// 客户验证规则已移除（使用组织管理替代）
 
 // 项目验证规则
 export const createProjectValidation = [
@@ -167,9 +130,9 @@ export const createProjectValidation = [
     .trim()
     .isLength({ min: 1, max: 200 })
     .withMessage('项目名称长度必须是1-200个字符'),
-  body('customerId')
+  body('organizationId')
     .isInt({ min: 1 })
-    .withMessage('客户ID必须是正整数'),
+    .withMessage('组织ID必须是正整数'),
   validate
 ]
 

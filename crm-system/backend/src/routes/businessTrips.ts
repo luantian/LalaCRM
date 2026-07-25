@@ -53,9 +53,13 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), clampPagination(),
     const trips = await prisma.businessTrip.findMany({
       where,
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } },
-        owner: { select: { id: true, name: true } }
+        owner: { select: { id: true, name: true } },
+        expenses: {
+          where: { deletedAt: null },
+          select: { id: true, amount: true, status: true }
+        }
       },
       orderBy: { startDate: 'desc' },
       skip,
@@ -125,9 +129,13 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
     const trip = await prisma.businessTrip.findFirst({
       where: { id, deletedAt: null },
       include: {
-        customer: true,
+        organization: true,
         project: true,
-        owner: { select: { id: true, name: true } }
+        owner: { select: { id: true, name: true } },
+        expenses: {
+          where: { deletedAt: null },
+          orderBy: { expenseDate: 'desc' }
+        }
       }
     })
 
@@ -146,7 +154,7 @@ router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), date
   try {
     const {
       title,
-      customerId,
+      organizationId,
       projectId,
       destination,
       purpose,
@@ -169,7 +177,7 @@ router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), date
     const trip = await prisma.businessTrip.create({
       data: {
         title,
-        customerId: customerId || null,
+        organizationId: organizationId || null,
         projectId: projectId || null,
         destination,
         purpose,
@@ -186,7 +194,7 @@ router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), date
         // status 默认为 DRAFT，由 schema 控制
       },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -216,7 +224,7 @@ router.post('/:id/submit', authenticateToken, checkPermission('submit_trips'), l
       where: { id },
       data: { status: 'SUBMITTED' },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -258,7 +266,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_business
         notes: (trip.notes || '') + remarkText
       },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -299,7 +307,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_business_
         notes: (trip.notes || '') + rejectText
       },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -333,7 +341,7 @@ router.post('/:id/resubmit', authenticateToken, logOperation('出差管理', 'RE
       where: { id },
       data: { status: 'SUBMITTED' },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -367,7 +375,7 @@ router.post('/:id/complete', authenticateToken, logOperation('出差管理', 'CO
       where: { id },
       data: { status: 'COMPLETED' },
       include: {
-        customer: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -385,7 +393,7 @@ router.put('/:id', authenticateToken, logOperation('出差管理', 'UPDATE'), as
     const id = parseInt(req.params.id as string)
     const {
       title,
-      customerId,
+      organizationId,
       projectId,
       destination,
       purpose,
@@ -423,7 +431,7 @@ router.put('/:id', authenticateToken, logOperation('出差管理', 'UPDATE'), as
       where: { id },
       data: {
         title,
-        customerId: customerId || null,
+        organizationId: organizationId || null,
         projectId: projectId || null,
         destination,
         purpose,
@@ -500,7 +508,7 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.businessTrip.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, customer: { select: { name: true } }, project: { select: { name: true } } },
+      include: { owner: { select: { name: true } }, organization: { select: { name: true } }, project: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }
     })
     exportExcel(res, 'business-trips.xlsx', '出差记录', columns, data)

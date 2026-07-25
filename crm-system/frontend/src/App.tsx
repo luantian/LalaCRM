@@ -207,7 +207,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Suspense fallback={<PageLoading />}><Dashboard /></Suspense>} />
-            <Route path="customers" element={<Suspense fallback={<PageLoading />}><OrganizationList /></Suspense>} />
+            <Route path="organizations" element={<Suspense fallback={<PageLoading />}><OrganizationList /></Suspense>} />
             <Route path="sales" element={<Suspense fallback={<PageLoading />}><SaleList /></Suspense>} />
             <Route path="projects" element={<Suspense fallback={<PageLoading />}><ProjectList /></Suspense>} />
             <Route path="projects/:id" element={<Suspense fallback={<PageLoading />}><ProjectDetail /></Suspense>} />

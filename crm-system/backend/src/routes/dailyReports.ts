@@ -11,8 +11,8 @@ import { upload } from '../middleware/upload'
 const router = Router()
 const prisma = new PrismaClient()
 
-// 获取工作日报列表（分页，支持筛选）
-router.get('/', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), clampPagination(), async (req: AuthRequest, res) => {
+// 获取工作日报列表（分页，支持筛选）—— 所有人可查看
+router.get('/', authenticateToken, checkPermission('view_reports'), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -105,17 +105,15 @@ router.get('/', authenticateToken, checkPermission('view_reports'), applyDataSco
   }
 })
 
-// 日报统计概览（本月报告数、总工时、按类型统计）
-router.get('/stats/overview', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
+// 日报统计概览（本月报告数、总工时、按类型统计）—— 所有人可查看
+router.get('/stats/overview', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
 
     const where = {
       deletedAt: null,
-      ...dataScopeWhere,
       reportDate: {
         gte: monthStart,
         lte: monthEnd
@@ -148,8 +146,8 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_reports')
   }
 })
 
-// 导出日报 CSV
-router.get('/export/csv', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
+// 导出日报 CSV —— 所有人可导出
+router.get('/export/csv', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
   try {
     const {
       userId = '',
@@ -160,8 +158,7 @@ router.get('/export/csv', authenticateToken, checkPermission('view_reports'), ap
       search = ''
     } = req.query
 
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
-    const where: any = { deletedAt: null, ...dataScopeWhere }
+    const where: any = { deletedAt: null }
 
     if (userId) {
       where.userId = parseInt(userId as string)
@@ -258,11 +255,6 @@ router.get('/:id', authenticateToken, checkPermission('view_reports'), async (re
       return res.status(404).json({ error: '工作日报不存在' })
     }
 
-    // 数据权限：非管理员/经理只能查看自己的日报
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
-      return res.status(403).json({ error: '没有权限查看此日报' })
-    }
-
     res.json(report)
   } catch (error) {
     res.status(500).json({ error: '获取工作日报详情失败' })
@@ -327,9 +319,9 @@ router.put('/:id', authenticateToken, checkPermission('create_reports'), logOper
       return res.status(404).json({ error: '工作日报不存在' })
     }
 
-    // 只能更新自己的日报（管理员/经理除外）
-    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
-      return res.status(403).json({ error: '无权操作此记录' })
+    // 只能更新自己的日报
+    if (existing.userId !== req.user!.id) {
+      return res.status(403).json({ error: '只能修改自己的日报' })
     }
 
     const report = await prisma.dailyReport.update({
@@ -366,8 +358,8 @@ router.delete('/:id', authenticateToken, checkPermission('create_reports'), logO
       return res.status(404).json({ error: '工作日报不存在' })
     }
 
-    // 只有创建者可以删除草稿状态的日报
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    // 只能删除自己的日报
+    if (report.userId !== req.user!.id) {
       return res.status(403).json({ error: '只能删除自己的日报' })
     }
 
@@ -623,22 +615,18 @@ router.delete('/:id/comments/:commentId', authenticateToken, logOperation('工�
   }
 })
 
-// 获取日报提交率统计
-router.get('/stats/submission-rate', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
+// 获取日报提交率统计 —— 所有人可查看
+router.get('/stats/submission-rate', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
-    const where: any = { deletedAt: null, ...dataScopeWhere }
+    const where: any = { deletedAt: null }
     if (startDate || endDate) {
       where.reportDate = {}
       if (startDate) where.reportDate.gte = new Date(startDate as string)
       if (endDate) where.reportDate.lte = new Date(endDate as string)
     }
-    // 非管理员只能查看自己的统计
-    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
-      where.userId = req.user!.id
-    } else if (userId) {
+    if (userId) {
       where.userId = parseInt(userId as string)
     }
 
@@ -667,22 +655,18 @@ router.get('/stats/submission-rate', authenticateToken, checkPermission('view_re
   }
 })
 
-// 获取日报质量统计
-router.get('/stats/quality', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
+// 获取日报质量统计 —— 所有人可查看
+router.get('/stats/quality', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
-    const where: any = { deletedAt: null, rating: { not: null }, ...dataScopeWhere }
+    const where: any = { deletedAt: null, rating: { not: null } }
     if (startDate || endDate) {
       where.reportDate = {}
       if (startDate) where.reportDate.gte = new Date(startDate as string)
       if (endDate) where.reportDate.lte = new Date(endDate as string)
     }
-    // 非管理员只能查看自己的统计
-    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
-      where.userId = req.user!.id
-    } else if (userId) {
+    if (userId) {
       where.userId = parseInt(userId as string)
     }
 
@@ -763,8 +747,8 @@ router.post('/:id/items', authenticateToken, checkPermission('create_reports'), 
       return res.status(404).json({ error: '工作日报不存在' })
     }
 
-    // 检查权限：只能为自己的日报添加条目（管理员除外）
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    // 检查权限：只能为自己的日报添加条目
+    if (report.userId !== req.user!.id) {
       return res.status(403).json({ error: '只能为自己的日报添加工作条目' })
     }
 
@@ -811,7 +795,7 @@ router.put('/:id/items/:itemId', authenticateToken, checkPermission('create_repo
     }
 
     // 检查权限
-    if (item.report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (item.report.userId !== req.user!.id) {
       return res.status(403).json({ error: '只能修改自己的日报条目' })
     }
 
@@ -857,7 +841,7 @@ router.delete('/:id/items/:itemId', authenticateToken, checkPermission('create_r
     }
 
     // 检查权限
-    if (item.report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (item.report.userId !== req.user!.id) {
       return res.status(403).json({ error: '只能删除自己的日报条目' })
     }
 
@@ -915,7 +899,7 @@ router.post('/:id/time-entries', authenticateToken, checkPermission('create_repo
     }
 
     // 检查权限
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (report.userId !== req.user!.id) {
       return res.status(403).json({ error: '只能为自己的日报添加工时条目' })
     }
 
@@ -958,7 +942,7 @@ router.put('/:id/time-entries/:entryId', authenticateToken, checkPermission('cre
     }
 
     // 检查权限
-    if (entry.report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (entry.report.userId !== req.user!.id) {
       return res.status(403).json({ error: '只能修改自己的日报工时条目' })
     }
 
@@ -1000,7 +984,7 @@ router.delete('/:id/time-entries/:entryId', authenticateToken, checkPermission('
     }
 
     // 检查权限
-    if (entry.report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (entry.report.userId !== req.user!.id) {
       return res.status(403).json({ error: '只能删除自己的日报工时条目' })
     }
 
@@ -1013,22 +997,18 @@ router.delete('/:id/time-entries/:entryId', authenticateToken, checkPermission('
   }
 })
 
-// 获取工时统计（按项目、按类型）
-router.get('/stats/hours-analysis', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
+// 获取工时统计（按项目、按类型）—— 所有人可查看
+router.get('/stats/hours-analysis', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
-    const where: any = { deletedAt: null, ...dataScopeWhere }
+    const where: any = { deletedAt: null }
     if (startDate || endDate) {
       where.reportDate = {}
       if (startDate) where.reportDate.gte = new Date(startDate as string)
       if (endDate) where.reportDate.lte = new Date(endDate as string)
     }
-    // 非管理员只能查看自己的统计
-    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
-      where.userId = req.user!.id
-    } else if (userId) {
+    if (userId) {
       where.userId = parseInt(userId as string)
     }
 
@@ -1092,11 +1072,10 @@ const labelMap: Record<string, string> = {
   '工时': 'hours'
 }
 
-router.get('/export/excel', authenticateToken, checkPermission('view_reports'), applyDataScope('userId'), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.dailyReport.findMany({
-      where: { deletedAt: null, ...dataScopeWhere },
+      where: { deletedAt: null },
       include: { user: { select: { name: true } }, project: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }
     })
