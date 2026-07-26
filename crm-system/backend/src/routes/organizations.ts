@@ -226,6 +226,36 @@ router.get(
   }
 )
 
+// 2c. GET /contacts/:id - Get single contact
+router.get(
+  '/contacts/:id',
+  authenticateToken,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id as string)
+      const contact = await prisma.orgContact.findFirst({
+        where: { id, deletedAt: null },
+        include: { organization: { select: { id: true, name: true } } }
+      })
+      if (!contact) {
+        return res.status(404).json({ error: '联系人不存在' })
+      }
+      res.json({
+        id: contact.id,
+        name: contact.name,
+        title: contact.title,
+        phone: contact.phone,
+        email: contact.email,
+        organizationId: contact.organizationId,
+        organizationName: contact.organization?.name || ''
+      })
+    } catch (error) {
+      logger.error('Get contact error:', error)
+      res.status(500).json({ error: '获取联系人失败' })
+    }
+  }
+)
+
 // 3. GET /:id - Get organization detail
 router.get(
   '/:id',
