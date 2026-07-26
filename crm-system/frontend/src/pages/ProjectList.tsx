@@ -395,19 +395,19 @@ function ProjectList() {
             <Input />
           </Form.Item>
           <Form.Item
-            name="organizationId"
+            name="contactId"
             label="客户"
-            rules={[{ required: true, message: '请选择客户' }]}
+            rules={[{ required: true, message: '请选择客户联系人' }]}
           >
-            <OrgTreeSelect placeholder="请选择客户" />
+            <OrgContactSelector
+              placeholder="请选择客户联系人"
+              onContactSelect={(contactId, orgId) => {
+                form.setFieldValue('contactId', contactId)
+                form.setFieldValue('organizationId', orgId)
+              }}
+            />
           </Form.Item>
-          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.organizationId !== cur.organizationId}>
-            {({ getFieldValue }) => (
-              <Form.Item name="contactId" label="联系人">
-                <OrgContactSelector organizationId={getFieldValue('organizationId')} placeholder="选择客户方联系人" />
-              </Form.Item>
-            )}
-          </Form.Item>
+          <Form.Item name="organizationId" hidden><Input /></Form.Item>
           <Form.Item name="status" label="状态" initialValue="IN_PROGRESS">
             <Select>
               <Select.Option value="IN_PROGRESS">进行中</Select.Option>

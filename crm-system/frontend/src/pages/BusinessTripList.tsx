@@ -500,16 +500,16 @@ function BusinessTripList() {
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="organizationId" label="客户">
-                <OrgTreeSelect placeholder="请选择客户（可选）" />
+              <Form.Item name="contactId" label="客户">
+                <OrgContactSelector
+                  placeholder="请选择客户联系人"
+                  onContactSelect={(contactId, orgId) => {
+                    form.setFieldValue('contactId', contactId)
+                    form.setFieldValue('organizationId', orgId)
+                  }}
+                />
               </Form.Item>
-              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.organizationId !== cur.organizationId}>
-                {({ getFieldValue }) => (
-                  <Form.Item name="contactId" label="拜访对象">
-                    <OrgContactSelector organizationId={getFieldValue('organizationId')} placeholder="选择要拜访的联系人" />
-                  </Form.Item>
-                )}
-              </Form.Item>
+              <Form.Item name="organizationId" hidden><Input /></Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="projectId" label="项目">

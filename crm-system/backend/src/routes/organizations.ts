@@ -194,6 +194,38 @@ router.get(
   }
 )
 
+// 2b. GET /contacts - Get all contacts across organizations (for client selector)
+router.get(
+  '/contacts',
+  authenticateToken,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const contacts = await prisma.orgContact.findMany({
+        where: { deletedAt: null },
+        include: {
+          organization: { select: { id: true, name: true } }
+        },
+        orderBy: { name: 'asc' }
+      })
+
+      const result = contacts.map(c => ({
+        id: c.id,
+        name: c.name,
+        title: c.title,
+        phone: c.phone,
+        email: c.email,
+        organizationId: c.organizationId,
+        organizationName: c.organization?.name || ''
+      }))
+
+      res.json(result)
+    } catch (error) {
+      logger.error('Get all contacts error:', error)
+      res.status(500).json({ error: '获取联系人列表失败' })
+    }
+  }
+)
+
 // 3. GET /:id - Get organization detail
 router.get(
   '/:id',

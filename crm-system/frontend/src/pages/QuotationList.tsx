@@ -240,18 +240,18 @@ const QuotationList: React.FC = () => {
             </Form.Item></Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}><Form.Item name="organizationId" label="客户" rules={[{ required: true }]}>
-              <OrgTreeSelect placeholder="请选择客户" />
+            <Col span={12}><Form.Item name="contactId" label="客户" rules={[{ required: true }]}>
+              <OrgContactSelector
+                placeholder="请选择客户联系人"
+                onContactSelect={(contactId, orgId) => {
+                  form.setFieldValue('contactId', contactId)
+                  form.setFieldValue('organizationId', orgId)
+                }}
+              />
             </Form.Item></Col>
             <Col span={12}><Form.Item name="validUntil" label="报价有效期"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
           </Row>
-          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.organizationId !== cur.organizationId}>
-            {({ getFieldValue }) => (
-              <Form.Item name="contactId" label="联系人">
-                <OrgContactSelector organizationId={getFieldValue('organizationId')} placeholder="选择客户方联系人" />
-              </Form.Item>
-            )}
-          </Form.Item>
+          <Form.Item name="organizationId" hidden><Input /></Form.Item>
           <Form.Item name="notes" label="备注"><Input.TextArea rows={2} /></Form.Item>
 
           <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>

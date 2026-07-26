@@ -373,6 +373,7 @@ export const createOrganization = (data: any) => api.post('/organizations', data
 export const updateOrganization = (id: number, data: any) => api.put(`/organizations/${id}`, data)
 export const deleteOrganization = (id: number) => api.delete(`/organizations/${id}`)
 export const getOrganizationContacts = (id: number) => api.get(`/organizations/${id}/contacts`)
+export const getAllContacts = () => api.get('/organizations/contacts')
 export const createOrganizationContact = (orgId: number, data: any) => api.post(`/organizations/${orgId}/contacts`, data)
 export const updateOrganizationContact = (orgId: number, contactId: number, data: any) => api.put(`/organizations/${orgId}/contacts/${contactId}`, data)
 export const deleteOrganizationContact = (orgId: number, contactId: number) => api.delete(`/organizations/${orgId}/contacts/${contactId}`)
