@@ -10,6 +10,7 @@ interface OrgContactSelectorProps {
   placeholder?: string
   disabled?: boolean
   style?: React.CSSProperties
+  fallbackLabel?: string // 编辑回显时，选项未加载前的显示文字
 }
 
 interface Contact {
@@ -33,7 +34,8 @@ export function OrgContactSelector({
   onContactSelect,
   placeholder = '请选择联系人',
   disabled = false,
-  style
+  style,
+  fallbackLabel
 }: OrgContactSelectorProps) {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(false)
@@ -82,6 +84,18 @@ export function OrgContactSelector({
     }
   }
 
+  // 构建选项列表，确保当前值始终有对应选项（编辑回显）
+  const options = contacts.map(c => ({
+    value: c.id,
+    label: organizationId
+      ? `${c.name}${c.title ? ` (${c.title})` : ''}${c.phone ? ` ${c.phone}` : ''}`
+      : `${c.name}${c.title ? ` (${c.title})` : ''} — ${c.organizationName || ''}`,
+  }))
+  // 如果有当前值但选项中没有，加入 fallback 选项保证回显
+  if (value && !options.some(o => o.value === value) && fallbackLabel) {
+    options.unshift({ value, label: fallbackLabel })
+  }
+
   return (
     <Select
       value={value || undefined}
@@ -94,12 +108,7 @@ export function OrgContactSelector({
       optionFilterProp="label"
       style={{ width: '100%', ...style }}
       notFoundContent={loading ? <Spin size="small" /> : '暂无联系人'}
-      options={contacts.map(c => ({
-        value: c.id,
-        label: organizationId
-          ? `${c.name}${c.title ? ` (${c.title})` : ''}${c.phone ? ` ${c.phone}` : ''}`
-          : `${c.name}${c.title ? ` (${c.title})` : ''} — ${c.organizationName || ''}`,
-      }))}
+      options={options}
     />
   )
 }

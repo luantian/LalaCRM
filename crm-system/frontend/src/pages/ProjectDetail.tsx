@@ -1441,6 +1441,7 @@ function ProjectDetail() {
           <Form.Item name="contactId" label="客户" rules={[{ required: true }]}>
             <OrgContactSelector
               placeholder="请选择客户联系人"
+              fallbackLabel={project?.contact ? `${project.contact.name}${project.contact.title ? ` (${project.contact.title})` : ''} — ${project.organization?.name || ''}` : undefined}
               onContactSelect={(contactId, orgId) => {
                 projectForm.setFieldValue('contactId', contactId)
                 projectForm.setFieldValue('organizationId', orgId)

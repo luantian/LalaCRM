@@ -1164,7 +1164,7 @@ function Dashboard() {
           </Form.Item>
           <Form.Item name="assigneeIds" label="指派给" rules={[{ required: true, message: '请选择指派人' }]}>
             <Select mode="multiple" showSearch optionFilterProp="label" placeholder="选择成员（可多选）" style={{ borderRadius: 8 }}>
-              {users.filter((u: any) => u.id !== user.id).map((u: any) => (
+              {users.map((u: any) => (
                 <Select.Option key={u.id} value={u.id} label={u.name}>
                   {u.name} ({u.username})
                 </Select.Option>

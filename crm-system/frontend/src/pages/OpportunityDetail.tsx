@@ -623,6 +623,7 @@ function OpportunityDetail() {
           <Form.Item name="contactId" label="客户" rules={[{ required: true, message: '请选择客户联系人' }]}>
             <OrgContactSelector
               placeholder="请选择客户联系人"
+              fallbackLabel={opportunity?.contact ? `${opportunity.contact.name}${opportunity.contact.title ? ` (${opportunity.contact.title})` : ''} — ${opportunity.organization?.name || ''}` : undefined}
               onContactSelect={(contactId, orgId) => {
                 form.setFieldValue('contactId', contactId)
                 form.setFieldValue('organizationId', orgId)
