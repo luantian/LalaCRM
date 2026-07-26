@@ -1441,6 +1441,13 @@ function ProjectDetail() {
           <Form.Item name="organizationId" label="客户" rules={[{ required: true }]}>
             <OrgTreeSelect placeholder="请选择客户" />
           </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.organizationId !== cur.organizationId}>
+            {({ getFieldValue }) => (
+              <Form.Item name="contactId" label="客户对接人">
+                <OrgContactSelector organizationId={getFieldValue('organizationId')} placeholder="选择客户方对接人" />
+              </Form.Item>
+            )}
+          </Form.Item>
           <Form.Item name="status" label="状态"><Select><Select.Option value="IN_PROGRESS">进行中</Select.Option><Select.Option value="COMPLETED">已完成</Select.Option><Select.Option value="CANCELLED">已取消</Select.Option></Select></Form.Item>
           <Form.Item name="budget" label="预算"><InputNumber style={{ width: '100%' }} precision={2} /></Form.Item>
           <Form.Item name="dateRange" label="项目周期"><RangePicker style={{ width: '100%' }} /></Form.Item>

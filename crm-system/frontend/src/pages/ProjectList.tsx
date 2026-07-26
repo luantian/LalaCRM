@@ -5,6 +5,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutli
 import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getOrganizations, exportProjectsCsv, exportProjectsExcel, importProjects } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgTreeSelect } from '../components/OrgTreeSelect'
+import { OrgContactSelector } from '../components/OrgContactSelector'
 
 function ProjectList() {
   const navigate = useNavigate()
@@ -399,6 +400,13 @@ function ProjectList() {
             rules={[{ required: true, message: '请选择客户' }]}
           >
             <OrgTreeSelect placeholder="请选择客户" />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.organizationId !== cur.organizationId}>
+            {({ getFieldValue }) => (
+              <Form.Item name="contactId" label="联系人">
+                <OrgContactSelector organizationId={getFieldValue('organizationId')} placeholder="选择客户方联系人" />
+              </Form.Item>
+            )}
           </Form.Item>
           <Form.Item name="status" label="状态" initialValue="IN_PROGRESS">
             <Select>

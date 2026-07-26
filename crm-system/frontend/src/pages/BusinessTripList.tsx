@@ -5,6 +5,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutli
 import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getOrganizations, getProjects, safeJsonParse, exportBusinessTripsCsv, exportBusinessTripsExcel, importBusinessTrips } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgTreeSelect } from '../components/OrgTreeSelect'
+import { OrgContactSelector } from '../components/OrgContactSelector'
 
 const { RangePicker } = DatePicker
 
@@ -501,6 +502,13 @@ function BusinessTripList() {
             <Col span={12}>
               <Form.Item name="organizationId" label="客户">
                 <OrgTreeSelect placeholder="请选择客户（可选）" />
+              </Form.Item>
+              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.organizationId !== cur.organizationId}>
+                {({ getFieldValue }) => (
+                  <Form.Item name="contactId" label="拜访对象">
+                    <OrgContactSelector organizationId={getFieldValue('organizationId')} placeholder="选择要拜访的联系人" />
+                  </Form.Item>
+                )}
               </Form.Item>
             </Col>
             <Col span={12}>

@@ -5,6 +5,7 @@ import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons'
 import { getExpenseDetail, updateExpense, getOrganizations, getProjects, getBusinessTrips } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgTreeSelect } from '../components/OrgTreeSelect'
+import { OrgContactSelector } from '../components/OrgContactSelector'
 
 function ExpenseDetail() {
   const { id } = useParams<{ id: string }>()
@@ -254,6 +255,13 @@ function ExpenseDetail() {
             <Col span={12}>
               <Form.Item name="organizationId" label="客户">
                 <OrgTreeSelect placeholder="请选择客户（可选）" />
+              </Form.Item>
+              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.organizationId !== cur.organizationId}>
+                {({ getFieldValue }) => (
+                  <Form.Item name="contactId" label="联系人">
+                    <OrgContactSelector organizationId={getFieldValue('organizationId')} placeholder="选择客户方联系人" />
+                  </Form.Item>
+                )}
               </Form.Item>
             </Col>
             <Col span={12}>

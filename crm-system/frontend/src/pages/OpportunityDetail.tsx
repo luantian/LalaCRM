@@ -5,6 +5,7 @@ import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOu
 import { getOpportunityDetail, updateOpportunity, convertOpportunity, closeOpportunityProject, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getOrganizations, getUserDropdown, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgTreeSelect } from '../components/OrgTreeSelect'
+import { OrgContactSelector } from '../components/OrgContactSelector'
 
 const { TextArea } = Input
 
@@ -621,6 +622,13 @@ function OpportunityDetail() {
           </Form.Item>
           <Form.Item name="organizationId" label="客户" rules={[{ required: true, message: '请选择客户' }]}>
             <OrgTreeSelect placeholder="请选择客户" />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.organizationId !== cur.organizationId}>
+            {({ getFieldValue }) => (
+              <Form.Item name="contactId" label="联系人">
+                <OrgContactSelector organizationId={getFieldValue('organizationId')} placeholder="选择客户方联系人" />
+              </Form.Item>
+            )}
           </Form.Item>
           <Form.Item name="application" label="应用领域">
             <Input />
