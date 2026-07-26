@@ -4,6 +4,7 @@ import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, mes
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, MoreOutlined, ThunderboltOutlined, DownloadOutlined, ImportOutlined, InboxOutlined, StopOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import { getOpportunities, createOpportunity, updateOpportunity, deleteOpportunity, getOpportunityStats, getOrganizations, convertOpportunity, exportOpportunitiesCsv, exportOpportunitiesExcel, importOpportunities } from '../services/api'
 import { OrgContactSelector } from '../components/OrgContactSelector'
+import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import dayjs from 'dayjs'
 
 function OpportunityList() {
@@ -408,21 +409,7 @@ function OpportunityList() {
             label="客户"
             rules={[{ required: true, message: '请选择客户' }]}
           >
-            <Select
-              placeholder="请选择客户"
-              showSearch
-              optionFilterProp="children"
-              filterOption={(input, option) =>
-                (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())
-              }
-              onChange={() => form.setFieldValue('contactId', null)}
-            >
-              {organizations.map(organization => (
-                <Select.Option key={organization.id} value={organization.id}>
-                  {organization.name} {organization.companyName ? `- ${organization.companyName}` : ''}
-                </Select.Option>
-              ))}
-            </Select>
+            <OrgTreeSelect placeholder="请选择客户" onChange={() => form.setFieldValue('contactId', null)} />
           </Form.Item>
           <Form.Item noStyle shouldUpdate={(prev, cur) => prev.organizationId !== cur.organizationId}>
             {({ getFieldValue }) => (

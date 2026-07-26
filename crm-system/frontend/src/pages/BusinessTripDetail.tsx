@@ -5,6 +5,7 @@ import { ArrowLeftOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons
 import { getBusinessTripDetail, updateBusinessTrip, getOrganizations, getProjects } from '../services/api'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import dayjs from 'dayjs'
+import { OrgTreeSelect } from '../components/OrgTreeSelect'
 
 const { RangePicker } = DatePicker
 
@@ -330,11 +331,7 @@ function BusinessTripDetail() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="organizationId" label="客户">
-                <Select placeholder="请选择客户（可选）" allowClear showSearch optionFilterProp="children" onChange={() => form.setFieldValue('contactId', null)}>
-                  {organizations.map(c => (
-                    <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
-                  ))}
-                </Select>
+                <OrgTreeSelect placeholder="请选择客户（可选）" onChange={() => form.setFieldValue('contactId', null)} />
               </Form.Item>
             </Col>
             <Col span={12}>

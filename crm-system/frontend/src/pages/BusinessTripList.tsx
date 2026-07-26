@@ -4,6 +4,7 @@ import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, mes
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, CheckOutlined, CloseOutlined, MoreOutlined, SendOutlined, UndoOutlined, CheckCircleOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getOrganizations, getProjects, safeJsonParse, exportBusinessTripsCsv, exportBusinessTripsExcel, importBusinessTrips } from '../services/api'
 import dayjs from 'dayjs'
+import { OrgTreeSelect } from '../components/OrgTreeSelect'
 
 const { RangePicker } = DatePicker
 
@@ -499,13 +500,7 @@ function BusinessTripList() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="organizationId" label="客户">
-                <Select placeholder="请选择客户（可选）" allowClear showSearch optionFilterProp="children">
-                  {organizations.map(organization => (
-                    <Select.Option key={organization.id} value={organization.id}>
-                      {organization.name}
-                    </Select.Option>
-                  ))}
-                </Select>
+                <OrgTreeSelect placeholder="请选择客户（可选）" />
               </Form.Item>
             </Col>
             <Col span={12}>

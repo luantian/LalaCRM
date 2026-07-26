@@ -4,6 +4,7 @@ import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, mes
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getOrganizations, exportProjectsCsv, exportProjectsExcel, importProjects } from '../services/api'
 import dayjs from 'dayjs'
+import { OrgTreeSelect } from '../components/OrgTreeSelect'
 
 function ProjectList() {
   const navigate = useNavigate()
@@ -300,19 +301,12 @@ function ProjectList() {
             </Select>
           </Col>
           <Col xs={12} sm={4}>
-            <Select
+            <OrgTreeSelect
               placeholder="客户"
               value={filterOrgId || undefined}
-              onChange={(v) => setFilterOrgId(v || '')}
-              allowClear
-              showSearch
-              optionFilterProp="children"
+              onChange={(v) => setFilterOrgId(v ? String(v) : '')}
               style={{ width: '100%' }}
-            >
-              {organizations.map(org => (
-                <Select.Option key={org.id} value={String(org.id)}>{org.name}</Select.Option>
-              ))}
-            </Select>
+            />
           </Col>
           <Col xs={12} sm={4}>
             <Select
@@ -404,20 +398,7 @@ function ProjectList() {
             label="客户"
             rules={[{ required: true, message: '请选择客户' }]}
           >
-            <Select
-              placeholder="请选择客户"
-              showSearch
-              optionFilterProp="children"
-              filterOption={(input, option) =>
-                (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())
-              }
-            >
-              {organizations.map(organization => (
-                <Select.Option key={organization.id} value={organization.id}>
-                  {organization.name} {organization.companyName ? `- ${organization.companyName}` : ''}
-                </Select.Option>
-              ))}
-            </Select>
+            <OrgTreeSelect placeholder="请选择客户" />
           </Form.Item>
           <Form.Item name="status" label="状态" initialValue="IN_PROGRESS">
             <Select>

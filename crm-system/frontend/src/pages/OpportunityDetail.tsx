@@ -4,6 +4,7 @@ import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, F
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, FileTextOutlined, ScheduleOutlined, CheckOutlined, EyeOutlined, CloseOutlined } from '@ant-design/icons'
 import { getOpportunityDetail, updateOpportunity, convertOpportunity, closeOpportunityProject, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getOrganizations, getUserDropdown, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
+import { OrgTreeSelect } from '../components/OrgTreeSelect'
 
 const { TextArea } = Input
 
@@ -619,11 +620,7 @@ function OpportunityDetail() {
             <Input />
           </Form.Item>
           <Form.Item name="organizationId" label="客户" rules={[{ required: true, message: '请选择客户' }]}>
-            <Select showSearch optionFilterProp="children">
-              {organizations.map((c: any) => (
-                <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
-              ))}
-            </Select>
+            <OrgTreeSelect placeholder="请选择客户" />
           </Form.Item>
           <Form.Item name="application" label="应用领域">
             <Input />

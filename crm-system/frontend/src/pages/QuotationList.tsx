@@ -3,6 +3,7 @@ import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicke
 import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
+import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getOrganizations, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations } from '../services/api'
 
 const { Option } = Select
@@ -239,9 +240,7 @@ const QuotationList: React.FC = () => {
           </Row>
           <Row gutter={16}>
             <Col span={12}><Form.Item name="organizationId" label="客户" rules={[{ required: true }]}>
-              <Select showSearch optionFilterProp="children">
-                {organizations.map(c => <Option key={c.id} value={c.id}>{c.name}</Option>)}
-              </Select>
+              <OrgTreeSelect placeholder="请选择客户" />
             </Form.Item></Col>
             <Col span={12}><Form.Item name="validUntil" label="报价有效期"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
           </Row>

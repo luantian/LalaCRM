@@ -4,6 +4,7 @@ import { Card, Descriptions, Tag, Button, Space, Row, Col, Modal, Form, Input, S
 import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons'
 import { getExpenseDetail, updateExpense, getOrganizations, getProjects, getBusinessTrips } from '../services/api'
 import dayjs from 'dayjs'
+import { OrgTreeSelect } from '../components/OrgTreeSelect'
 
 function ExpenseDetail() {
   const { id } = useParams<{ id: string }>()
@@ -252,13 +253,7 @@ function ExpenseDetail() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="organizationId" label="客户">
-                <Select placeholder="请选择客户（可选）" allowClear showSearch optionFilterProp="children">
-                  {organizations.map(organization => (
-                    <Select.Option key={organization.id} value={organization.id}>
-                      {organization.name}
-                    </Select.Option>
-                  ))}
-                </Select>
+                <OrgTreeSelect placeholder="请选择客户（可选）" />
               </Form.Item>
             </Col>
             <Col span={12}>

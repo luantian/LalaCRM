@@ -5,6 +5,7 @@ import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOu
 import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizations, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, uploadPaymentFiles, deletePaymentFile, downloadPaymentFileUrl, previewPaymentFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
+import { OrgTreeSelect } from '../components/OrgTreeSelect'
 
 const { TextArea } = Input
 const { RangePicker } = DatePicker
@@ -1438,7 +1439,7 @@ function ProjectDetail() {
         <Form form={projectForm} layout="vertical">
           <Form.Item name="name" label="项目名称" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="organizationId" label="客户" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="children">{organizations.map(c => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}</Select>
+            <OrgTreeSelect placeholder="请选择客户" />
           </Form.Item>
           <Form.Item name="status" label="状态"><Select><Select.Option value="IN_PROGRESS">进行中</Select.Option><Select.Option value="COMPLETED">已完成</Select.Option><Select.Option value="CANCELLED">已取消</Select.Option></Select></Form.Item>
           <Form.Item name="budget" label="预算"><InputNumber style={{ width: '100%' }} precision={2} /></Form.Item>

@@ -4,6 +4,7 @@ import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, mes
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined, EyeOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getOrganizations, getProjects, getBusinessTrips, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses } from '../services/api'
 import dayjs from 'dayjs'
+import { OrgTreeSelect } from '../components/OrgTreeSelect'
 
 function ExpenseList() {
   const navigate = useNavigate()
@@ -685,13 +686,7 @@ function ExpenseList() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="organizationId" label="客户">
-                <Select placeholder="请选择客户（可选）" allowClear showSearch optionFilterProp="children">
-                  {organizations.map(organization => (
-                    <Select.Option key={organization.id} value={organization.id}>
-                      {organization.name}
-                    </Select.Option>
-                  ))}
-                </Select>
+                <OrgTreeSelect placeholder="请选择客户（可选）" />
               </Form.Item>
             </Col>
             <Col span={12}>
