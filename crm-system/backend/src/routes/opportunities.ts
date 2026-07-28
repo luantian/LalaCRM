@@ -8,6 +8,7 @@ import { sortValidation, clampPagination, dateValidation } from '../middleware/v
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { autoWriteOpportunityRecord } from '../utils/autoDailyReport'
+import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
 import path from 'path'
 
@@ -15,7 +16,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有商机（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('view_opportunities'), applyDataScope('ownerId'), sortValidation(['name', 'budget', 'status', 'winRate', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('view_opportunities'), sortValidation(['name', 'budget', 'status', 'winRate', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -31,10 +32,15 @@ router.get('/', authenticateToken, checkPermission('view_opportunities'), applyD
     const skip = (parseInt(page as string) - 1) * parseInt(pageSize as string)
     const take = parseInt(pageSize as string)
 
-    // 获取数据权限条件
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null }
 
-    const where: any = { deletedAt: null, ...dataScopeWhere }
+    // 非管理员：只能看到自己是创建者或团队成员的商机
+    if (req.user?.role !== 'ADMIN') {
+      where.OR = [
+        { ownerId: req.user!.id },
+        { teamMembers: { some: { userId: req.user!.id } } }
+      ]
+    }
 
     if (converted === 'false') {
       where.project = null
@@ -88,23 +94,27 @@ router.get('/', authenticateToken, checkPermission('view_opportunities'), applyD
 })
 
 // 商机统计（放在 /:id 之前，避免被 /:id 拦截）
-router.get('/stats/overview', authenticateToken, checkPermission('view_opportunities'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('view_opportunities'), async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    // 只统计 owner 和团队成员的商机
+    const where: any = { deletedAt: null }
+    if (req.user?.role !== 'ADMIN') {
+      where.OR = [
+        { ownerId: req.user!.id },
+        { teamMembers: { some: { userId: req.user!.id } } }
+      ]
+    }
     // 只统计未转化的商机（project 为 null）
-    const [total, open, qualified, proposal, negotiation, won, lost, closed] = await Promise.all([
-      prisma.opportunity.count({ where: { deletedAt: null, project: null, ...dataScopeWhere } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'OPEN', project: null, ...dataScopeWhere } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'QUALIFIED', project: null, ...dataScopeWhere } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'PROPOSAL', project: null, ...dataScopeWhere } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'NEGOTIATION', project: null, ...dataScopeWhere } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'WON', project: null, ...dataScopeWhere } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'LOST', project: null, ...dataScopeWhere } }),
-      prisma.opportunity.count({ where: { deletedAt: null, status: 'CLOSED', project: null, ...dataScopeWhere } })
+    const [total, open, following, won, lost] = await Promise.all([
+      prisma.opportunity.count({ where: { ...where, project: null } }),
+      prisma.opportunity.count({ where: { ...where, status: 'OPEN', project: null } }),
+      prisma.opportunity.count({ where: { ...where, status: 'FOLLOWING', project: null } }),
+      prisma.opportunity.count({ where: { ...where, status: 'WON', project: null } }),
+      prisma.opportunity.count({ where: { ...where, status: 'LOST', project: null } })
     ])
 
     const opportunities = await prisma.opportunity.findMany({
-      where: { deletedAt: null, ...dataScopeWhere },
+      where,
       select: { budget: true }
     })
 
@@ -113,12 +123,9 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_opportuni
     res.json({
       total,
       open,
-      qualified,
-      proposal,
-      negotiation,
+      following,
       won,
       lost,
-      closed,
       totalBudget,
       winRate: total > 0 ? ((won / total) * 100).toFixed(1) : '0'
     })
@@ -132,8 +139,18 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_opportuni
 router.get('/:id', authenticateToken, checkPermission('view_opportunities'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
+
+    // 商机只允许 owner 和团队成员查看
+    const where: any = { id: parseInt(id), deletedAt: null }
+    if (req.user?.role !== 'ADMIN') {
+      where.OR = [
+        { ownerId: req.user!.id },
+        { teamMembers: { some: { userId: req.user!.id } } }
+      ]
+    }
+
     const opportunity = await prisma.opportunity.findFirst({
-      where: { id: parseInt(id), deletedAt: null },
+      where,
       include: {
         organization: true,
         contact: { select: { id: true, name: true, title: true, phone: true, email: true } },
@@ -154,11 +171,7 @@ router.get('/:id', authenticateToken, checkPermission('view_opportunities'), asy
       return res.status(404).json({ error: '商机不存在' })
     }
 
-    // 数据范围检查：只能查看自己的商机或自己是团队成员的商机（管理员除外）
-    const isTeamMember = opportunity.teamMembers.some(tm => tm.userId === req.user!.id)
-    if (opportunity.ownerId !== req.user!.id && !isTeamMember && req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ error: '无权访问此商机' })
-    }
+    res.json(opportunity)
 
     res.json(opportunity)
   } catch (error) {
@@ -251,13 +264,10 @@ router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), log
     // 状态流转校验（如果提供了status且与当前不同）
     if (status && status !== existing.status) {
       const validTransitions: Record<string, string[]> = {
-        'OPEN': ['QUALIFIED', 'LOST', 'CLOSED'],
-        'QUALIFIED': ['PROPOSAL', 'LOST', 'CLOSED'],
-        'PROPOSAL': ['NEGOTIATION', 'LOST', 'CLOSED'],
-        'NEGOTIATION': ['WON', 'LOST', 'CLOSED'],
-        'WON': ['CLOSED'],
-        'LOST': [],
-        'CLOSED': []
+        'OPEN': ['FOLLOWING', 'WON', 'LOST'],
+        'FOLLOWING': ['WON', 'LOST', 'OPEN'],
+        'WON': [],
+        'LOST': ['OPEN']
       }
       const allowedNext = validTransitions[existing.status] || []
       if (!allowedNext.includes(status)) {
@@ -478,6 +488,8 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('edit_opp
       where: { id: fileId },
       data: { deletedAt: new Date() }
     })
+
+    cleanupPreviewCache(fileId)
 
     res.json({ message: '文件删除成功' })
   } catch (error) {
@@ -829,28 +841,12 @@ router.get('/records/files/:fileId/preview', authenticateToken, async (req: Auth
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    const filePath = path.join(__dirname, '../uploads', file.filePath)
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
     }
 
-    const ext = file.fileName.split('.').pop()?.toLowerCase()
-    const mimeTypes: Record<string, string> = {
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      png: 'image/png',
-      gif: 'image/gif',
-      bmp: 'image/bmp',
-      webp: 'image/webp',
-      pdf: 'application/pdf'
-    }
-
-    const mimeType = mimeTypes[ext || ''] || 'application/octet-stream'
-    res.setHeader('Content-Type', mimeType)
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.fileName)}"`)
-
-    const stream = fs.createReadStream(filePath)
-    stream.pipe(res)
+    await servePreview(res, fileId, file.fileName, filePath)
   } catch (error) {
     logger.error('Preview record file error:', error)
     res.status(500).json({ error: '预览附件失败' })
@@ -872,6 +868,7 @@ router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, logOper
       where: { id: fileId },
       data: { deletedAt: new Date() }
     })
+    cleanupPreviewCache(fileId)
     res.json({ message: '删除成功' })
   } catch (error) {
     logger.error('Delete record file error:', error)

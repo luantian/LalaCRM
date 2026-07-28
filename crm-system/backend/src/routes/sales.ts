@@ -170,11 +170,12 @@ router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), logOpera
 })
 
 // 获取单个销售记录
-router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const sale = await prisma.sale.findFirst({
-      where: { id: parseInt(id), deletedAt: null },
+      where: { id: parseInt(id), deletedAt: null, ...dataScopeWhere },
       include: {
         organization: true,
         contact: { select: { id: true, name: true, title: true, phone: true, email: true } },

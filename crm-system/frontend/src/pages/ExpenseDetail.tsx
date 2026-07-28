@@ -143,7 +143,7 @@ function ExpenseDetail() {
               <span style={{ color: '#6b7280', fontSize: 13 }}>费用日期: <strong style={{ color: '#2563eb' }}>{expense.expenseDate ? dayjs(expense.expenseDate).format('YYYY-MM-DD') : '-'}</strong></span>
             </div>
             <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
-              {expense.organization?.name || '暂无客户'} | {expense.project?.name || '暂无项目'}
+              {(() => { const org = expense.organization?.name || '暂无客户'; const contact = expense.contact ? `${expense.contact.name}${expense.contact.title ? ` (${expense.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()} | {expense.project?.name || '暂无项目'}
             </div>
           </Col>
           <Col flex="none">
@@ -170,7 +170,7 @@ function ExpenseDetail() {
           <Descriptions.Item label="费用日期">
             {expense.expenseDate ? dayjs(expense.expenseDate).format('YYYY-MM-DD') : '-'}
           </Descriptions.Item>
-          <Descriptions.Item label="客户">{expense.organization?.name || '-'}</Descriptions.Item>
+          <Descriptions.Item label="客户">{(() => { const org = expense.organization?.name || '-'; const contact = expense.contact ? `${expense.contact.name}${expense.contact.title ? ` (${expense.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</Descriptions.Item>
           <Descriptions.Item label="项目">{expense.project?.name || '-'}</Descriptions.Item>
           <Descriptions.Item label="关联出差" span={2}>
             {expense.trip ? (

@@ -91,6 +91,8 @@ export const uploadProjectFiles = (projectId: number, files: FileList, phase?: s
 export const getProjectFiles = (projectId: number, phase?: string) =>
   api.get(`/projects/${projectId}/files`, { params: phase ? { phase } : {} })
 export const deleteProjectFile = (projectId: number, fileId: number) => api.delete(`/projects/${projectId}/files/${fileId}`)
+export const downloadProjectFileUrl = (fileId: number) => `${api.defaults.baseURL}/projects/files/${fileId}/download`
+export const previewProjectFileUrl = (fileId: number) => `${api.defaults.baseURL}/projects/files/${fileId}/preview`
 
 // 合同（由项目详情调用）
 export const createContract = (data: any) => api.post('/contracts', data)
@@ -110,6 +112,7 @@ export const uploadOrderItemFiles = (itemId: number, files: FileList) => {
 export const getOrderItemFiles = (itemId: number) => api.get(`/contract-order-items/${itemId}/files`)
 export const deleteOrderItemFile = (itemId: number, fileId: number) => api.delete(`/contract-order-items/${itemId}/files/${fileId}`)
 export const downloadOrderItemFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-order-items/files/${fileId}/download`
+export const previewOrderItemFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-order-items/files/${fileId}/preview`
 
 // 合同付款记录
 export const getPayments = (contractId: number) => api.get('/contract-payments', { params: { contractId } })
@@ -206,6 +209,8 @@ export const uploadExpenseFiles = (expenseId: number, files: FileList) => {
 }
 export const getExpenseFiles = (expenseId: number) => api.get(`/expense-files/${expenseId}/files`)
 export const deleteExpenseFile = (expenseId: number, fileId: number) => api.delete(`/expense-files/${expenseId}/files/${fileId}`)
+export const downloadExpenseFileUrl = (fileId: number) => `${api.defaults.baseURL}/expense-files/files/${fileId}/download`
+export const previewExpenseFileUrl = (fileId: number) => `${api.defaults.baseURL}/expense-files/files/${fileId}/preview`
 
 // ==================== 售前管理 ====================
 export const getOpportunities = (params?: any) => api.get('/opportunities', { params })
@@ -262,18 +267,21 @@ export const deleteProcurementPayment = (id: number) => api.delete(`/procurement
 export const uploadProcurementFiles = (procId: number, files: FormData) => api.post(`/procurements/${procId}/files`, files, { headers: { 'Content-Type': 'multipart/form-data' } })
 export const getProcurementFiles = (procId: number) => api.get(`/procurements/${procId}/files`)
 export const downloadProcurementFile = (fileId: number) => api.get(`/procurements/files/${fileId}/download`, { responseType: 'blob' })
+export const previewProcurementFileUrl = (fileId: number) => `${api.defaults.baseURL}/procurements/files/${fileId}/preview`
 export const deleteProcurementFile = (fileId: number) => api.delete(`/procurements/files/${fileId}`)
 
 // 采购明细附件
 export const uploadProcurementItemFiles = (itemId: number, files: FormData) => api.post(`/procurements/items/${itemId}/files`, files, { headers: { 'Content-Type': 'multipart/form-data' } })
 export const getProcurementItemFiles = (itemId: number) => api.get(`/procurements/items/${itemId}/files`)
 export const downloadProcurementItemFile = (fileId: number) => api.get(`/procurements/item-files/${fileId}/download`, { responseType: 'blob' })
+export const previewProcurementItemFileUrl = (fileId: number) => `${api.defaults.baseURL}/procurements/item-files/${fileId}/preview`
 export const deleteProcurementItemFile = (fileId: number) => api.delete(`/procurements/item-files/${fileId}`)
 
 // 采购付款记录附件
 export const uploadProcurementPaymentFiles = (paymentId: number, files: FormData) => api.post(`/procurements/payments/${paymentId}/files`, files, { headers: { 'Content-Type': 'multipart/form-data' } })
 export const getProcurementPaymentFiles = (paymentId: number) => api.get(`/procurements/payments/${paymentId}/files`)
 export const downloadProcurementPaymentFile = (fileId: number) => api.get(`/procurements/payment-files/${fileId}/download`, { responseType: 'blob' })
+export const previewProcurementPaymentFileUrl = (fileId: number) => `${api.defaults.baseURL}/procurements/payment-files/${fileId}/preview`
 export const deleteProcurementPaymentFile = (fileId: number) => api.delete(`/procurements/payment-files/${fileId}`)
 
 // ==================== 工作日报 ====================
@@ -364,6 +372,7 @@ export const uploadQuotationFiles = (id: number, files: FileList) => {
 export const getQuotationFiles = (id: number) => api.get(`/quotations/${id}/files`)
 export const deleteQuotationFile = (id: number, fileId: number) => api.delete(`/quotations/${id}/files/${fileId}`)
 export const downloadQuotationFile = (fileId: number) => `${api.defaults.baseURL}/quotations/files/${fileId}/download`
+export const previewQuotationFileUrl = (fileId: number) => `${api.defaults.baseURL}/quotations/files/${fileId}/preview`
 
 // ==================== 组织管理 ====================
 export const getOrganizations = (params?: any) => api.get('/organizations', { params })
@@ -460,5 +469,28 @@ export const importQuotations = (file: File) => importFile('/quotations/import',
 export const importBusinessTrips = (file: File) => importFile('/business-trips/import', file)
 export const importExpenses = (file: File) => importFile('/expenses/import', file)
 export const importDailyReports = (file: File) => importFile('/daily-reports/import', file)
+
+/**
+ * 判断文件是否可预览（图片/PDF/Word/Excel）
+ */
+export const isPreviewableFile = (fileName: string) => {
+  const ext = fileName.split('.').pop()?.toLowerCase() || ''
+  return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'].includes(ext)
+}
+
+/**
+ * 获取带 token 的预览 URL（用于新标签页打开）
+ */
+export const getPreviewUrl = (previewUrlFn: (fileId: number) => string, fileId: number) => {
+  const token = localStorage.getItem('token') || ''
+  return `${previewUrlFn(fileId)}?token=${encodeURIComponent(token)}`
+}
+
+/**
+ * 在新标签页中预览文件
+ */
+export const openFilePreview = (previewUrlFn: (fileId: number) => string, fileId: number) => {
+  window.open(getPreviewUrl(previewUrlFn, fileId), '_blank')
+}
 
 export default api

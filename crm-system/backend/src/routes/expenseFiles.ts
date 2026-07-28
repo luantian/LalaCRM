@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth'
 import { upload } from '../middleware/upload'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
+import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
 import path from 'path'
 
@@ -107,6 +108,8 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('报销附�
 
     await prisma.expenseFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
 
+    cleanupPreviewCache(fileId)
+
     res.json({ message: '文件删除成功' })
   } catch (error) {
     logger.error('Delete expense file error:', error)
@@ -141,6 +144,35 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
   } catch (error) {
     logger.error('Download expense file error:', error)
     res.status(500).json({ error: '下载文件失败' })
+  }
+})
+
+// 预览报销附件（图片/PDF/Word/Excel）
+router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const fileId = parseInt(req.params.fileId as string)
+    const file = await prisma.expenseFile.findFirst({
+      where: { id: fileId, deletedAt: null },
+      include: { expense: { select: { ownerId: true } } }
+    })
+    if (!file) {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 只能预览自己报销的附件（管理员除外）
+    if (file.expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权预览此文件' })
+    }
+
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: '文件不存在于磁盘' })
+    }
+
+    await servePreview(res, fileId, file.fileName, filePath)
+  } catch (error) {
+    logger.error('Preview expense file error:', error)
+    res.status(500).json({ error: '预览附件失败' })
   }
 })
 

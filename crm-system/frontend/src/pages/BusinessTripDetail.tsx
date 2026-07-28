@@ -147,7 +147,7 @@ function BusinessTripDetail() {
               <span style={{ color: '#6b7280', fontSize: 13 }}>天数: <strong style={{ color: '#2563eb' }}>{trip.days || 0}天</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>日期: <strong style={{ color: '#7c3aed' }}>{trip.startDate ? dayjs(trip.startDate).format('MM-DD') : '-'} ~ {trip.endDate ? dayjs(trip.endDate).format('MM-DD') : '-'}</strong></span>
             </div>
-            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{trip.destination}{trip.organization?.name ? ` · ${trip.organization.name}` : ''}</div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{trip.destination}{(() => { const org = trip.organization?.name; const contact = trip.contact ? `${trip.contact.name}${trip.contact.title ? ` (${trip.contact.title})` : ''}` : ''; return org ? ` · ${contact ? `${org} - ${contact}` : org}` : '' })()}</div>
           </Col>
           <Col flex="none">
             <Space>
@@ -161,7 +161,7 @@ function BusinessTripDetail() {
         <Descriptions column={2}>
           <Descriptions.Item label="出差标题">{trip.title}</Descriptions.Item>
           <Descriptions.Item label="目的地">{trip.destination}</Descriptions.Item>
-          <Descriptions.Item label="客户">{trip.organization?.name || '-'}</Descriptions.Item>
+          <Descriptions.Item label="客户">{(() => { const org = trip.organization?.name || '-'; const contact = trip.contact ? `${trip.contact.name}${trip.contact.title ? ` (${trip.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</Descriptions.Item>
           <Descriptions.Item label="项目">{trip.project?.name || '-'}</Descriptions.Item>
           <Descriptions.Item label="出差目的" span={2}>{trip.purpose || '-'}</Descriptions.Item>
           <Descriptions.Item label="开始日期">

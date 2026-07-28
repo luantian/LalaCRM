@@ -5,6 +5,7 @@ import { logOperation } from '../middleware/logOperation';
 import { upload } from '../middleware/upload';
 import logger from '../utils/logger';
 import { autoWriteProjectNote } from '../utils/autoDailyReport';
+import { servePreview, cleanupPreviewCache } from '../utils/filePreview';
 import fs from 'fs';
 import path from 'path';
 
@@ -389,33 +390,16 @@ router.post('/notes/:id/files', authenticateToken, upload.array('files', 10), lo
   }
 });
 
-// 预览备注附件（图片和PDF）- 必须在下载路由之前
+// 预览备注附件（图片/PDF/Word/Excel）- 必须在下载路由之前
 router.get('/notes/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const fileId = Number(req.params.fileId);
     const file = await prisma.projectNoteFile.findFirst({ where: { id: fileId, deletedAt: null } });
     if (!file) return res.status(404).json({ error: '文件不存在' });
-    const filePath = path.join(__dirname, '../uploads', file.filePath);
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath));
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: '文件不存在于磁盘' });
 
-    // 设置正确的 Content-Type
-    const ext = file.fileName.split('.').pop()?.toLowerCase();
-    const mimeTypes: Record<string, string> = {
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      png: 'image/png',
-      gif: 'image/gif',
-      bmp: 'image/bmp',
-      webp: 'image/webp',
-      pdf: 'application/pdf'
-    };
-
-    const mimeType = mimeTypes[ext || ''] || 'application/octet-stream';
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.fileName)}"`);
-
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
+    await servePreview(res, fileId, file.fileName, filePath);
   } catch (error) {
     logger.error('Preview note file error:', error);
     res.status(500).json({ error: '预览附件失败' });
@@ -445,6 +429,7 @@ router.delete('/notes/:noteId/files/:fileId', authenticateToken, logOperation('�
     if (!file) return res.status(404).json({ error: '文件不存在' });
     if (fs.existsSync(file.filePath)) fs.unlinkSync(file.filePath);
     await prisma.projectNoteFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } });
+    cleanupPreviewCache(fileId);
     res.json({ message: '删除成功' });
   } catch (error) {
     logger.error('Delete note file error:', error);

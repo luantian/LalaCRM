@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Row, Col, Modal, Space, Popconfirm } from 'antd'
-import { ArrowLeftOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { getQuotationDetail, uploadQuotationFiles, deleteQuotationFile } from '../services/api'
+import { getQuotationDetail, uploadQuotationFiles, deleteQuotationFile, previewQuotationFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
 
 const statusConfig: Record<string, { text: string; color: string }> = {
   DRAFT: { text: '草稿', color: 'default' }, SUBMITTED: { text: '已提交', color: 'processing' },
@@ -73,8 +73,11 @@ const QuotationDetail: React.FC = () => {
     { title: '文件名', dataIndex: 'fileName', key: 'fileName' },
     { title: '大小', dataIndex: 'fileSize', key: 'fileSize', width: 100, render: (s: number) => `${(s / 1024).toFixed(1)} KB` },
     { title: '上传时间', dataIndex: 'uploadedAt', key: 'uploadedAt', width: 160, render: (d: string) => dayjs(d).format('YYYY-MM-DD HH:mm') },
-    { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
+    { title: '操作', key: 'action', width: 280, render: (_: any, r: any) => (
       <Space size={0}>
+        {isPreviewableFile(r.fileName) && (
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewQuotationFileUrl, r.id)}>查看</Button>
+        )}
         <Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => handleDownload(r)}>下载</Button>
         <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteFile(r.id)}>
           <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
@@ -99,7 +102,7 @@ const QuotationDetail: React.FC = () => {
               <span style={{ color: '#6b7280', fontSize: 13 }}>有效期: <strong style={{ color: '#2563eb' }}>{quotation.validUntil ? dayjs(quotation.validUntil).format('YYYY-MM-DD') : '未设置'}</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>明细: <strong style={{ color: '#7c3aed' }}>{quotation.items?.length || 0}项</strong></span>
             </div>
-            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>商机: {quotation.opportunity?.name || '-'} · 客户: {quotation.organization?.name || '-'}</div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>商机: {quotation.opportunity?.name || '-'} · 客户: {(() => { const org = quotation.organization?.name || '-'; const contact = quotation.contact ? `${quotation.contact.name}${quotation.contact.title ? ` (${quotation.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</div>
           </Col>
           <Col flex="none" />
         </Row>
@@ -112,7 +115,7 @@ const QuotationDetail: React.FC = () => {
               <Descriptions.Item label="报价单名称">{quotation.name}</Descriptions.Item>
               <Descriptions.Item label="版本号">v{quotation.version}</Descriptions.Item>
               <Descriptions.Item label="关联商机">{quotation.opportunity?.name || '-'}</Descriptions.Item>
-              <Descriptions.Item label="客户">{quotation.organization?.name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="客户">{(() => { const org = quotation.organization?.name || '-'; const contact = quotation.contact ? `${quotation.contact.name}${quotation.contact.title ? ` (${quotation.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</Descriptions.Item>
               <Descriptions.Item label="创建人">{quotation.owner?.name}</Descriptions.Item>
               <Descriptions.Item label="创建时间">{dayjs(quotation.createdAt).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>
               <Descriptions.Item label="备注" span={2}>{quotation.notes || '-'}</Descriptions.Item>

@@ -167,7 +167,11 @@ const QuotationList: React.FC = () => {
   const columns = [
     { title: '报价单', dataIndex: 'name', key: 'name', render: (text: string, r: any) => <a onClick={() => navigate(`/quotations/${r.id}`)}>{text} <Tag>v{r.version}</Tag></a> },
     { title: '关联商机', key: 'opportunity', render: (_: any, r: any) => r.opportunity?.name || '-' },
-    { title: '客户', key: 'organization', render: (_: any, r: any) => r.organization?.name || '-' },
+    { title: '客户', key: 'organization', render: (_: any, r: any) => {
+      const org = r.organization?.name || '-'
+      const contact = r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : ''
+      return contact ? `${org} - ${contact}` : org
+    }},
     { title: '报价总额', dataIndex: 'totalAmount', key: 'totalAmount', render: (v: number) => <strong>¥{Number(v).toLocaleString()}</strong> },
     { title: '有效期', dataIndex: 'validUntil', key: 'validUntil', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
     { title: '状态', dataIndex: 'status', key: 'status', width: 90,

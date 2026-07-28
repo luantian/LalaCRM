@@ -8,6 +8,7 @@ import { upload } from '../middleware/upload'
 import path from 'path'
 import fs from 'fs'
 import { autoWriteTaskCompletion, autoWriteTaskRecord } from '../utils/autoDailyReport'
+import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -227,6 +228,36 @@ router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), as
         project: { select: { id: true, name: true } }
       }
     })
+
+    // 状态变化时自动创建记录
+    if (status && status !== existingTask.status) {
+      const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { name: true } })
+      const userName = currentUser?.name || req.user!.username
+      let recordType: string | null = null
+      let recordContent = ''
+
+      if (status === 'SUBMITTED') {
+        recordType = 'SUBMIT'
+        recordContent = `${userName} 提交了任务${completionNote ? `：${completionNote}` : ''}`
+      } else if (status === 'IN_PROGRESS' && existingTask.status === 'SUBMITTED') {
+        recordType = 'REJECT'
+        recordContent = `${userName} 驳回了任务${rejectionReason ? `：${rejectionReason}` : ''}`
+      } else if (status === 'COMPLETED') {
+        recordType = 'COMPLETE'
+        recordContent = `${userName} 完成了任务${completionNote ? `：${completionNote}` : ''}`
+      }
+
+      if (recordType) {
+        await prisma.taskRecord.create({
+          data: {
+            taskId: id,
+            userId: req.user!.id,
+            type: recordType as any,
+            content: recordContent
+          }
+        })
+      }
+    }
 
     // 如果指派人变了，通知新增的被指派人
     if (assigneeIds && Array.isArray(assigneeIds)) {
@@ -590,6 +621,8 @@ router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, logOper
       data: { deletedAt: new Date() }
     })
 
+    cleanupPreviewCache(fileId)
+
     res.json({ message: '删除成功' })
   } catch (error) {
     logger.error('Delete task record file error:', error)
@@ -686,6 +719,8 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('任务管�
       data: { deletedAt: new Date() }
     })
 
+    cleanupPreviewCache(fileId)
+
     res.json({ message: '删除成功' })
   } catch (error) {
     logger.error('Delete task file error:', error)
@@ -731,15 +766,12 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
       return res.status(404).json({ error: '文件不存在' })
     }
 
-    const filePath = path.join(__dirname, '../uploads', file.filePath)
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于服务器' })
     }
 
-    res.setHeader('Content-Type', file.fileType)
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.fileName)}"`)
-    const fileStream = fs.createReadStream(filePath)
-    fileStream.pipe(res)
+    await servePreview(res, fileId, file.fileName, filePath)
   } catch (error) {
     logger.error('Preview task file error:', error)
     res.status(500).json({ error: '预览文件失败' })
@@ -784,15 +816,12 @@ router.get('/records/files/:fileId/preview', authenticateToken, async (req: Auth
       return res.status(404).json({ error: '文件不存在' })
     }
 
-    const filePath = path.join(__dirname, '../uploads', file.filePath)
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于服务器' })
     }
 
-    res.setHeader('Content-Type', file.fileType)
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.fileName)}"`)
-    const fileStream = fs.createReadStream(filePath)
-    fileStream.pipe(res)
+    await servePreview(res, fileId, file.fileName, filePath)
   } catch (error) {
     logger.error('Preview task record file error:', error)
     res.status(500).json({ error: '预览文件失败' })

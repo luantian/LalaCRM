@@ -5,6 +5,7 @@ import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
 import { upload } from '../middleware/upload'
 import logger from '../utils/logger'
+import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import path from 'path'
 import fs from 'fs'
 
@@ -391,11 +392,32 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
   }
 })
 
+// 预览采购附件（图片/PDF/Word/Excel）
+router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const fileId = parseInt(req.params.fileId as string)
+    const file = await prisma.procurementFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    if (!file) {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: '文件不存在于磁盘' })
+    }
+
+    await servePreview(res, fileId, file.fileName, filePath)
+  } catch (error) {
+    logger.error('Preview procurement file error:', error)
+    res.status(500).json({ error: '预览附件失败' })
+  }
+})
+
 // 删除采购附件
 router.delete('/files/:fileId', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     await prisma.procurementFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
+    cleanupPreviewCache(fileId)
     res.json({ message: '文件删除成功' })
   } catch (error) {
     logger.error('Delete procurement file error:', error)
@@ -482,11 +504,32 @@ router.get('/item-files/:fileId/download', authenticateToken, async (req: AuthRe
   }
 })
 
+// 预览采购明细附件（图片/PDF/Word/Excel）
+router.get('/item-files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const fileId = parseInt(req.params.fileId as string)
+    const file = await prisma.procurementItemFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    if (!file) {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: '文件不存在于磁盘' })
+    }
+
+    await servePreview(res, fileId, file.fileName, filePath)
+  } catch (error) {
+    logger.error('Preview procurement item file error:', error)
+    res.status(500).json({ error: '预览附件失败' })
+  }
+})
+
 // 删除采购明细附件
 router.delete('/item-files/:fileId', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'DELETE_ITEM_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     await prisma.procurementItemFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
+    cleanupPreviewCache(fileId)
     res.json({ message: '文件删除成功' })
   } catch (error) {
     logger.error('Delete procurement item file error:', error)
@@ -573,11 +616,32 @@ router.get('/payment-files/:fileId/download', authenticateToken, async (req: Aut
   }
 })
 
+// 预览采购付款记录附件（图片/PDF/Word/Excel）
+router.get('/payment-files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const fileId = parseInt(req.params.fileId as string)
+    const file = await prisma.procurementPaymentFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    if (!file) {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: '文件不存在于磁盘' })
+    }
+
+    await servePreview(res, fileId, file.fileName, filePath)
+  } catch (error) {
+    logger.error('Preview procurement payment file error:', error)
+    res.status(500).json({ error: '预览附件失败' })
+  }
+})
+
 // 删除采购付款记录附件
 router.delete('/payment-files/:fileId', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'DELETE_PAYMENT_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     await prisma.procurementPaymentFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
+    cleanupPreviewCache(fileId)
     res.json({ message: '文件删除成功' })
   } catch (error) {
     logger.error('Delete procurement payment file error:', error)

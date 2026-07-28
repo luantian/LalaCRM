@@ -218,12 +218,9 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
       ],
       opportunityFunnel: {
         open: funnelMap['OPEN'] || 0,
-        qualified: funnelMap['QUALIFIED'] || 0,
-        proposal: funnelMap['PROPOSAL'] || 0,
-        negotiation: funnelMap['NEGOTIATION'] || 0,
+        following: funnelMap['FOLLOWING'] || 0,
         won: funnelMap['WON'] || 0,
         lost: funnelMap['LOST'] || 0,
-        closed: funnelMap['CLOSED'] || 0,
         totalBudget
       },
       projectOverview: {

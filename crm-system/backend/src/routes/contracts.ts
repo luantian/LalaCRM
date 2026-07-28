@@ -9,6 +9,7 @@ import path from 'path'
 import { sortValidation, clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -146,12 +147,33 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
   }
 })
 
+// 预览合同附件（图片/PDF/Word/Excel）
+router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const fileId = parseInt(req.params.fileId as string)
+    const file = await prisma.contractFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    if (!file) {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: '文件不存在于磁盘' })
+    }
+
+    await servePreview(res, fileId, file.fileName, filePath)
+  } catch (error) {
+    logger.error('Preview contract file error:', error)
+    res.status(500).json({ error: '预览附件失败' })
+  }
+})
+
 // 获取合同详情
-router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const contract = await prisma.contract.findFirst({
-      where: { id: parseInt(id), deletedAt: null },
+      where: { id: parseInt(id), deletedAt: null, ...dataScopeWhere },
       include: {
         organization: true,
         project: true,
@@ -162,11 +184,6 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 
     if (!contract) {
       return res.status(404).json({ error: '合同不存在' })
-    }
-
-    // 数据范围检查：只能查看自己的合同（管理员除外）
-    if (contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ error: '无权访问此合同' })
     }
 
     res.json(contract)
@@ -474,6 +491,8 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('合同管�
       where: { id: fileId },
       data: { deletedAt: new Date() }
     })
+
+    cleanupPreviewCache(fileId)
 
     res.json({ message: '文件删除成功' })
   } catch (error) {

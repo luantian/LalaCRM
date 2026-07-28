@@ -7,6 +7,7 @@ import { applyDataScope } from '../middleware/dataScope'
 import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
 import path from 'path'
 
@@ -14,7 +15,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有项目（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('view_projects'), applyDataScope('ownerId'), sortValidation(['name', 'status', 'budget', 'startDate', 'endDate', 'createdAt', 'updatedAt', 'progress']), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('view_projects'), sortValidation(['name', 'status', 'budget', 'startDate', 'endDate', 'createdAt', 'updatedAt', 'progress']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -31,10 +32,16 @@ router.get('/', authenticateToken, checkPermission('view_projects'), applyDataSc
     const skip = (parseInt(page as string) - 1) * parseInt(pageSize as string)
     const take = parseInt(pageSize as string)
 
-    // 获取数据权限条件
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    // 获取数据权限条件 - 项目只允许 owner 和团队成员查看，不受部门数据权限影响
+    const where: any = { deletedAt: null }
 
-    const where: any = { deletedAt: null, ...dataScopeWhere }
+    // 非管理员：只能看到自己是创建者或团队成员的项目
+    if (req.user?.role !== 'ADMIN') {
+      where.OR = [
+        { ownerId: req.user!.id },
+        { teamMembers: { some: { userId: req.user!.id } } }
+      ]
+    }
 
     if (isArchived !== '') {
       where.isArchived = isArchived === 'true'
@@ -130,18 +137,25 @@ router.get('/', authenticateToken, checkPermission('view_projects'), applyDataSc
 })
 
 // 项目统计（放在 /:id 之前，避免被 /:id 拦截）
-router.get('/stats/overview', authenticateToken, checkPermission('view_projects'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('view_projects'), async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    // 只统计 owner 和团队成员的项目
+    const where: any = { deletedAt: null }
+    if (req.user?.role !== 'ADMIN') {
+      where.OR = [
+        { ownerId: req.user!.id },
+        { teamMembers: { some: { userId: req.user!.id } } }
+      ]
+    }
     const [total, inProgress, completed, cancelled] = await Promise.all([
-      prisma.project.count({ where: { deletedAt: null, ...dataScopeWhere } }),
-      prisma.project.count({ where: { deletedAt: null, status: 'IN_PROGRESS', ...dataScopeWhere } }),
-      prisma.project.count({ where: { deletedAt: null, status: 'COMPLETED', ...dataScopeWhere } }),
-      prisma.project.count({ where: { deletedAt: null, status: 'CANCELLED', ...dataScopeWhere } })
+      prisma.project.count({ where }),
+      prisma.project.count({ where: { ...where, status: 'IN_PROGRESS' } }),
+      prisma.project.count({ where: { ...where, status: 'COMPLETED' } }),
+      prisma.project.count({ where: { ...where, status: 'CANCELLED' } })
     ])
 
     const projects = await prisma.project.findMany({
-      where: { deletedAt: null, ...dataScopeWhere },
+      where,
       select: { budget: true }
     })
 
@@ -165,8 +179,18 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_projects'
 router.get('/:id', authenticateToken, checkPermission('view_projects'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
+
+    // 项目只允许 owner 和团队成员查看，不受部门数据权限影响
+    const where: any = { id: parseInt(id), deletedAt: null }
+    if (req.user?.role !== 'ADMIN') {
+      where.OR = [
+        { ownerId: req.user!.id },
+        { teamMembers: { some: { userId: req.user!.id } } }
+      ]
+    }
+
     const project = await prisma.project.findFirst({
-      where: { id: parseInt(id), deletedAt: null },
+      where,
       include: {
         organization: true,
         contact: { select: { id: true, name: true, title: true, phone: true, email: true } },
@@ -218,12 +242,6 @@ router.get('/:id', authenticateToken, checkPermission('view_projects'), async (r
 
     if (!project) {
       return res.status(404).json({ error: '项目不存在' })
-    }
-
-    // 数据范围检查：只能查看自己的项目或自己是团队成员的项目（管理员除外）
-    const isTeamMember = project.teamMembers.some(tm => tm.userId === req.user!.id)
-    if (project.ownerId !== req.user!.id && !isTeamMember && req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ error: '无权访问此项目' })
     }
 
     res.json(project)
@@ -394,7 +412,7 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('view_p
   }
 })
 
-// 预览项目文件（图片和PDF）
+// 预览项目文件（图片/PDF/Word/Excel）
 router.get('/files/:fileId/preview', authenticateToken, checkPermission('view_projects'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
@@ -407,30 +425,13 @@ router.get('/files/:fileId/preview', authenticateToken, checkPermission('view_pr
       return res.status(404).json({ error: '文件不存在' })
     }
 
-    const filePath = path.join(__dirname, '../uploads', file.filePath)
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在' })
     }
 
-    // 设置正确的 Content-Type
-    const ext = file.fileName.split('.').pop()?.toLowerCase()
-    const mimeTypes: Record<string, string> = {
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      png: 'image/png',
-      gif: 'image/gif',
-      bmp: 'image/bmp',
-      webp: 'image/webp',
-      pdf: 'application/pdf'
-    }
-
-    const mimeType = mimeTypes[ext || ''] || 'application/octet-stream'
-    res.setHeader('Content-Type', mimeType)
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.fileName)}"`)
-
-    const stream = fs.createReadStream(filePath)
-    stream.pipe(res)
+    await servePreview(res, fileId, file.fileName, filePath)
   } catch (error) {
     logger.error('Preview file error:', error)
     res.status(500).json({ error: '预览文件失败' })
@@ -532,6 +533,8 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('edit_pro
       where: { id: fileId },
       data: { deletedAt: new Date() }
     })
+
+    cleanupPreviewCache(fileId)
 
     res.json({ message: '文件删除成功' })
   } catch (error) {

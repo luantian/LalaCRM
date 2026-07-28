@@ -179,7 +179,7 @@ function OpportunityList() {
 
   const handleClose = async (id: number) => {
     try {
-      await updateOpportunity(id, { status: 'CLOSED' })
+      await updateOpportunity(id, { status: 'LOST' })
       message.success('已关闭')
       fetchOpportunities(pagination.current, pagination.pageSize)
       fetchStats()
@@ -240,7 +240,11 @@ function OpportunityList() {
       title: '客户',
       dataIndex: 'organizationId',
       key: 'organizationId',
-      render: (organizationId: number, record: any) => record.organization?.name || getOrganizationName(organizationId)
+      render: (_: any, r: any) => {
+        const org = r.organization?.name || getOrganizationName(r.organizationId) || '-'
+        const contact = r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : ''
+        return contact ? `${org} - ${contact}` : org
+      }
     },
     { title: '联系人', key: 'contact', render: (_: any, r: any) => r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : r.decisionMaker || '-' },
     { title: '应用领域', dataIndex: 'application', key: 'application', render: (v: string) => v || '-' },
@@ -253,12 +257,9 @@ function OpportunityList() {
       render: (status: string) => {
         const statusMap: Record<string, { text: string; color: string }> = {
           OPEN: { text: '开放', color: 'default' },
-          QUALIFIED: { text: '已确认', color: 'blue' },
-          PROPOSAL: { text: '方案阶段', color: 'orange' },
-          NEGOTIATION: { text: '谈判中', color: 'purple' },
+          FOLLOWING: { text: '跟进中', color: 'blue' },
           WON: { text: '已赢单', color: 'green' },
-          LOST: { text: '已丢单', color: 'red' },
-          CLOSED: { text: '已关闭', color: 'default' }
+          LOST: { text: '已丢单', color: 'red' }
         }
         const s = statusMap[status] || { text: status, color: 'default' }
         return <Tag color={s.color}>{s.text}</Tag>
@@ -284,7 +285,7 @@ function OpportunityList() {
           </Popconfirm>
           <Dropdown menu={{
             items: [
-              ...(!['WON', 'LOST', 'CLOSED'].includes(record.status) ? [
+              ...(!['WON', 'LOST'].includes(record.status) ? [
                 { key: 'convert', icon: <ThunderboltOutlined />, label: '转化为项目', onClick: () => handleConvert(record.id) },
                 { key: 'close', icon: <StopOutlined />, label: '关闭', onClick: () => handleClose(record.id) },
                 { key: 'lost', icon: <CloseCircleOutlined />, label: '标记丢单', onClick: () => handleLost(record.id) },
@@ -448,12 +449,9 @@ function OpportunityList() {
           <Form.Item name="status" label="状态" initialValue="OPEN">
             <Select>
               <Select.Option value="OPEN">开放</Select.Option>
-              <Select.Option value="QUALIFIED">已确认</Select.Option>
-              <Select.Option value="PROPOSAL">方案阶段</Select.Option>
-              <Select.Option value="NEGOTIATION">谈判中</Select.Option>
+              <Select.Option value="FOLLOWING">跟进中</Select.Option>
               <Select.Option value="WON">已赢单</Select.Option>
               <Select.Option value="LOST">已丢单</Select.Option>
-              <Select.Option value="CLOSED">已关闭</Select.Option>
             </Select>
           </Form.Item>
           <Form.Item name="notes" label="备注">

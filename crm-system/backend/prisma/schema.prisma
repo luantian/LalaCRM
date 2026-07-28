@@ -151,6 +151,7 @@ model OrgContact {
   invoices        Invoice[]        // 发票联系人
   quotations      Quotation[]      // 报价联系人
   sales           Sale[]           // 销售对接人
+  expenses        Expense[]        // 费用联系人
 
   @@index([organizationId])
 }
@@ -433,6 +434,8 @@ model Expense {
   title          String       // 报销标题
   organizationId Int?
   organization   Organization? @relation(fields: [organizationId], references: [id])
+  contactId      Int?
+  contact        OrgContact? @relation(fields: [contactId], references: [id])
   projectId      Int?
   project        Project?     @relation(fields: [projectId], references: [id])
   category    String   // 费用类别
@@ -1195,12 +1198,9 @@ enum ShipmentStatus {
 
 enum OpportunityStatus {
   OPEN         // 开放
-  QUALIFIED    // 已确认
-  PROPOSAL     // 方案阶段
-  NEGOTIATION  // 谈判中
+  FOLLOWING    // 跟进中
   WON          // 赢单
   LOST         // 丢单
-  CLOSED       // 已关闭
 }
 
 enum TeamRole {
@@ -1624,6 +1624,9 @@ enum TaskRecordType {
   MEETING    // 会议
   EMAIL      // 邮件
   VISIT      // 拜访
+  SUBMIT     // 提交
+  REJECT     // 驳回
+  COMPLETE   // 完成
   OTHER      // 其他
 }
 

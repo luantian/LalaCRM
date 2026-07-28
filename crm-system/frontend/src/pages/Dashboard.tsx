@@ -11,7 +11,7 @@ import {
   ProjectOutlined, TeamOutlined, CheckSquareOutlined,
   EllipsisOutlined, UserOutlined
 } from '@ant-design/icons'
-import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse, getTaskRecords, createTaskRecord, updateTaskRecord, deleteTaskRecord, uploadTaskRecordFiles, deleteTaskRecordFile, downloadTaskRecordFileUrl, getProjects, getMyInProgressProjects } from '../services/api'
+import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse, getTaskRecords, createTaskRecord, updateTaskRecord, deleteTaskRecord, uploadTaskRecordFiles, deleteTaskRecordFile, downloadTaskRecordFileUrl, previewTaskRecordFileUrl, openFilePreview, isPreviewableFile, getProjects, getMyInProgressProjects } from '../services/api'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 
@@ -1272,6 +1272,14 @@ function Dashboard() {
                         </div>
                       </div>
                     )}
+                    {selectedTask.rejectionReason && (
+                      <div style={{ marginBottom: 12 }}>
+                        <Text type="secondary">驳回理由：</Text>
+                        <div style={{ marginTop: 4, padding: 12, background: '#fef2f2', borderRadius: 6, borderLeft: '3px solid #ef4444' }}>
+                          {selectedTask.rejectionReason}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ),
               },
@@ -1293,7 +1301,7 @@ function Dashboard() {
                         icon={<PlusOutlined />}
                         onClick={() => { setEditingRecord(null); recordForm.resetFields(); setRecordModalFiles([]); setRecordModalVisible(true) }}
                       >
-                        添加记录
+                        Notes信息文本
                       </Button>
                     </div>
                     {taskRecords.length === 0 ? (
@@ -1304,9 +1312,18 @@ function Dashboard() {
                     ) : (
                       <List
                         dataSource={taskRecords}
-                        renderItem={(record: any) => (
+                        renderItem={(record: any) => {
+                          const isSystemRecord = ['SUBMIT', 'REJECT', 'COMPLETE'].includes(record.type)
+                          const recordStyle: Record<string, { bg: string; border: string; label: string; color: string }> = {
+                            SUBMIT: { bg: '#eff6ff', border: '#3b82f6', label: '提交', color: '#1d4ed8' },
+                            REJECT: { bg: '#fef2f2', border: '#ef4444', label: '驳回', color: '#dc2626' },
+                            COMPLETE: { bg: '#f0fdf4', border: '#22c55e', label: '完成', color: '#16a34a' },
+                          }
+                          const style = recordStyle[record.type]
+                          return (
                           <List.Item
-                            actions={[
+                            style={style ? { background: style.bg, borderLeft: `3px solid ${style.border}`, borderRadius: 6, marginBottom: 8, padding: '12px 16px' } : {}}
+                            actions={isSystemRecord ? [] : [
                               <Button
                                 key="edit"
                                 type="link"
@@ -1330,6 +1347,11 @@ function Dashboard() {
                             <List.Item.Meta
                               title={
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  {style && (
+                                    <Tag color={style.border.replace('#', '')} style={{ color: style.color, fontSize: 11, marginRight: 0 }}>
+                                      {style.label}
+                                    </Tag>
+                                  )}
                                   <Text type="secondary" style={{ fontSize: 12 }}>
                                     {record.user?.name} · {dayjs(record.createdAt).format('MM-DD HH:mm')}
                                   </Text>
@@ -1353,14 +1375,23 @@ function Dashboard() {
                                         }}
                                       >
                                         <PaperClipOutlined />
-                                        <a
-                                          href={downloadTaskRecordFileUrl(file.id)}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          style={{ color: '#0ea5e9' }}
-                                        >
-                                          {file.fileName}
-                                        </a>
+                                        {isPreviewableFile(file.fileName) ? (
+                                          <a
+                                            onClick={() => openFilePreview(previewTaskRecordFileUrl, file.id)}
+                                            style={{ color: '#0ea5e9', cursor: 'pointer' }}
+                                          >
+                                            {file.fileName}
+                                          </a>
+                                        ) : (
+                                          <a
+                                            href={downloadTaskRecordFileUrl(file.id)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ color: '#0ea5e9' }}
+                                          >
+                                            {file.fileName}
+                                          </a>
+                                        )}
                                         <Popconfirm
                                           title="确定删除此文件？"
                                           onConfirm={() => handleDeleteRecordFile(record.id, file.id)}
@@ -1391,7 +1422,8 @@ function Dashboard() {
                               }
                             />
                           </List.Item>
-                        )}
+                          )
+                        }}
                       />
                     )}
                   </div>
@@ -1404,7 +1436,7 @@ function Dashboard() {
 
       {/* 任务记录编辑弹窗 */}
       <Modal
-        title={editingRecord ? '编辑记录' : '添加记录'}
+        title={editingRecord ? '编辑记录' : 'Notes信息文本'}
         open={recordModalVisible}
         onOk={handleSaveRecord}
         onCancel={() => { setRecordModalVisible(false); setEditingRecord(null); recordForm.resetFields(); setRecordModalFiles([]) }}

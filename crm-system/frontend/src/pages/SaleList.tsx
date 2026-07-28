@@ -7,12 +7,9 @@ import dayjs from 'dayjs'
 
 const oppStatusMap: Record<string, { label: string; color: string }> = {
   OPEN: { label: '开放', color: 'default' },
-  QUALIFIED: { label: '已确认', color: 'processing' },
-  PROPOSAL: { label: '方案阶段', color: 'blue' },
-  NEGOTIATION: { label: '谈判中', color: 'orange' },
+  FOLLOWING: { label: '跟进中', color: 'processing' },
   WON: { label: '赢单', color: 'green' },
   LOST: { label: '丢单', color: 'red' },
-  CLOSED: { label: '已关闭', color: 'default' },
 }
 
 function ProjectArchive() {
@@ -165,8 +162,12 @@ function ProjectArchive() {
     },
     {
       title: '客户',
-      dataIndex: ['organization', 'name'],
       key: 'organization',
+      render: (_: any, r: any) => {
+        const org = r.organization?.name || '-'
+        const contact = r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : ''
+        return contact ? `${org} - ${contact}` : org
+      }
     },
     {
       title: '状态',
@@ -229,8 +230,12 @@ function ProjectArchive() {
     },
     {
       title: '客户',
-      dataIndex: ['organization', 'name'],
       key: 'organization',
+      render: (_: any, r: any) => {
+        const org = r.organization?.name || '-'
+        const contact = r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : ''
+        return contact ? `${org} - ${contact}` : org
+      }
     },
     {
       title: '预算',

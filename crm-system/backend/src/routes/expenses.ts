@@ -61,6 +61,7 @@ router.get('/', authenticateToken, checkPermission('view_expenses'), applyDataSc
       where,
       include: {
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true } },
         project: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } },
         trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } }
@@ -140,13 +141,15 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_expenses'
 })
 
 // 获取单个费用报销记录
-router.get('/:id', authenticateToken, checkPermission('view_expenses'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('view_expenses'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const expense = await prisma.expense.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...dataScopeWhere },
       include: {
         organization: true,
+        contact: { select: { id: true, name: true, title: true } },
         project: true,
         owner: { select: { id: true, name: true } },
         trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } }
@@ -155,11 +158,6 @@ router.get('/:id', authenticateToken, checkPermission('view_expenses'), async (r
 
     if (!expense) {
       return res.status(404).json({ error: '费用报销记录不存在' })
-    }
-
-    // 数据范围检查：只能查看自己的报销记录（管理员除外）
-    if (expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ error: '无权访问此报销记录' })
     }
 
     res.json(expense)
@@ -174,6 +172,7 @@ router.post('/', authenticateToken, checkPermission('submit_expenses'), logOpera
     const {
       title,
       organizationId,
+      contactId,
       projectId,
       tripId,
       category,
@@ -191,6 +190,7 @@ router.post('/', authenticateToken, checkPermission('submit_expenses'), logOpera
       data: {
         title,
         organizationId: organizationId || null,
+        contactId: contactId || null,
         projectId: projectId || null,
         tripId: tripId || null,
         category,
@@ -203,6 +203,7 @@ router.post('/', authenticateToken, checkPermission('submit_expenses'), logOpera
       },
       include: {
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true } },
         project: { select: { id: true, name: true } },
         trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } }
       }
@@ -222,6 +223,7 @@ router.put('/:id', authenticateToken, checkPermission('submit_expenses'), logOpe
     const {
       title,
       organizationId,
+      contactId,
       projectId,
       tripId,
       category,
@@ -251,6 +253,7 @@ router.put('/:id', authenticateToken, checkPermission('submit_expenses'), logOpe
       data: {
         title,
         organizationId: organizationId || null,
+        contactId: contactId !== undefined ? (contactId || null) : existing.contactId,
         projectId: projectId || null,
         tripId: tripId !== undefined ? (tripId || null) : existing.tripId,
         category,
@@ -316,6 +319,7 @@ router.post('/:id/submit', authenticateToken, checkPermission('submit_expenses')
       data: { status: 'SUBMITTED' },
       include: {
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -362,6 +366,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_expenses
       },
       include: {
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -406,6 +411,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_expenses'
       },
       include: {
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -445,6 +451,7 @@ router.post('/:id/resubmit', authenticateToken, checkPermission('submit_expenses
       },
       include: {
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true } },
         project: { select: { id: true, name: true } }
       }
     })
@@ -475,6 +482,7 @@ router.post('/:id/pay', authenticateToken, checkPermission('approve_expenses'), 
       data: { status: 'PAID' },
       include: {
         organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true } },
         project: { select: { id: true, name: true } }
       }
     })

@@ -302,7 +302,11 @@ function BusinessTripList() {
       title: '客户',
       dataIndex: 'organizationId',
       key: 'organizationId',
-      render: (organizationId: number) => getOrganizationName(organizationId)
+      render: (_: any, r: any) => {
+        const org = getOrganizationName(r.organizationId) || '-'
+        const contact = r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : ''
+        return contact ? `${org} - ${contact}` : org
+      }
     },
     {
       title: '日期',

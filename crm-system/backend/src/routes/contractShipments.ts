@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
 import logger from '../utils/logger'
+import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
 import path from 'path'
 
@@ -189,7 +190,7 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
   }
 })
 
-// 预览发货记录附件（图片和PDF）
+// 预览发货记录附件（图片/PDF/Word/Excel）
 router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
@@ -197,24 +198,12 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    const filePath = path.join(__dirname, '../uploads', file.filePath)
+    const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
     }
 
-    const ext = file.fileName.split('.').pop()?.toLowerCase()
-    const mimeTypes: Record<string, string> = {
-      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-      gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp',
-      pdf: 'application/pdf'
-    }
-
-    const mimeType = mimeTypes[ext || ''] || 'application/octet-stream'
-    res.setHeader('Content-Type', mimeType)
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.fileName)}"`)
-
-    const stream = fs.createReadStream(filePath)
-    stream.pipe(res)
+    await servePreview(res, fileId, file.fileName, filePath)
   } catch (error) {
     logger.error('Preview shipment file error:', error)
     res.status(500).json({ error: '预览附件失败' })
@@ -233,6 +222,7 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('合同发�
       fs.unlinkSync(file.filePath)
     }
     await prisma.contractShipmentFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
+    cleanupPreviewCache(fileId)
     res.json({ message: '删除成功' })
   } catch (error) {
     logger.error('Delete shipment file error:', error)

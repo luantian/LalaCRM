@@ -318,8 +318,8 @@ export async function autoWriteOpportunityRecord(
     })
 
     const statusMap: Record<string, string> = {
-      OPEN: '开放', QUALIFIED: '已确认', PROPOSAL: '方案阶段',
-      NEGOTIATION: '谈判中', WON: '已赢单', LOST: '已丢单', CLOSED: '已关闭'
+      OPEN: '开放', FOLLOWING: '跟进中',
+      WON: '已赢单', LOST: '已丢单'
     }
 
     const lines: string[] = []

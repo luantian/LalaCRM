@@ -1,19 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Image, Spin, Result } from 'antd'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Spin, Result } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, FileTextOutlined, ScheduleOutlined, CheckOutlined, EyeOutlined, CloseOutlined } from '@ant-design/icons'
-import { getOpportunityDetail, updateOpportunity, convertOpportunity, closeOpportunityProject, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getOrganizations, getUserDropdown, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, safeJsonParse } from '../services/api'
+import { getOpportunityDetail, updateOpportunity, convertOpportunity, closeOpportunityProject, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getOrganizations, getUserDropdown, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, openFilePreview, isPreviewableFile, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 
 const { TextArea } = Input
-
-// 判断文件是否可预览
-const isPreviewableFile = (fileName: string) => {
-  const ext = fileName.split('.').pop()?.toLowerCase()
-  return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf'].includes(ext || '')
-}
 
 function OpportunityDetail() {
   const { id } = useParams<{ id: string }>()
@@ -58,10 +52,6 @@ function OpportunityDetail() {
   const [editingRecord, setEditingRecord] = useState<any>(null)
   const [recordForm] = Form.useForm()
   const [recordFiles, setRecordFiles] = useState<File[]>([])
-
-  // 文件预览状态
-  const [previewVisible, setPreviewVisible] = useState(false)
-  const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type: string } | null>(null)
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -251,25 +241,6 @@ function OpportunityDetail() {
     }
   }
 
-  const handlePreviewRecordFile = (fileId: number, fileName: string) => {
-    const token = localStorage.getItem('token')
-    const url = previewOpportunityRecordFileUrl(fileId)
-    fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(r => {
-        if (!r.ok) throw new Error('预览失败')
-        return r.blob()
-      })
-      .then(blob => {
-        const previewUrl = window.URL.createObjectURL(blob)
-        const ext = fileName.split('.').pop()?.toLowerCase()
-        // 释放旧的预览 URL
-        if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url)
-        setPreviewFile({ url: previewUrl, name: fileName, type: ext || '' })
-        setPreviewVisible(true)
-      })
-      .catch(() => message.error('预览失败'))
-  }
-
   // ===== 转化项目 =====
   const handleConvert = async () => {
     try {
@@ -295,7 +266,7 @@ function OpportunityDetail() {
   // ===== 关闭商机 =====
   const handleCloseOpportunity = async () => {
     try {
-      await updateOpportunity(parseInt(id!), { status: 'CLOSED' })
+      await updateOpportunity(parseInt(id!), { status: 'LOST' })
       message.success('商机已关闭')
       refreshDetail()
     } catch (error: any) {
@@ -312,12 +283,9 @@ function OpportunityDetail() {
 
   const statusConfig: Record<string, { text: string; color: string }> = {
     OPEN: { text: '开放', color: 'blue' },
-    QUALIFIED: { text: '已确认', color: 'cyan' },
-    PROPOSAL: { text: '方案阶段', color: 'processing' },
-    NEGOTIATION: { text: '谈判中', color: 'orange' },
+    FOLLOWING: { text: '跟进中', color: 'processing' },
     WON: { text: '赢单', color: 'success' },
-    LOST: { text: '丢单', color: 'error' },
-    CLOSED: { text: '已关闭', color: 'default' }
+    LOST: { text: '丢单', color: 'error' }
   }
 
   const teamRoleConfig: Record<string, { text: string; color: string }> = {
@@ -372,7 +340,7 @@ function OpportunityDetail() {
           <Card title="商机详情">
             <Descriptions column={2} bordered>
               <Descriptions.Item label="商机名称">{opportunity.name}</Descriptions.Item>
-              <Descriptions.Item label="客户">{opportunity.organization?.name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="客户">{(() => { const org = opportunity.organization?.name || '-'; const contact = opportunity.contact ? `${opportunity.contact.name}${opportunity.contact.title ? ` (${opportunity.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</Descriptions.Item>
               <Descriptions.Item label="应用领域">{opportunity.application || '-'}</Descriptions.Item>
               <Descriptions.Item label="预算金额">{opportunity.budget ? `${Number(opportunity.budget)}元` : '-'}</Descriptions.Item>
               <Descriptions.Item label="客户决策人">{opportunity.decisionMaker || '-'}</Descriptions.Item>
@@ -432,7 +400,7 @@ function OpportunityDetail() {
                                   <span key={file.id} style={{ display: 'inline-flex', alignItems: 'center', marginRight: 12, padding: '2px 8px', background: '#f5f5f5', borderRadius: 4, fontSize: 12, marginBottom: 4 }}>
                                     <FileOutlined style={{ marginRight: 4 }} />
                                     {isPreviewableFile(file.fileName) ? (
-                                      <a onClick={() => handlePreviewRecordFile(file.id, file.fileName)} style={{ cursor: 'pointer', color: '#1890ff' }}>
+                                      <a onClick={() => openFilePreview(previewOpportunityRecordFileUrl, file.id)} style={{ cursor: 'pointer', color: '#1890ff' }}>
                                         {file.fileName}
                                         <EyeOutlined style={{ marginLeft: 4 }} />
                                       </a>
@@ -531,7 +499,7 @@ function OpportunityDetail() {
               )}
             </div>
             <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
-              {opportunity.organization?.name || '暂无客户'}
+              {(() => { const org = opportunity.organization?.name || '暂无客户'; const contact = opportunity.contact ? `${opportunity.contact.name}${opportunity.contact.title ? ` (${opportunity.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}
               {opportunity.expectedStart && <> · 预计开始: {dayjs(opportunity.expectedStart).format('YYYY-MM-DD')}</>}
               {opportunity.expectedEnd && <> · 预计结束: {dayjs(opportunity.expectedEnd).format('YYYY-MM-DD')}</>}
             </div>
@@ -580,7 +548,7 @@ function OpportunityDetail() {
                   </Button>
                 </Popconfirm>
               )}
-              {opportunity.status !== 'CLOSED' && opportunity.status !== 'LOST' && opportunity.status !== 'WON' && (
+              {opportunity.status !== 'LOST' && opportunity.status !== 'WON' && (
                 <Popconfirm
                   title="确定关闭此商机？"
                   description="关闭后商机将无法重新打开"
@@ -667,12 +635,9 @@ function OpportunityDetail() {
           <Form.Item name="status" label="状态">
             <Select>
               <Select.Option value="OPEN">开放</Select.Option>
-              <Select.Option value="QUALIFIED">已确认</Select.Option>
-              <Select.Option value="PROPOSAL">方案阶段</Select.Option>
-              <Select.Option value="NEGOTIATION">谈判中</Select.Option>
+              <Select.Option value="FOLLOWING">跟进中</Select.Option>
               <Select.Option value="WON">赢单</Select.Option>
               <Select.Option value="LOST">丢单</Select.Option>
-              <Select.Option value="CLOSED">已关闭</Select.Option>
             </Select>
           </Form.Item>
           <Form.Item name="notes" label="备注">
@@ -713,7 +678,7 @@ function OpportunityDetail() {
                   <div key={file.id} style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', background: '#f5f5f5', borderRadius: 4, marginBottom: 4, fontSize: 12 }}>
                     <FileOutlined style={{ marginRight: 6, color: '#1890ff' }} />
                     {isPreviewableFile(file.fileName) ? (
-                      <a onClick={() => handlePreviewRecordFile(file.id, file.fileName)} style={{ cursor: 'pointer', color: '#1890ff', flex: 1 }}>
+                      <a onClick={() => openFilePreview(previewOpportunityRecordFileUrl, file.id)} style={{ cursor: 'pointer', color: '#1890ff', flex: 1 }}>
                         {file.fileName}
                         <EyeOutlined style={{ marginLeft: 4 }} />
                       </a>
@@ -765,38 +730,6 @@ function OpportunityDetail() {
             )}
           </Form.Item>
         </Form>
-      </Modal>
-      {/* 文件预览 Modal */}
-      <Modal
-        title={previewFile?.name || '文件预览'}
-        open={previewVisible}
-        onCancel={() => { if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url); setPreviewVisible(false); setPreviewFile(null) }}
-        footer={[
-          <Button key="close" onClick={() => { if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url); setPreviewVisible(false); setPreviewFile(null) }}>关闭</Button>
-        ]}
-        width="80%"
-        style={{ top: 20 }}
-      >
-        {previewFile && (
-          <div style={{ textAlign: 'center', minHeight: 400 }}>
-            {['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(previewFile.type) ? (
-              <Image
-                src={previewFile.url}
-                alt={previewFile.name}
-                style={{ maxWidth: '100%', maxHeight: '70vh' }}
-                preview={false}
-              />
-            ) : previewFile.type === 'pdf' ? (
-              <iframe
-                src={previewFile.url}
-                style={{ width: '100%', height: '70vh', border: 'none' }}
-                title={previewFile.name}
-              />
-            ) : (
-              <div style={{ padding: 40, color: '#999' }}>不支持预览此文件格式</div>
-            )}
-          </div>
-        )}
       </Modal>
     </div>
   )

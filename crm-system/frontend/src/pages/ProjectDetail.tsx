@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Slider, Avatar, Empty, Image, Spin, Result, Upload } from 'antd'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Slider, Avatar, Empty, Spin, Result, Upload } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, EyeOutlined } from '@ant-design/icons'
-import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizations, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, uploadPaymentFiles, deletePaymentFile, downloadPaymentFileUrl, previewPaymentFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl } from '../services/api'
+import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizations, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, uploadPaymentFiles, deletePaymentFile, downloadPaymentFileUrl, previewPaymentFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, previewProjectFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import { OrgTreeSelect } from '../components/OrgTreeSelect'
@@ -114,10 +114,6 @@ function ProjectDetail() {
   const [teamForm] = Form.useForm()
   const [allUsers, setAllUsers] = useState<any[]>([])
 
-
-  // 文件预览状态
-  const [previewVisible, setPreviewVisible] = useState(false)
-  const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type: string } | null>(null)
 
   // 基本信息-信息记录（提前定义以便在 useEffect 中调用）
   const fetchInfoRecords = async () => {
@@ -380,59 +376,6 @@ function ProjectDetail() {
   }
 
   // ===== 采购管理 =====
-
-  // 判断文件是否可预览
-  const isPreviewableFile = (fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase()
-    return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf'].includes(ext || '')
-  }
-
-  // 打开文件预览
-  const handlePreviewFile = (fileId: number, fileName: string, fileType: string = 'project') => {
-    const token = localStorage.getItem('token')
-    const baseUrl = import.meta.env.VITE_API_URL || '/api'
-    const previewUrls: Record<string, string> = {
-      project: `${baseUrl}/projects/files/${fileId}/preview`,
-      orderItem: `${baseUrl}/contract-order-items/files/${fileId}/preview`,
-      payment: `${baseUrl}/contract-payments/files/${fileId}/preview`,
-      shipment: `${baseUrl}/contract-shipments/files/${fileId}/preview`,
-      contract: `${baseUrl}/contracts/files/${fileId}/preview`,
-      invoice: `${baseUrl}/invoices/files/${fileId}/preview`,
-    }
-    const url = previewUrls[fileType] || previewUrls.project
-    fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(r => {
-        if (!r.ok) throw new Error('预览失败')
-        return r.blob()
-      })
-      .then(blob => {
-        const previewUrl = window.URL.createObjectURL(blob)
-        const ext = fileName.split('.').pop()?.toLowerCase()
-        if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url)
-        setPreviewFile({ url: previewUrl, name: fileName, type: ext || '' })
-        setPreviewVisible(true)
-      })
-      .catch(() => message.error('预览失败'))
-  }
-
-  // 打开备注文件预览
-  const handlePreviewNoteFile = (fileId: number, fileName: string) => {
-    const token = localStorage.getItem('token')
-    const url = `${import.meta.env.VITE_API_URL || '/api'}/project-notes/notes/files/${fileId}/preview`
-    fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(r => {
-        if (!r.ok) throw new Error('预览失败')
-        return r.blob()
-      })
-      .then(blob => {
-        const previewUrl = window.URL.createObjectURL(blob)
-        const ext = fileName.split('.').pop()?.toLowerCase()
-        if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url)
-        setPreviewFile({ url: previewUrl, name: fileName, type: ext || '' })
-        setPreviewVisible(true)
-      })
-      .catch(() => message.error('预览失败'))
-  }
 
   // ===== 表格列 =====
   const contractColumns = [
@@ -844,7 +787,7 @@ function ProjectDetail() {
         <Card title="项目详情">
           <Descriptions column={2} bordered>
             <Descriptions.Item label="项目名称">{project.name}</Descriptions.Item>
-            <Descriptions.Item label="客户">{project.organization?.name || '-'}</Descriptions.Item>
+            <Descriptions.Item label="客户">{(() => { const org = project.organization?.name || '-'; const contact = project.contact ? `${project.contact.name}${project.contact.title ? ` (${project.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</Descriptions.Item>
             <Descriptions.Item label="状态"><Tag color={projectStatus.color}>{projectStatus.text}</Tag></Descriptions.Item>
             <Descriptions.Item label="预算">{project.budget ? `${Number(project.budget)}元` : '-'}</Descriptions.Item>
             <Descriptions.Item label="开始日期">{project.startDate ? dayjs(project.startDate).format('YYYY-MM-DD') : '-'}</Descriptions.Item>
@@ -895,7 +838,7 @@ function ProjectDetail() {
                               <span key={file.id} style={{ display: 'inline-flex', alignItems: 'center', marginRight: 12, padding: '2px 8px', background: '#f5f5f5', borderRadius: 4, fontSize: 12 }}>
                                 <FileOutlined style={{ marginRight: 4 }} />
                                 {isPreviewableFile(file.fileName) ? (
-                                  <a onClick={() => handlePreviewNoteFile(file.id, file.fileName)} style={{ cursor: 'pointer', color: '#1890ff' }}>
+                                  <a onClick={() => openFilePreview(previewProjectNoteFileUrl, file.id)} style={{ cursor: 'pointer', color: '#1890ff' }}>
                                     {file.fileName}
                                     <EyeOutlined style={{ marginLeft: 4 }} />
                                   </a>
@@ -946,7 +889,7 @@ function ProjectDetail() {
                       <List size="small" dataSource={contractFiles[record.id]} renderItem={(file: any) => (
                         <List.Item actions={[
                           isPreviewableFile(file.fileName) && (
-                            <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreviewFile(file.id, file.fileName, 'contract')} />
+                            <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewContractFileUrl, file.id)} />
                           ),
                           <a key="dl" href={downloadContractFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                           <Popconfirm key="del" title="确定删除？" onConfirm={() => handleContractFileDelete(record.id, file.id)}>
@@ -981,7 +924,7 @@ function ProjectDetail() {
                                   <List size="small" dataSource={or.files} renderItem={(file: any) => (
                                     <List.Item actions={[
                                       isPreviewableFile(file.fileName) && (
-                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreviewFile(file.id, file.fileName)} />
+                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewOrderItemFileUrl, file.id)} />
                                       ),
                                       <a key="dl" href={downloadOrderItemFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handleOrderFileDelete(or.id, file.id)}>
@@ -1020,7 +963,7 @@ function ProjectDetail() {
                                   <List size="small" dataSource={payment.files} renderItem={(file: any) => (
                                     <List.Item actions={[
                                       isPreviewableFile(file.fileName) && (
-                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreviewFile(file.id, file.fileName, 'payment')} />
+                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewPaymentFileUrl, file.id)} />
                                       ),
                                       <a key="dl" href={downloadPaymentFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handlePaymentFileDelete(payment.id, file.id)}>
@@ -1058,7 +1001,7 @@ function ProjectDetail() {
                                   <List size="small" dataSource={shipment.files} renderItem={(file: any) => (
                                     <List.Item actions={[
                                       isPreviewableFile(file.fileName) && (
-                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreviewFile(file.id, file.fileName, 'shipment')} />
+                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewShipmentFileUrl, file.id)} />
                                       ),
                                       <a key="dl" href={downloadShipmentFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handleShipmentFileDelete(shipment.id, file.id)}>
@@ -1106,7 +1049,7 @@ function ProjectDetail() {
                                   <List size="small" dataSource={invoice.files} renderItem={(file: any) => (
                                     <List.Item actions={[
                                       isPreviewableFile(file.fileName) && (
-                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => handlePreviewFile(file.id, file.fileName, 'invoice')} />
+                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewInvoiceFileUrl, file.id)} />
                                       ),
                                       <a key="dl" href={downloadInvoiceFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handleInvoiceFileDelete(invoice.id, file.id)}>
@@ -1172,6 +1115,9 @@ function ProjectDetail() {
                     {procFiles[record.id] && procFiles[record.id].length > 0 ? (
                       <List size="small" dataSource={procFiles[record.id]} renderItem={(file: any) => (
                         <List.Item actions={[
+                          ...(isPreviewableFile(file.fileName) ? [
+                            <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewProcurementFileUrl, file.id)} />
+                          ] : []),
                           <a key="dl" href={`/api/procurements/files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                           <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcFileDelete(record.id, file.id)}>
                             <Button type="text" size="small" icon={<DeleteOutlined />} danger />
@@ -1208,6 +1154,9 @@ function ProjectDetail() {
                               {procItemFiles[item.id] && procItemFiles[item.id].length > 0 ? (
                                 <List size="small" dataSource={procItemFiles[item.id]} renderItem={(file: any) => (
                                   <List.Item actions={[
+                                    ...(isPreviewableFile(file.fileName) ? [
+                                      <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewProcurementItemFileUrl, file.id)} />
+                                    ] : []),
                                     <a key="dl" href={`/api/procurements/item-files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                     <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcItemFileDelete(item.id, file.id)}>
                                       <Button type="text" size="small" icon={<DeleteOutlined />} danger />
@@ -1288,6 +1237,9 @@ function ProjectDetail() {
                               {procPaymentFiles[payment.id] && procPaymentFiles[payment.id].length > 0 ? (
                                 <List size="small" dataSource={procPaymentFiles[payment.id]} renderItem={(file: any) => (
                                   <List.Item actions={[
+                                    ...(isPreviewableFile(file.fileName) ? [
+                                      <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewProcurementPaymentFileUrl, file.id)} />
+                                    ] : []),
                                     <a key="dl" href={`/api/procurements/payment-files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                     <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcPaymentFileDelete(payment.id, file.id)}>
                                       <Button type="text" size="small" icon={<DeleteOutlined />} danger />
@@ -1422,7 +1374,7 @@ function ProjectDetail() {
               <span style={{ color: '#6b7280', fontSize: 13 }}>合同总额: <strong style={{ color: '#2563eb' }}>{totalContractAmount}元</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>进度: <strong style={{ color: '#7c3aed' }}>{project.progress || 0}%</strong></span>
             </div>
-            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{project.organization?.name || '暂无客户'} · 合同 {contractCount} 份</div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{(() => { const org = project.organization?.name || '暂无客户'; const contact = project.contact ? `${project.contact.name}${project.contact.title ? ` (${project.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()} · 合同 {contractCount} 份</div>
           </Col>
           <Col flex="none">
             <Space>
@@ -1628,7 +1580,7 @@ function ProjectDetail() {
                   <div key={file.id} style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', background: '#f5f5f5', borderRadius: 4, marginBottom: 4, fontSize: 12 }}>
                     <FileOutlined style={{ marginRight: 6, color: '#1890ff' }} />
                     {isPreviewableFile(file.fileName) ? (
-                      <a onClick={() => handlePreviewNoteFile(file.id, file.fileName)} style={{ cursor: 'pointer', color: '#1890ff', flex: 1 }}>
+                      <a onClick={() => openFilePreview(previewProjectNoteFileUrl, file.id)} style={{ cursor: 'pointer', color: '#1890ff', flex: 1 }}>
                         {file.fileName}
                         <EyeOutlined style={{ marginLeft: 4 }} />
                       </a>
@@ -1715,39 +1667,6 @@ function ProjectDetail() {
           </Form.Item>
           <Form.Item name="responsibility" label="职责描述"><TextArea rows={2} placeholder="描述该成员在项目中的职责" /></Form.Item>
         </Form>
-      </Modal>
-
-      {/* 文件预览 Modal */}
-      <Modal
-        title={previewFile?.name || '文件预览'}
-        open={previewVisible}
-        onCancel={() => { if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url); setPreviewVisible(false); setPreviewFile(null) }}
-        footer={[
-          <Button key="close" onClick={() => { if (previewFile?.url) window.URL.revokeObjectURL(previewFile.url); setPreviewVisible(false); setPreviewFile(null) }}>关闭</Button>
-        ]}
-        width="80%"
-        style={{ top: 20 }}
-      >
-        {previewFile && (
-          <div style={{ textAlign: 'center', minHeight: 400 }}>
-            {['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(previewFile.type) ? (
-              <Image
-                src={previewFile.url}
-                alt={previewFile.name}
-                style={{ maxWidth: '100%', maxHeight: '70vh' }}
-                preview={false}
-              />
-            ) : previewFile.type === 'pdf' ? (
-              <iframe
-                src={previewFile.url}
-                style={{ width: '100%', height: '70vh', border: 'none' }}
-                title={previewFile.name}
-              />
-            ) : (
-              <div style={{ padding: 40, color: '#999' }}>不支持预览此文件格式</div>
-            )}
-          </div>
-        )}
       </Modal>
     </div>
   )

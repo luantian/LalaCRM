@@ -6,6 +6,7 @@ import { applyDataScope } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
 import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
+import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
 import path from 'path'
 
@@ -210,11 +211,12 @@ router.get('/stats/reconciliation', authenticateToken, checkPermission('view_inv
 })
 
 // 获取发票详情
-router.get('/:id', authenticateToken, checkPermission('view_invoices'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('view_invoices'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const invoice = await prisma.invoice.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...dataScopeWhere },
       include: {
         project: { select: { id: true, name: true } },
         contract: { select: { id: true, name: true } },
@@ -227,11 +229,6 @@ router.get('/:id', authenticateToken, checkPermission('view_invoices'), async (r
 
     if (!invoice) {
       return res.status(404).json({ error: '发票不存在' })
-    }
-
-    // 数据范围检查：只能查看自己的发票（管理员除外）
-    if (invoice.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ error: '无权访问此发票' })
     }
 
     res.json(invoice)
@@ -435,6 +432,7 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('edit_inv
     }
 
     await prisma.invoiceFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
+    cleanupPreviewCache(fileId)
     res.json({ message: '文件删除成功' })
   } catch (error) {
     logger.error('Delete invoice file error:', error)
@@ -464,7 +462,7 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
   }
 })
 
-// 预览发票附件（图片和PDF）
+// 预览发票附件（图片/PDF/Word/Excel）
 router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
@@ -477,19 +475,7 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
       return res.status(404).json({ error: '文件不存在于磁盘' })
     }
 
-    const ext = file.fileName.split('.').pop()?.toLowerCase()
-    const mimeTypes: Record<string, string> = {
-      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-      gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp',
-      pdf: 'application/pdf'
-    }
-
-    const mimeType = mimeTypes[ext || ''] || 'application/octet-stream'
-    res.setHeader('Content-Type', mimeType)
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.fileName)}"`)
-
-    const stream = fs.createReadStream(filePath)
-    stream.pipe(res)
+    await servePreview(res, fileId, file.fileName, filePath)
   } catch (error) {
     logger.error('Preview invoice file error:', error)
     res.status(500).json({ error: '预览附件失败' })

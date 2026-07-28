@@ -124,11 +124,12 @@ router.get('/stats/overview', authenticateToken, applyDataScope('ownerId'), asyn
 })
 
 // 获取单个出差记录
-router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const trip = await prisma.businessTrip.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...dataScopeWhere },
       include: {
         organization: true,
         contact: { select: { id: true, name: true, title: true, phone: true, email: true } },
@@ -143,11 +144,6 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 
     if (!trip) {
       return res.status(404).json({ error: '出差记录不存在' })
-    }
-
-    // 数据范围检查：只能查看自己的出差记录（管理员除外）
-    if (trip.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ error: '无权访问此出差记录' })
     }
 
     res.json(trip)

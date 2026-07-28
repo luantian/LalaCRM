@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, List, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined, EyeOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getOrganizations, getProjects, getBusinessTrips, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses } from '../services/api'
+import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getOrganizations, getProjects, getBusinessTrips, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses, previewExpenseFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import { OrgContactSelector } from '../components/OrgContactSelector'
@@ -426,7 +426,11 @@ function ExpenseList() {
       title: '客户',
       dataIndex: 'organizationId',
       key: 'organizationId',
-      render: (organizationId: number) => getOrganizationName(organizationId)
+      render: (_: any, r: any) => {
+        const org = getOrganizationName(r.organizationId) || '-'
+        const contact = r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : ''
+        return contact ? `${org} - ${contact}` : org
+      }
     },
     {
       title: '项目',
@@ -783,7 +787,18 @@ function ExpenseList() {
           renderItem={(file: any) => (
             <List.Item
               actions={[
+                ...(isPreviewableFile(file.fileName) ? [
+                  <Button
+                    key="preview"
+                    type="link"
+                    icon={<EyeOutlined />}
+                    onClick={() => openFilePreview(previewExpenseFileUrl, file.id)}
+                  >
+                    查看
+                  </Button>
+                ] : []),
                 <Button
+                  key="download"
                   type="link"
                   icon={<DownloadOutlined />}
                   onClick={() => handleDownload(file.id, file.fileName)}
@@ -791,6 +806,7 @@ function ExpenseList() {
                   下载
                 </Button>,
                 <Popconfirm
+                  key="delete"
                   title="确定要删除这个文件吗?"
                   onConfirm={() => handleDeleteFile(file.id)}
                 >
