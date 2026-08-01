@@ -6,6 +6,7 @@ import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
 import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
+import { autoWriteProjectRecord } from '../utils/autoDailyReport'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
@@ -43,8 +44,11 @@ router.get('/', authenticateToken, checkPermission('view_projects'), sortValidat
       ]
     }
 
+    // 默认只查询未归档项目，除非明确指定
     if (isArchived !== '') {
       where.isArchived = isArchived === 'true'
+    } else {
+      where.isArchived = false
     }
 
     if (status) {
@@ -56,7 +60,11 @@ router.get('/', authenticateToken, checkPermission('view_projects'), sortValidat
     }
 
     if (search) {
-      where.name = { contains: search as string, mode: 'insensitive' }
+      const searchTerm = search as string
+      where.OR = [
+        { name: { contains: searchTerm, mode: 'insensitive' } },
+        { projectNo: { contains: searchTerm, mode: 'insensitive' } }
+      ]
     }
 
     // 付款完结过滤：需要查出后计算
@@ -139,8 +147,8 @@ router.get('/', authenticateToken, checkPermission('view_projects'), sortValidat
 // 项目统计（放在 /:id 之前，避免被 /:id 拦截）
 router.get('/stats/overview', authenticateToken, checkPermission('view_projects'), async (req: AuthRequest, res) => {
   try {
-    // 只统计 owner 和团队成员的项目
-    const where: any = { deletedAt: null }
+    // 只统计未归档且 owner 和团队成员的项目
+    const where: any = { deletedAt: null, isArchived: false }
     if (req.user?.role !== 'ADMIN') {
       where.OR = [
         { ownerId: req.user!.id },
@@ -230,7 +238,7 @@ router.get('/:id', authenticateToken, checkPermission('view_projects'), async (r
         },
         teamMembers: {
           include: {
-            user: { select: { id: true, name: true, email: true } }
+            user: { select: { id: true, name: true, email: true, role: true } }
           },
           orderBy: { joinDate: 'desc' }
         },
@@ -253,7 +261,7 @@ router.get('/:id', authenticateToken, checkPermission('view_projects'), async (r
 // 创建项目
 router.post('/', authenticateToken, checkPermission('create_projects'), logOperation('项目管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    const { name, organizationId, contactId, status, budget, startDate, endDate, description } = req.body
+    const { name, projectNo, organizationId, contactId, status, budget, startDate, endDate, description } = req.body
 
     if (!name || !organizationId) {
       return res.status(400).json({ error: '项目名称和组织ID不能为空' })
@@ -262,6 +270,7 @@ router.post('/', authenticateToken, checkPermission('create_projects'), logOpera
     const project = await prisma.project.create({
       data: {
         name,
+        projectNo: projectNo || null,
         organizationId,
         contactId: contactId || null,
         status: status || 'IN_PROGRESS',
@@ -276,6 +285,11 @@ router.post('/', authenticateToken, checkPermission('create_projects'), logOpera
       }
     })
 
+    // 自动记录到日报
+    if (req.user?.id) {
+      autoWriteProjectRecord(req.user.id, name, 'CREATE', project.id).catch(() => {})
+    }
+
     res.status(201).json(project)
   } catch (error) {
     logger.error('Create project error:', error)
@@ -287,7 +301,7 @@ router.post('/', authenticateToken, checkPermission('create_projects'), logOpera
 router.put('/:id', authenticateToken, checkPermission('edit_projects'), logOperation('项目管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
-    const { name, organizationId, contactId, status, budget, startDate, endDate, description, progress } = req.body
+    const { name, projectNo, organizationId, contactId, status, budget, startDate, endDate, description, progress } = req.body
 
     // 项目状态流转规则
     const validTransitions: Record<string, string[]> = {
@@ -318,6 +332,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_projects'), logOpera
       where: { id: parseInt(id) },
       data: {
         name,
+        projectNo: projectNo !== undefined ? (projectNo || null) : undefined,
         organizationId,
         contactId: contactId !== undefined ? (contactId || null) : undefined,
         status,
@@ -325,9 +340,17 @@ router.put('/:id', authenticateToken, checkPermission('edit_projects'), logOpera
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
         description,
-        progress: progress !== undefined ? Number(progress) : undefined
+        progress: progress !== undefined ? Number(progress) : undefined,
+        // 状态变为"已完成"或"已取消"时自动归档
+        isArchived: status === 'COMPLETED' || status === 'CANCELLED' ? true : undefined,
+        archivedAt: status === 'COMPLETED' || status === 'CANCELLED' ? new Date() : undefined
       }
     })
+
+    // 自动记录到日报
+    if (req.user?.id) {
+      autoWriteProjectRecord(req.user.id, project.name, 'UPDATE', project.id).catch(() => {})
+    }
 
     res.json(project)
   } catch (error) {
@@ -558,7 +581,7 @@ router.get('/:id/team', authenticateToken, checkPermission('view_projects'), asy
     const members = await prisma.projectTeamMember.findMany({
       where: { projectId, deletedAt: null },
       include: {
-        user: { select: { id: true, name: true, email: true } }
+        user: { select: { id: true, name: true, email: true, role: true } }
       },
       orderBy: { joinDate: 'desc' }
     })
@@ -608,7 +631,7 @@ router.post('/:id/team', authenticateToken, checkPermission('edit_projects'), lo
         responsibility
       },
       include: {
-        user: { select: { id: true, name: true, email: true } }
+        user: { select: { id: true, name: true, email: true, role: true } }
       }
     })
 
@@ -623,7 +646,7 @@ router.post('/:id/team', authenticateToken, checkPermission('edit_projects'), lo
 router.put('/:id/team/:memberId', authenticateToken, checkPermission('edit_projects'), logOperation('项目管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const memberId = parseInt(req.params.memberId as string)
-    const { projectRole, responsibility, leaveDate } = req.body
+    const { responsibility, leaveDate } = req.body
 
     const member = await prisma.projectTeamMember.findFirst({ where: { id: memberId, deletedAt: null } })
     if (!member) {
@@ -633,12 +656,11 @@ router.put('/:id/team/:memberId', authenticateToken, checkPermission('edit_proje
     const updated = await prisma.projectTeamMember.update({
       where: { id: memberId },
       data: {
-        projectRole: projectRole as any,
         responsibility,
         leaveDate: leaveDate ? new Date(leaveDate) : null
       },
       include: {
-        user: { select: { id: true, name: true, email: true } }
+        user: { select: { id: true, name: true, email: true, role: true } }
       }
     })
 

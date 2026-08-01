@@ -6,6 +6,7 @@ import { applyDataScope } from '../middleware/dataScope'
 import { upload } from '../middleware/upload'
 import logger from '../utils/logger'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
+import { autoWriteProcurementRecord } from '../utils/autoDailyReport'
 import path from 'path'
 import fs from 'fs'
 
@@ -84,10 +85,16 @@ router.get('/:id', authenticateToken, checkPermission('view_procurements'), asyn
     })
     if (!procurement) return res.status(404).json({ error: '采购单不存在' })
 
-    // 数据范围检查：只能查看自己负责的项目的采购单（管理员除外）
-    const project = await prisma.project.findFirst({ where: { id: procurement.projectId, deletedAt: null }, select: { ownerId: true } })
+    // 数据范围检查：项目owner或团队成员可以查看（管理员除外）
+    const project = await prisma.project.findFirst({
+      where: { id: procurement.projectId, deletedAt: null },
+      select: { ownerId: true, teamMembers: { select: { userId: true } } }
+    })
     if (project?.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ error: '无权访问此采购单' })
+      const isTeamMember = project?.teamMembers.some(tm => tm.userId === req.user!.id)
+      if (!isTeamMember) {
+        return res.status(403).json({ error: '无权访问此采购单' })
+      }
     }
 
     res.json(procurement)
@@ -119,6 +126,9 @@ router.post('/', authenticateToken, checkPermission('edit_procurements'), logOpe
         warrantyTerms
       }
     })
+    if (req.user?.id) {
+      autoWriteProcurementRecord(req.user.id, procurement.title, 'CREATE', procurement.id, procurement.projectId, procurement.totalAmount?.toNumber()).catch(() => {})
+    }
     res.status(201).json(procurement)
   } catch (error) {
     logger.error('Create procurement error:', error)
@@ -174,6 +184,11 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_procurem
     })
 
     logger.info(`Procurement ${id} status changed from ${procurement.status} to ${status} by ${req.user?.username}`)
+    // 根据状态判断是 APPROVE 还是 REJECT
+    const reportAction = (status === 'CANCELLED' || status === 'REJECTED') ? 'REJECT' : 'APPROVE'
+    if (req.user?.id) {
+      autoWriteProcurementRecord(req.user.id, procurement.title, reportAction, id, procurement.projectId, procurement.totalAmount?.toNumber()).catch(() => {})
+    }
     res.json(updated)
   } catch (error) {
     logger.error('Approve procurement error:', error)
@@ -213,6 +228,9 @@ router.put('/:id', authenticateToken, checkPermission('edit_procurements'), logO
         warrantyTerms
       }
     })
+    if (req.user?.id) {
+      autoWriteProcurementRecord(req.user.id, procurement.title, 'UPDATE', procurement.id, procurement.projectId, procurement.totalAmount?.toNumber()).catch(() => {})
+    }
     res.json(procurement)
   } catch (error) {
     logger.error('Update procurement error:', error)

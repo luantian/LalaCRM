@@ -141,7 +141,7 @@ router.post('/:id/files', authenticateToken, upload.array('files', 10), logOpera
           data: {
             paymentId,
             fileName: file.originalname,
-            filePath: file.path,
+            filePath: file.filename,
             fileSize: file.size,
             fileType: file.mimetype,
             uploadedBy: req.user!.id
@@ -219,8 +219,9 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('合同付�
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    if (fs.existsSync(file.filePath)) {
-      fs.unlinkSync(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
     }
     await prisma.contractPaymentFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
     cleanupPreviewCache(fileId)

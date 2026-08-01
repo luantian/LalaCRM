@@ -5,7 +5,7 @@ const prisma = new PrismaClient()
 
 /**
  * 自动写入日报 - 工具函数
- * 当用户在任务、项目、商机中添加记录或完成操作时，自动将完整内容写入当日日报
+ * 当用户在任务、项目、商机中添加记录或完成操作时，自动将精简内容写入当日日报
  */
 
 interface AutoDailyReportParams {
@@ -75,6 +75,7 @@ export async function autoWriteDailyReport(params: AutoDailyReportParams): Promi
         title: itemTitle,
         content: content,
         projectId,
+        taskId,
         hours,
         status: 'COMPLETED',
         order: 0
@@ -101,7 +102,7 @@ export async function autoWriteDailyReport(params: AutoDailyReportParams): Promi
 
 /**
  * 自动写入日报 - 任务完成
- * 包含：任务描述、关联项目、负责人/执行人、优先级、截止日期、完成总结
+ * 精简格式：任务标题 + 完成总结 + 关联项目
  */
 export async function autoWriteTaskCompletion(
   userId: number,
@@ -110,49 +111,21 @@ export async function autoWriteTaskCompletion(
   taskId: number
 ): Promise<boolean> {
   try {
-    // 查询任务完整信息
     const task = await prisma.task.findFirst({
       where: { id: taskId, deletedAt: null },
-      include: {
-        assigner: { select: { name: true } },
-        assignees: { select: { name: true } },
-        project: { select: { name: true } }
-      }
+      select: { title: true, projectId: true, project: { select: { name: true } } }
     })
 
-    const priorityMap: Record<string, string> = {
-      LOW: '低', MEDIUM: '中', HIGH: '高', URGENT: '紧急'
-    }
-    const typeMap: Record<string, string> = {
-      DAILY_WORK: '日常工作', PROJECT_TASK: '项目任务', ISSUE: '问题处理', OTHER: '其他'
-    }
-
+    // 精简内容：只保留用户关心的核心信息
     const lines: string[] = []
-
-    // 任务基本信息
-    lines.push(`📌 任务：${task?.title || taskTitle}`)
-    if (task?.project?.name) lines.push(`📁 关联项目：${task.project.name}`)
-    lines.push(`📋 任务类型：${typeMap[task?.type || ''] || task?.type || '-'}`)
-    lines.push(`⚡ 优先级：${priorityMap[task?.priority || ''] || task?.priority || '-'}`)
-    lines.push(`👤 委派人：${task?.assigner?.name || '-'}`)
-    lines.push(`👥 执行人：${task?.assignees?.map(a => a.name).join('、') || '-'}`)
-    if (task?.dueDate) {
-      lines.push(`📅 截止日期：${new Date(task.dueDate).toISOString().slice(0, 10)}`)
+    lines.push(`完成任务：${task?.title || taskTitle}`)
+    if (completionNote && completionNote !== '任务已完成') {
+      lines.push(`完成总结：${completionNote}`)
     }
-
-    // 任务描述
-    if (task?.description) {
-      lines.push('')
-      lines.push(`📝 任务描述：${task.description}`)
-    }
-
-    // 完成总结
-    lines.push('')
-    lines.push(`✅ 完成总结：${completionNote || '任务已完成'}`)
 
     return autoWriteDailyReport({
       userId,
-      title: `完成任务：${taskTitle}`,
+      title: `完成：${task?.title || taskTitle}`,
       content: lines.join('\n'),
       projectId: task?.projectId || null,
       taskId,
@@ -166,8 +139,57 @@ export async function autoWriteTaskCompletion(
 }
 
 /**
- * 自动写入日报 - 任务记录（信息记录）
- * 包含：任务描述、关联项目、负责人/执行人、记录内容、下次计划
+ * 自动写入日报 - 任务流转（开始/提交/驳回）
+ * 精简格式：任务标题 + 流转动作 + 备注
+ */
+export async function autoWriteTaskFlow(
+  userId: number,
+  taskId: number,
+  action: 'START' | 'SUBMIT' | 'REJECT',
+  note?: string
+): Promise<boolean> {
+  try {
+    const task = await prisma.task.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: { title: true, projectId: true, project: { select: { name: true } } }
+    })
+
+    if (!task) {
+      logger.warn(`Task ${taskId} not found for auto daily report`)
+      return false
+    }
+
+    const actionMap = {
+      'START': '开始处理',
+      'SUBMIT': '提交完成',
+      'REJECT': '驳回任务'
+    }
+    const actionText = actionMap[action]
+
+    const lines: string[] = []
+    lines.push(`${actionText}：${task.title}`)
+    if (note) {
+      lines.push(`备注：${note}`)
+    }
+
+    return autoWriteDailyReport({
+      userId,
+      title: `${actionText}：${task.title}`,
+      content: lines.join('\n'),
+      projectId: task.projectId || null,
+      taskId,
+      hours: 0.25,
+      type: 'WORK'
+    })
+  } catch (error) {
+    logger.error('Auto write task flow to daily report failed:', error)
+    return false
+  }
+}
+
+/**
+ * 自动写入日报 - 任务记录
+ * 精简格式：任务标题 + 记录类型 + 记录内容
  */
 export async function autoWriteTaskRecord(
   userId: number,
@@ -183,55 +205,25 @@ export async function autoWriteTaskRecord(
       'NOTE': '备注', 'CALL': '电话沟通', 'MEETING': '会议',
       'EMAIL': '邮件', 'VISIT': '拜访', 'OTHER': '其他'
     }
-    const priorityMap: Record<string, string> = {
-      LOW: '低', MEDIUM: '中', HIGH: '高', URGENT: '紧急'
-    }
 
-    // 查询任务完整信息
     const task = await prisma.task.findFirst({
       where: { id: taskId, deletedAt: null },
-      include: {
-        assigner: { select: { name: true } },
-        assignees: { select: { name: true } },
-        project: { select: { name: true } }
-      }
+      select: { title: true, projectId: true, project: { select: { name: true } } }
     })
 
+    const recordLabel = typeMap[recordType] || recordType || '记录'
     const lines: string[] = []
-
-    // 任务基本信息
-    lines.push(`📌 任务：${task?.title || taskTitle}`)
-    if (task?.project?.name) lines.push(`📁 关联项目：${task.project.name}`)
-    lines.push(`📋 记录类型：${typeMap[recordType] || recordType || '记录'}`)
-    lines.push(`⚡ 优先级：${priorityMap[task?.priority || ''] || task?.priority || '-'}`)
-    lines.push(`👤 委派人：${task?.assigner?.name || '-'}`)
-    lines.push(`👥 执行人：${task?.assignees?.map(a => a.name).join('、') || '-'}`)
-    if (task?.dueDate) {
-      lines.push(`📅 截止日期：${new Date(task.dueDate).toISOString().slice(0, 10)}`)
+    lines.push(`${recordLabel}：${task?.title || taskTitle}`)
+    if (recordContent) {
+      lines.push(recordContent)
     }
-
-    // 任务描述
-    if (task?.description) {
-      lines.push('')
-      lines.push(`📝 任务描述：${task.description}`)
-    }
-
-    // 记录内容
-    lines.push('')
-    lines.push(`💬 记录内容：${recordContent}`)
-
-    // 下次计划
     if (nextPlan) {
-      lines.push('')
-      lines.push(`📋 下次计划：${nextPlan}`)
-      if (nextDate) {
-        lines.push(`📅 计划日期：${new Date(nextDate).toISOString().slice(0, 10)}`)
-      }
+      lines.push(`后续计划：${nextPlan}`)
     }
 
     return autoWriteDailyReport({
       userId,
-      title: `${taskTitle} - ${typeMap[recordType] || '记录'}`,
+      title: `${task?.title || taskTitle} - ${recordLabel}`,
       content: lines.join('\n'),
       projectId: task?.projectId || null,
       taskId,
@@ -246,7 +238,7 @@ export async function autoWriteTaskRecord(
 
 /**
  * 自动写入日报 - 项目备注
- * 包含：项目名称、客户、备注类型、完整内容
+ * 精简格式：项目名 + 备注内容
  */
 export async function autoWriteProjectNote(
   userId: number,
@@ -262,24 +254,10 @@ export async function autoWriteProjectNote(
       ISSUE: '问题记录', MEETING: '会议纪要'
     }
 
-    // 查询项目完整信息（含客户）
-    const project = await prisma.project.findFirst({
-      where: { id: projectId, deletedAt: null },
-      include: {
-        organization: { select: { name: true } }
-      }
-    })
-
     const lines: string[] = []
-
-    lines.push(`📁 项目：${projectName}`)
-    if (project?.organization?.name) lines.push(`🏢 客户：${project.organization.name}`)
-    lines.push(`📋 备注类型：${noteTypeMap[noteType] || noteType || '一般备注'}`)
-    lines.push(`📌 标题：${noteTitle}`)
-
+    lines.push(`[${noteTypeMap[noteType] || '备注'}] ${noteTitle}`)
     if (noteContent) {
-      lines.push('')
-      lines.push(`📝 内容：${noteContent}`)
+      lines.push(noteContent)
     }
 
     return autoWriteDailyReport({
@@ -298,7 +276,7 @@ export async function autoWriteProjectNote(
 
 /**
  * 自动写入日报 - 售前/商机记录
- * 包含：商机名称、客户、应用领域、成单率、竞争对手、决策人、记录内容、下次计划
+ * 精简格式：售前名 + 记录内容 + 下次计划
  */
 export async function autoWriteOpportunityRecord(
   userId: number,
@@ -309,46 +287,15 @@ export async function autoWriteOpportunityRecord(
   nextDate?: Date | null
 ): Promise<boolean> {
   try {
-    // 查询商机完整信息
-    const opportunity = await prisma.opportunity.findFirst({
-      where: { id: opportunityId, deletedAt: null },
-      include: {
-        organization: { select: { name: true } }
-      }
-    })
-
-    const statusMap: Record<string, string> = {
-      OPEN: '开放', FOLLOWING: '跟进中',
-      WON: '已赢单', LOST: '已丢单'
-    }
-
     const lines: string[] = []
-
-    lines.push(`💼 商机：${opportunityName}`)
-    if (opportunity?.organization?.name) lines.push(`🏢 客户：${opportunity.organization.name}`)
-    if (opportunity?.application) lines.push(`🏭 应用领域：${opportunity.application}`)
-    lines.push(`📊 当前状态：${statusMap[opportunity?.status || ''] || opportunity?.status || '-'}`)
-    if (opportunity?.winRate != null) lines.push(`🎯 成单率：${opportunity.winRate}%`)
-    if (opportunity?.budget) lines.push(`💰 预算：${Number(opportunity.budget).toLocaleString()}元`)
-    if (opportunity?.decisionMaker) lines.push(`👤 客户决策人：${opportunity.decisionMaker}`)
-    if (opportunity?.competitors) lines.push(`⚔️ 竞争对手：${opportunity.competitors}`)
-
-    // 记录内容
-    lines.push('')
-    lines.push(`💬 记录内容：${recordContent}`)
-
-    // 下次计划
+    lines.push(recordContent || `跟进：${opportunityName}`)
     if (nextPlan) {
-      lines.push('')
-      lines.push(`📋 下次计划：${nextPlan}`)
-      if (nextDate) {
-        lines.push(`📅 计划日期：${new Date(nextDate).toISOString().slice(0, 10)}`)
-      }
+      lines.push(`后续计划：${nextPlan}`)
     }
 
     return autoWriteDailyReport({
       userId,
-      title: `${opportunityName}`,
+      title: opportunityName,
       content: lines.join('\n'),
       opportunityId,
       hours: 0.25,
@@ -356,6 +303,292 @@ export async function autoWriteOpportunityRecord(
     })
   } catch (error) {
     logger.error('Auto write opportunity record to daily report failed:', error)
+    return false
+  }
+}
+
+/**
+ * 自动写入日报 - 项目创建/编辑
+ */
+export async function autoWriteProjectRecord(
+  userId: number,
+  projectName: string,
+  action: 'CREATE' | 'UPDATE',
+  projectId: number,
+  changes?: string
+): Promise<boolean> {
+  try {
+    const actionText = action === 'CREATE' ? '创建' : '更新'
+    const lines: string[] = []
+    lines.push(`${actionText}项目：${projectName}`)
+    if (changes) {
+      lines.push(changes)
+    }
+
+    return autoWriteDailyReport({
+      userId,
+      title: `${projectName} - 项目${actionText}`,
+      content: lines.join('\n'),
+      projectId,
+      hours: 0.25,
+      type: 'PROJECT'
+    })
+  } catch (error) {
+    logger.error('Auto write project record to daily report failed:', error)
+    return false
+  }
+}
+
+/**
+ * 自动写入日报 - 客户创建/编辑
+ */
+export async function autoWriteOrganizationRecord(
+  userId: number,
+  organizationName: string,
+  action: 'CREATE' | 'UPDATE',
+  organizationId: number,
+  changes?: string
+): Promise<boolean> {
+  try {
+    const actionText = action === 'CREATE' ? '创建' : '更新'
+    const lines: string[] = []
+    lines.push(`${actionText}客户：${organizationName}`)
+    if (changes) {
+      lines.push(changes)
+    }
+
+    return autoWriteDailyReport({
+      userId,
+      title: `${organizationName} - 客户${actionText}`,
+      content: lines.join('\n'),
+      hours: 0.25,
+      type: 'WORK'
+    })
+  } catch (error) {
+    logger.error('Auto write organization record to daily report failed:', error)
+    return false
+  }
+}
+
+/**
+ * 自动写入日报 - 报价单操作
+ */
+export async function autoWriteQuotationRecord(
+  userId: number,
+  quotationTitle: string,
+  action: 'CREATE' | 'UPDATE' | 'SUBMIT' | 'APPROVE' | 'REJECT',
+  quotationId: number,
+  projectId?: number | null,
+  details?: string
+): Promise<boolean> {
+  try {
+    const actionMap: Record<string, string> = {
+      CREATE: '创建', UPDATE: '更新', SUBMIT: '提交', APPROVE: '批准', REJECT: '驳回'
+    }
+    const actionText = actionMap[action] || action
+    const lines: string[] = []
+    lines.push(`${actionText}报价单：${quotationTitle}`)
+    if (details) {
+      lines.push(details)
+    }
+
+    return autoWriteDailyReport({
+      userId,
+      title: `报价单 - ${quotationTitle}`,
+      content: lines.join('\n'),
+      projectId,
+      hours: 0.25,
+      type: 'PRE_SALES'
+    })
+  } catch (error) {
+    logger.error('Auto write quotation record to daily report failed:', error)
+    return false
+  }
+}
+
+/**
+ * 自动写入日报 - 费用报销操作
+ */
+export async function autoWriteExpenseRecord(
+  userId: number,
+  expenseTitle: string,
+  action: 'CREATE' | 'UPDATE' | 'SUBMIT' | 'APPROVE' | 'REJECT' | 'PAY',
+  expenseId: number,
+  projectId?: number | null,
+  amount?: number
+): Promise<boolean> {
+  try {
+    const actionMap: Record<string, string> = {
+      CREATE: '创建', UPDATE: '更新', SUBMIT: '提交审批', APPROVE: '审批通过', REJECT: '审批驳回', PAY: '支付完成'
+    }
+    const actionText = actionMap[action] || action
+    const lines: string[] = []
+    lines.push(`${actionText}费用报销：${expenseTitle}`)
+    if (amount) {
+      lines.push(`报销金额：¥${amount.toFixed(2)}`)
+    }
+
+    return autoWriteDailyReport({
+      userId,
+      title: `费用报销 - ${expenseTitle}`,
+      content: lines.join('\n'),
+      projectId,
+      hours: 0.25,
+      type: 'WORK'
+    })
+  } catch (error) {
+    logger.error('Auto write expense record to daily report failed:', error)
+    return false
+  }
+}
+
+/**
+ * 自动写入日报 - 合同操作
+ */
+export async function autoWriteContractRecord(
+  userId: number,
+  contractTitle: string,
+  action: 'CREATE' | 'UPDATE' | 'APPROVE' | 'REJECT' | 'SUBMIT',
+  contractId: number,
+  projectId?: number | null,
+  contractAmount?: number
+): Promise<boolean> {
+  try {
+    const actionMap: Record<string, string> = {
+      CREATE: '创建', UPDATE: '更新', APPROVE: '审批通过', REJECT: '审批驳回', SUBMIT: '提交审批'
+    }
+    const actionText = actionMap[action] || action
+    const lines: string[] = []
+    lines.push(`${actionText}合同：${contractTitle}`)
+    if (contractAmount) {
+      lines.push(`合同金额：¥${contractAmount.toFixed(2)}`)
+    }
+
+    return autoWriteDailyReport({
+      userId,
+      title: `合同 - ${contractTitle}`,
+      content: lines.join('\n'),
+      projectId,
+      hours: 0.5,
+      type: 'PROJECT'
+    })
+  } catch (error) {
+    logger.error('Auto write contract record to daily report failed:', error)
+    return false
+  }
+}
+
+/**
+ * 自动写入日报 - 采购操作
+ */
+export async function autoWriteProcurementRecord(
+  userId: number,
+  procurementTitle: string,
+  action: 'CREATE' | 'UPDATE' | 'APPROVE' | 'REJECT' | 'SUBMIT',
+  procurementId: number,
+  projectId?: number | null,
+  totalAmount?: number
+): Promise<boolean> {
+  try {
+    const actionMap: Record<string, string> = {
+      CREATE: '创建', UPDATE: '更新', APPROVE: '审批通过', REJECT: '审批驳回', SUBMIT: '提交审批'
+    }
+    const actionText = actionMap[action] || action
+    const lines: string[] = []
+    lines.push(`${actionText}采购：${procurementTitle}`)
+    if (totalAmount) {
+      lines.push(`采购金额：¥${totalAmount.toFixed(2)}`)
+    }
+
+    return autoWriteDailyReport({
+      userId,
+      title: `采购 - ${procurementTitle}`,
+      content: lines.join('\n'),
+      projectId,
+      hours: 0.25,
+      type: 'PROJECT'
+    })
+  } catch (error) {
+    logger.error('Auto write procurement record to daily report failed:', error)
+    return false
+  }
+}
+
+/**
+ * 自动写入日报 - 出差操作
+ */
+export async function autoWriteBusinessTripRecord(
+  userId: number,
+  tripTitle: string,
+  action: 'CREATE' | 'UPDATE' | 'SUBMIT' | 'APPROVE' | 'REJECT' | 'COMPLETE',
+  tripId: number,
+  destination?: string,
+  startDate?: Date,
+  endDate?: Date
+): Promise<boolean> {
+  try {
+    const actionMap: Record<string, string> = {
+      CREATE: '创建', UPDATE: '更新', SUBMIT: '提交审批', APPROVE: '审批通过', REJECT: '审批驳回', COMPLETE: '完成出差'
+    }
+    const actionText = actionMap[action] || action
+    const lines: string[] = []
+    lines.push(`${actionText}出差：${tripTitle}`)
+    if (destination) {
+      lines.push(`目的地：${destination}`)
+    }
+    if (startDate && endDate) {
+      const start = new Date(startDate).toLocaleDateString('zh-CN')
+      const end = new Date(endDate).toLocaleDateString('zh-CN')
+      lines.push(`时间：${start} - ${end}`)
+    }
+
+    return autoWriteDailyReport({
+      userId,
+      title: `出差 - ${tripTitle}`,
+      content: lines.join('\n'),
+      hours: 0.25,
+      type: 'WORK'
+    })
+  } catch (error) {
+    logger.error('Auto write business trip record to daily report failed:', error)
+    return false
+  }
+}
+
+/**
+ * 自动写入日报 - 售前阶段变更
+ */
+export async function autoWriteOpportunityStageChange(
+  userId: number,
+  opportunityName: string,
+  oldStage: string,
+  newStage: string,
+  opportunityId: number,
+  projectId?: number | null
+): Promise<boolean> {
+  try {
+    const stageMap: Record<string, string> = {
+      INITIAL: '初步接触', QUALIFIED: '需求确认', PROPOSAL: '方案报价',
+      NEGOTIATION: '商务谈判', CLOSED_WON: '赢单', CLOSED_LOST: '输单'
+    }
+    const oldStageText = stageMap[oldStage] || oldStage
+    const newStageText = stageMap[newStage] || newStage
+
+    const lines: string[] = []
+    lines.push(`售前机会阶段推进：${opportunityName}`)
+    lines.push(`从"${oldStageText}"推进到"${newStageText}"`)
+
+    return autoWriteDailyReport({
+      userId,
+      title: `${opportunityName} - 阶段推进`,
+      content: lines.join('\n'),
+      opportunityId,
+      projectId,
+      hours: 0.25,
+      type: 'PRE_SALES'
+    })
+  } catch (error) {
+    logger.error('Auto write opportunity stage change to daily report failed:', error)
     return false
   }
 }

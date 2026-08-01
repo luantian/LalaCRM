@@ -6,6 +6,7 @@ import { applyDataScope } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
 import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
+import { autoWriteQuotationRecord } from '../utils/autoDailyReport'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
@@ -216,6 +217,9 @@ router.post('/', authenticateToken, checkPermission('edit_quotations'), logOpera
       }
     })
 
+    if (req.user?.id) {
+      autoWriteQuotationRecord(req.user.id, quotation.name, 'CREATE', quotation.id, quotation.opportunityId).catch(() => {})
+    }
     res.status(201).json(quotation)
   } catch (error) {
     logger.error('Create quotation error:', error)
@@ -268,6 +272,9 @@ router.put('/:id', authenticateToken, checkPermission('edit_quotations'), logOpe
         },
         include: { items: true }
       })
+      if (req.user?.id) {
+        autoWriteQuotationRecord(req.user.id, quotation.name, 'UPDATE', quotation.id, quotation.opportunityId).catch(() => {})
+      }
       return res.json(quotation)
     }
 
@@ -275,6 +282,9 @@ router.put('/:id', authenticateToken, checkPermission('edit_quotations'), logOpe
       where: { id },
       data: { name, validUntil: validUntil ? new Date(validUntil) : null, notes }
     })
+    if (req.user?.id) {
+      autoWriteQuotationRecord(req.user.id, quotation.name, 'UPDATE', quotation.id, quotation.opportunityId).catch(() => {})
+    }
     res.json(quotation)
   } catch (error) {
     logger.error('Update quotation error:', error)
@@ -345,6 +355,9 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_quotatio
       where: { id },
       data: { status: 'APPROVED' }
     })
+    if (req.user?.id) {
+      autoWriteQuotationRecord(req.user.id, quotation.name, 'APPROVE', quotation.id, quotation.opportunityId).catch(() => {})
+    }
     res.json(quotation)
   } catch (error) {
     logger.error('Approve quotation error:', error)
@@ -366,6 +379,9 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_quotation
       where: { id },
       data: { status: 'REJECTED' }
     })
+    if (req.user?.id) {
+      autoWriteQuotationRecord(req.user.id, quotation.name, 'REJECT', quotation.id, quotation.opportunityId).catch(() => {})
+    }
     res.json(quotation)
   } catch (error) {
     logger.error('Reject quotation error:', error)

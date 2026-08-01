@@ -2,11 +2,21 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import rateLimit from 'express-rate-limit'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 import logger from '../utils/logger'
 
 const router = Router()
 const prisma = new PrismaClient()
+
+// 登录接口限速：每个IP每分钟最多5次登录尝试
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1分钟
+  max: 5, // 每个IP最多5次
+  message: { error: '登录尝试次数过多，请稍后再试' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
 
 // 解析 User-Agent 提取操作系统和浏览器
 function parseUserAgent(ua: string): { os: string; browser: string } {
@@ -57,29 +67,43 @@ const checkAdmin = async (req: AuthRequest, res: any, next: any) => {
 
 // Helper: fetch menus for a given user
 async function getUserMenus(userId: number, fallbackRoleId: number | null, roleString?: string) {
-  // Get all menus
-  const allMenus = await prisma.menuItem.findMany()
-
   // If ADMIN role, return all menus
   if (roleString === 'ADMIN') {
-    return allMenus
+    return await prisma.menuItem.findMany()
   }
 
-  // Define system menu keys that should only be visible to ADMIN
-  const systemMenuKeys = [
-    'system', 'users', 'roles', 'menus', 'departments',
-    'dicts', 'logs', 'operation-logs', 'login-logs'
-  ]
-
-  // For non-admin users, filter out system menus
-  return allMenus.filter(menu => {
-    // Hide system menus from non-admin users
-    if (systemMenuKeys.includes(menu.key)) {
-      return false
-    }
-    // Show all other menus
-    return true
+  // Get user's roles (support multiple roles via UserRole table)
+  const userRoles = await prisma.userRole.findMany({
+    where: { userId },
+    select: { roleId: true }
   })
+
+  const roleIds = userRoles.map(ur => ur.roleId)
+  
+  // If user has legacy single role (fallbackRoleId), include it
+  if (fallbackRoleId && !roleIds.includes(fallbackRoleId)) {
+    roleIds.push(fallbackRoleId)
+  }
+
+  // If no roles assigned, return empty array
+  if (roleIds.length === 0) {
+    return []
+  }
+
+  // Get menu IDs associated with user's roles
+  const roleMenus = await prisma.roleMenu.findMany({
+    where: { roleId: { in: roleIds } },
+    select: { menuId: true }
+  })
+
+  const menuIds = roleMenus.map(rm => rm.menuId)
+
+  // Get the actual menu items
+  const menus = await prisma.menuItem.findMany({
+    where: { id: { in: menuIds } }
+  })
+
+  return menus
 }
 
 // 登录
@@ -109,19 +133,33 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: '用户名或密码错误' })
     }
 
-    // 获取用户角色权限（支持旧的role枚举字段fallback）
-    let permissions: string[] = []
+    // 获取用户角色权限：从 userRoles 多角色关联表聚合所有权限
+    const userRolesList = await prisma.userRole.findMany({
+      where: { userId: user.id },
+      include: { role: { select: { permissions: true } } }
+    })
+
+    const permissionSet = new Set<string>()
+    for (const ur of userRolesList) {
+      if (ur.role?.permissions) {
+        ur.role.permissions.forEach((p: string) => permissionSet.add(p))
+      }
+    }
+
+    // Fallback: 从旧的 roleId 字段获取权限
     let resolvedRoleId = user.roleId
     if (!resolvedRoleId && user.role) {
       const roleModel = await prisma.roleModel.findUnique({ where: { name: user.role } })
       if (roleModel) {
         resolvedRoleId = roleModel.id
-        permissions = roleModel.permissions
+        roleModel.permissions.forEach((p: string) => permissionSet.add(p))
       }
     } else if (resolvedRoleId) {
       const roleModel = await prisma.roleModel.findUnique({ where: { id: resolvedRoleId } })
-      if (roleModel) permissions = roleModel.permissions
+      if (roleModel) roleModel.permissions.forEach((p: string) => permissionSet.add(p))
     }
+
+    const permissions = Array.from(permissionSet)
 
     // 获取用户菜单
     const menus = await getUserMenus(user.id, resolvedRoleId, user.role)
@@ -283,6 +321,47 @@ router.post('/register', authenticateToken, checkAdmin, async (req: AuthRequest,
   } catch (error) {
     logger.error('Register error:', error)
     res.status(500).json({ error: '注册失败' })
+  }
+})
+
+// 修改密码（需要登录）
+router.put('/change-password', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ error: '当前密码和新密码不能为空' })
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: '新密码长度至少6位' })
+    }
+
+    // 获取当前用户
+    const user = await prisma.user.findUnique({ where: { id: req.user?.id } })
+    if (!user) {
+      return res.status(404).json({ error: '用户不存在' })
+    }
+
+    // 验证旧密码
+    const validPassword = await bcrypt.compare(oldPassword, user.password)
+    if (!validPassword) {
+      return res.status(400).json({ error: '当前密码错误' })
+    }
+
+    // 更新密码
+    const hashedPassword = await bcrypt.hash(newPassword, 10)
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword }
+    })
+
+    logger.info(`Password changed for user: ${user.username}`)
+
+    res.json({ message: '密码修改成功' })
+  } catch (error) {
+    logger.error('Change password error:', error)
+    res.status(500).json({ error: '密码修改失败' })
   }
 })
 

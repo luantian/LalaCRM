@@ -39,7 +39,7 @@ const QuotationList: React.FC = () => {
       const response: any = await getQuotations({ page: pagination.current, pageSize: pagination.pageSize, ...filters })
       setQuotations(response.data || [])
       setPagination(prev => ({ ...prev, total: response.pagination?.total || 0 }))
-    } catch { message.error('获取报价单列表失败') }
+    } catch (e: any) { message.error(e?.error || '获取报价单列表失败') }
     setLoading(false)
   }, [pagination.current, pagination.pageSize, filters])
 
@@ -80,7 +80,7 @@ const QuotationList: React.FC = () => {
       a.remove()
       URL.revokeObjectURL(url)
       message.success('导出成功')
-    } catch { message.error('导出失败') }
+    } catch (e: any) { message.error(e?.error || '导出失败') }
   }
 
   const handleImport = async (file: File) => {
@@ -166,7 +166,7 @@ const QuotationList: React.FC = () => {
 
   const columns = [
     { title: '报价单', dataIndex: 'name', key: 'name', render: (text: string, r: any) => <a onClick={() => navigate(`/quotations/${r.id}`)}>{text} <Tag>v{r.version}</Tag></a> },
-    { title: '关联商机', key: 'opportunity', render: (_: any, r: any) => r.opportunity?.name || '-' },
+    { title: '关联售前', key: 'opportunity', render: (_: any, r: any) => r.opportunity?.name || '-' },
     { title: '客户', key: 'organization', render: (_: any, r: any) => {
       const org = r.organization?.name || '-'
       const contact = r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : ''
@@ -237,7 +237,7 @@ const QuotationList: React.FC = () => {
         <Form form={form} layout="vertical">
           <Row gutter={16}>
             <Col span={12}><Form.Item name="name" label="报价单名称" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="opportunityId" label="关联商机" rules={[{ required: true }]}>
+            <Col span={12}><Form.Item name="opportunityId" label="关联售前" rules={[{ required: true }]}>
               <Select showSearch optionFilterProp="children">
                 {opportunities.map(o => <Option key={o.id} value={o.id}>{o.name}</Option>)}
               </Select>

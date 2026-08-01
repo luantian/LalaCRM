@@ -198,7 +198,8 @@ router.delete('/notes/:id', authenticateToken, logOperation('项目备注', 'DEL
     // 删除关联附件（磁盘文件 + 软删除记录）
     const files = await prisma.projectNoteFile.findMany({ where: { noteId: Number(id), deletedAt: null } });
     for (const file of files) {
-      if (fs.existsSync(file.filePath)) fs.unlinkSync(file.filePath);
+      const filePath = path.join(__dirname, '../uploads', file.filePath)
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
     await prisma.projectNoteFile.updateMany({ where: { noteId: Number(id) }, data: { deletedAt: new Date() } });
 
@@ -376,7 +377,7 @@ router.post('/notes/:id/files', authenticateToken, upload.array('files', 10), lo
         data: {
           noteId,
           fileName: file.originalname,
-          filePath: file.path,
+          filePath: file.filename,
           fileSize: file.size,
           fileType: file.mimetype,
           uploadedBy: req.user!.id,
@@ -427,7 +428,8 @@ router.delete('/notes/:noteId/files/:fileId', authenticateToken, logOperation('�
     const fileId = Number(req.params.fileId);
     const file = await prisma.projectNoteFile.findFirst({ where: { id: fileId, deletedAt: null } });
     if (!file) return res.status(404).json({ error: '文件不存在' });
-    if (fs.existsSync(file.filePath)) fs.unlinkSync(file.filePath);
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     await prisma.projectNoteFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } });
     cleanupPreviewCache(fileId);
     res.json({ message: '删除成功' });

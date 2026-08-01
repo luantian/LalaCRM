@@ -358,13 +358,18 @@ router.delete('/:id', authenticateToken, checkPermission('create_reports'), logO
       return res.status(404).json({ error: '工作日报不存在' })
     }
 
-    // 只能删除自己的日报
-    if (report.userId !== req.user!.id) {
-      return res.status(403).json({ error: '只能删除自己的日报' })
-    }
+    // 管理员可以删除任何日报
+    if (req.user?.role === 'ADMIN') {
+      // 管理员直接通过权限检查
+    } else {
+      // 普通用户只能删除自己的草稿状态日报
+      if (report.userId !== req.user!.id) {
+        return res.status(403).json({ error: '只能删除自己的日报' })
+      }
 
-    if (report.status !== 'DRAFT' && req.user?.role !== 'ADMIN') {
-      return res.status(400).json({ error: '只能删除草稿状态的日报' })
+      if (report.status !== 'DRAFT') {
+        return res.status(400).json({ error: '只能删除草稿状态的日报' })
+      }
     }
 
     // 级联软删除子实体（只有这些模型有 deletedAt）
@@ -721,7 +726,22 @@ router.get('/:id/items', authenticateToken, checkPermission('view_reports'), asy
     const items = await prisma.dailyReportItem.findMany({
       where: { reportId, deletedAt: null },
       include: {
-        project: { select: { id: true, name: true } }
+        project: { select: { id: true, name: true } },
+        task: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            rejectionReason: true,
+            records: {
+              where: { deletedAt: null },
+              orderBy: { createdAt: 'asc' },
+              include: {
+                user: { select: { id: true, name: true } }
+              }
+            }
+          }
+        }
       },
       orderBy: { order: 'asc' }
     })

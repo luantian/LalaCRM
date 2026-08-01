@@ -51,17 +51,16 @@ router.get('/:projectId/summary', authenticateToken, async (req: AuthRequest, re
 
     // ===== 支出项 =====
 
-    // 出差费用
-    const tripResult = await prisma.businessTrip.aggregate({
-      where: { deletedAt: null, projectId: pid },
-      _sum: { totalAmount: true },
-      _count: true,
-    });
-
-    // 报销费用
+    // 报销费用（包括直接关联项目的和通过出差关联的）
     const expenseResult = await prisma.expense.aggregate({
-      where: { deletedAt: null, projectId: pid },
-      _sum: { amount: true },
+      where: { 
+        deletedAt: null,
+        OR: [
+          { projectId: pid },
+          { trip: { projectId: pid, deletedAt: null } }
+        ]
+      },
+      _sum: { totalAmount: true },
       _count: true,
     });
 
@@ -72,18 +71,17 @@ router.get('/:projectId/summary', authenticateToken, async (req: AuthRequest, re
       _count: true,
     });
 
-    const tripTotal = Number(tripResult._sum.totalAmount ?? 0);
-    const expenseTotal = Number(expenseResult._sum.amount ?? 0);
+    const expenseTotal = Number(expenseResult._sum.totalAmount ?? 0);
     const procurementPaymentTotal = Number(procurementPaymentResult._sum.amount ?? 0);
 
     // 支出合计
-    const totalExpense = tripTotal + expenseTotal + procurementPaymentTotal;
+    const totalExpense = expenseTotal + procurementPaymentTotal;
 
     // ===== 收入项 =====
 
-    // 合同收款（客户付给我们的钱）
+    // 合同收款（客户付给我们的钱，只统计已确认收款状态：RECEIVED 或 CONFIRMED）
     const contractPaymentResult = await prisma.contractPayment.aggregate({
-      where: { deletedAt: null, contract: { deletedAt: null, projectId: pid } },
+      where: { deletedAt: null, status: { in: ['RECEIVED', 'CONFIRMED'] }, contract: { deletedAt: null, projectId: pid } },
       _sum: { amount: true },
       _count: true,
     });
@@ -122,10 +120,6 @@ router.get('/:projectId/summary', authenticateToken, async (req: AuthRequest, re
       },
       // 支出
       expense: {
-        tripExpenses: {
-          total: tripTotal,
-          count: tripResult._count,
-        },
         expenseReports: {
           total: expenseTotal,
           count: expenseResult._count,

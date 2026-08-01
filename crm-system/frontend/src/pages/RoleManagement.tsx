@@ -48,16 +48,16 @@ function RoleManagement() {
   const permissionDefs = [
     // 系统
     { key: 'manage_system', label: '系统管理', group: '系统' },
-    // 组织
-    { key: 'view_organizations', label: '查看组织', group: '组织' },
-    { key: 'edit_organizations', label: '编辑组织', group: '组织' },
+    // 客户管理
+    { key: 'view_organizations', label: '查看客户', group: '客户管理' },
+    { key: 'edit_organizations', label: '编辑客户', group: '客户管理' },
     // 项目
     { key: 'view_projects', label: '查看项目', group: '项目' },
     { key: 'edit_projects', label: '编辑项目', group: '项目' },
     { key: 'create_projects', label: '创建项目', group: '项目' },
-    // 商机
-    { key: 'view_opportunities', label: '查看商机', group: '商机' },
-    { key: 'edit_opportunities', label: '管理商机', group: '商机' },
+    // 售前
+    { key: 'view_opportunities', label: '查看售前', group: '售前' },
+    { key: 'edit_opportunities', label: '管理售前', group: '售前' },
     // 报价单
     { key: 'view_quotations', label: '查看报价', group: '报价' },
     { key: 'edit_quotations', label: '管理报价', group: '报价' },
@@ -103,7 +103,7 @@ function RoleManagement() {
       const response = await api.get('/roles') as any
       setRoles(response)
     } catch (error: any) {
-      message.error('获取角色列表失败')
+      message.error(error?.error || '获取角色列表失败')
     } finally {
       setLoading(false)
     }
@@ -141,7 +141,7 @@ function RoleManagement() {
       }
       setCheckedMenuIds(extractIds(Array.isArray(response) ? response : []))
     } catch (error: any) {
-      message.error('获取角色菜单失败')
+      message.error(error?.error || '获取角色菜单失败')
     } finally {
       setMenuLoading(false)
     }
@@ -156,7 +156,7 @@ function RoleManagement() {
       setMenuModalVisible(false)
       fetchRoles() // 刷新角色列表以更新对照表
     } catch (error: any) {
-      message.error('保存失败')
+      message.error(error?.error || '保存失败')
     }
   }
 

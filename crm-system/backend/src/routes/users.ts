@@ -149,6 +149,16 @@ router.post('/', authenticateToken, checkAdmin, logOperation('用户管理', 'CR
       }
     })
 
+    // 同时创建 UserRole 关联记录，确保菜单权限正常加载
+    if (roleId) {
+      await prisma.userRole.create({
+        data: {
+          userId: user.id,
+          roleId: roleId
+        }
+      })
+    }
+
     res.status(201).json(userWithoutPassword(user))
   } catch (error) {
     logger.error('Create user error:', error)

@@ -58,8 +58,8 @@ function BusinessTripList() {
         pageSize: response.pagination?.pageSize || 10,
         total: response.pagination?.total || 0
       })
-    } catch (error) {
-      message.error('获取出差记录失败')
+    } catch (error: any) {
+      message.error(error?.error || '获取出差记录失败')
     } finally {
       setLoading(false)
     }
@@ -208,8 +208,8 @@ function BusinessTripList() {
       message.success('删除成功')
       fetchTrips(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '删除失败')
     }
   }
 
@@ -231,8 +231,8 @@ function BusinessTripList() {
           setSelectedRowKeys([])
           fetchTrips(pagination.current, pagination.pageSize)
           fetchStats()
-        } catch (error) {
-          message.error('批量删除失败')
+        } catch (error: any) {
+          message.error(error?.error || '批量删除失败')
         }
       }
     })
@@ -260,8 +260,8 @@ function BusinessTripList() {
       setModalVisible(false)
       fetchTrips(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('操作失败')
+    } catch (error: any) {
+      message.error(error?.error || '操作失败')
     }
   }
 
@@ -317,11 +317,17 @@ function BusinessTripList() {
     },
     { title: '天数', dataIndex: 'days', key: 'days', render: (days: number) => `${days}天` },
     {
-      title: '总费用',
-      dataIndex: 'totalAmount',
-      key: 'totalAmount',
-      render: (amount: number) => `${amount}元`,
-      sorter: (a: any, b: any) => a.totalAmount - b.totalAmount
+      title: '报销金额',
+      key: 'expenses',
+      render: (_: any, r: any) => {
+        const total = (r.expenses || []).reduce((s: number, e: any) => s + Number(e.amount || 0), 0)
+        return total > 0 ? `${total.toFixed(2)}元` : '-'
+      },
+      sorter: (a: any, b: any) => {
+        const ta = (a.expenses || []).reduce((s: number, e: any) => s + Number(e.amount || 0), 0)
+        const tb = (b.expenses || []).reduce((s: number, e: any) => s + Number(e.amount || 0), 0)
+        return ta - tb
+      }
     },
     {
       title: '状态',
@@ -542,30 +548,6 @@ function BusinessTripList() {
           <Form.Item name="dateRange" label="出差日期" rules={[{ required: true, message: '请选择出差日期' }]}>
             <RangePicker style={{ width: '100%' }} />
           </Form.Item>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="accommodation" label="住宿费">
-                <InputNumber style={{ width: '100%' }} precision={2} addonAfter="元" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="transportation" label="交通费">
-                <InputNumber style={{ width: '100%' }} precision={2} addonAfter="元" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="meals" label="餐饮费">
-                <InputNumber style={{ width: '100%' }} precision={2} addonAfter="元" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="otherExpenses" label="其他费用">
-                <InputNumber style={{ width: '100%' }} precision={2} addonAfter="元" />
-              </Form.Item>
-            </Col>
-          </Row>
           <Form.Item name="notes" label="备注">
             <Input.TextArea rows={3} />
           </Form.Item>
@@ -585,7 +567,7 @@ function BusinessTripList() {
           <div style={{ marginBottom: 16 }}>
             <p><strong>{approveTarget.title}</strong></p>
             <p>目的地：{approveTarget.destination} | 天数：{approveTarget.days}天</p>
-            <p>费用：{approveTarget.totalAmount}元 | 申请人：{approveTarget.owner?.name}</p>
+            <p>报销金额：¥{(approveTarget.expenses || []).reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0).toFixed(2)} | 申请人：{approveTarget.owner?.name}</p>
           </div>
         )}
         {approveAction === 'approve' ? (

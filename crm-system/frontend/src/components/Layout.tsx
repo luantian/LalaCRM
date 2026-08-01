@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Layout as AntLayout, Menu, Button, Spin, Avatar, Dropdown, Badge, Empty, Modal, Tag, Popconfirm, App as AntApp, Input } from 'antd'
+import { Layout as AntLayout, Menu, Button, Spin, Avatar, Dropdown, Badge, Empty, Modal, Tag, Popconfirm, App as AntApp, Input, Form } from 'antd'
 import {
   UserOutlined,
   LogoutOutlined,
@@ -12,7 +12,9 @@ import {
   ClockCircleOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
-  MailOutlined
+  MailOutlined,
+  LockOutlined,
+  EditOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useEffect, useState, useCallback } from 'react'
@@ -59,6 +61,8 @@ function Layout() {
   const [completionModalVisible, setCompletionModalVisible] = useState(false)
   const [completionNote, setCompletionNote] = useState('')
   const [submitNote, setSubmitNote] = useState('')
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false)
+  const [passwordForm] = Form.useForm()
 
   const priorityMap: Record<string, { text: string; color: string }> = {
     LOW: { text: '低', color: 'default' },
@@ -92,7 +96,7 @@ function Layout() {
       if (cached) {
         setMenus(JSON.parse(cached))
       } else {
-        message.error('获取菜单失败')
+        message.error(error?.error || '获取菜单失败')
       }
     } finally {
       setLoading(false)
@@ -155,7 +159,7 @@ function Layout() {
       message.success(status === 'COMPLETED' ? '任务已完成 🎉' : '任务已更新')
       setTaskDetail({ ...taskDetail, status, completedAt: status === 'COMPLETED' ? new Date().toISOString() : null })
       fetchNotifications()
-    } catch (e) { message.error('操作失败') }
+    } catch (e: any) { message.error(e?.error || '操作失败') }
   }
 
   const handleRejectClick = () => {
@@ -175,7 +179,7 @@ function Layout() {
       setRejectionReason('')
       setTaskDetail({ ...taskDetail, status: 'IN_PROGRESS', rejectionReason })
       fetchNotifications()
-    } catch (e) { message.error('驳回失败') }
+    } catch (e: any) { message.error(e?.error || '驳回失败') }
   }
 
   const handleCompleteClick = () => {
@@ -195,7 +199,7 @@ function Layout() {
       setCompletionNote('')
       setTaskDetail({ ...taskDetail, status: 'COMPLETED', completedAt: new Date().toISOString(), completionNote })
       fetchNotifications()
-    } catch (e) { message.error('操作失败') }
+    } catch (e: any) { message.error(e?.error || '操作失败') }
   }
 
   const handleConfirmSubmit = async () => {
@@ -209,7 +213,7 @@ function Layout() {
       setSubmitNote('')
       setTaskDetail({ ...taskDetail, status: 'SUBMITTED', completionNote: submitNote })
       fetchNotifications()
-    } catch (e) { message.error('提交失败') }
+    } catch (e: any) { message.error(e?.error || '提交失败') }
   }
 
   const buildMenuItems = (menuList: MenuItem[]): MenuProps['items'] => {
@@ -251,6 +255,25 @@ function Layout() {
     navigate('/login')
   }
 
+  const handleChangePassword = () => {
+    passwordForm.resetFields()
+    setPasswordModalVisible(true)
+  }
+
+  const handleSubmitPassword = async () => {
+    try {
+      const values = await passwordForm.validateFields()
+      const response = await api.put('/auth/change-password', {
+        oldPassword: values.oldPassword,
+        newPassword: values.newPassword
+      })
+      message.success('密码修改成功')
+      setPasswordModalVisible(false)
+    } catch (error: any) {
+      message.error(error.response?.data?.error || '密码修改失败')
+    }
+  }
+
   if (loading) {
     return (
       <div style={{
@@ -272,11 +295,13 @@ function Layout() {
     { key: 'profile', icon: <UserOutlined />, label: user.name || user.username || '用户' },
     { key: 'role', icon: <SafetyOutlined />, label: user.role || '普通用户' },
     { type: 'divider' },
+    { key: 'changePassword', icon: <LockOutlined />, label: '修改密码' },
     { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true }
   ]
 
   const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'logout') handleLogout()
+    if (key === 'changePassword') handleChangePassword()
   }
 
   return (
@@ -741,6 +766,54 @@ function Layout() {
             style={{ borderRadius: 8 }}
           />
         </div>
+      </Modal>
+
+      {/* Change Password Modal */}
+      <Modal
+        title="修改密码"
+        open={passwordModalVisible}
+        onOk={handleSubmitPassword}
+        onCancel={() => setPasswordModalVisible(false)}
+        okText="确认修改"
+        cancelText="取消"
+      >
+        <Form form={passwordForm} layout="vertical" autoComplete="off">
+          <Form.Item
+            label="当前密码"
+            name="oldPassword"
+            rules={[{ required: true, message: '请输入当前密码' }]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder="请输入当前密码" />
+          </Form.Item>
+          <Form.Item
+            label="新密码"
+            name="newPassword"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 6, message: '密码长度至少6位' }
+            ]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder="请输入新密码（至少6位）" />
+          </Form.Item>
+          <Form.Item
+            label="确认新密码"
+            name="confirmPassword"
+            dependencies={['newPassword']}
+            rules={[
+              { required: true, message: '请确认新密码' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('newPassword') === value) {
+                    return Promise.resolve()
+                  }
+                  return Promise.reject(new Error('两次输入的密码不一致'))
+                },
+              }),
+            ]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder="请再次输入新密码" />
+          </Form.Item>
+        </Form>
       </Modal>
     </AntLayout>
   )

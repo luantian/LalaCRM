@@ -10,6 +10,7 @@ import { sortValidation, clampPagination, dateValidation } from '../middleware/v
 import logger from '../utils/logger'
 import { exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
+import { autoWriteContractRecord } from '../utils/autoDailyReport'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -34,6 +35,14 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['n
     const dataScopeWhere = (req as any).dataScopeWhere || {}
 
     const where: any = { deletedAt: null, ...dataScopeWhere }
+
+    // 权限过滤：非管理员只能看自己的合同或不公开的合同
+    if (req.user?.role !== 'ADMIN') {
+      where.OR = [
+        { isPrivate: false },
+        { ownerId: req.user!.id }
+      ]
+    }
 
     if (status) {
       where.status = status as string
@@ -186,6 +195,11 @@ router.get('/:id', authenticateToken, applyDataScope('ownerId'), async (req: Aut
       return res.status(404).json({ error: '合同不存在' })
     }
 
+    // 权限检查：非管理员不能查看不公开的非本人合同
+    if (contract.isPrivate && contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '无权查看此合同（该合同已设为不公开）' })
+    }
+
     res.json(contract)
   } catch (error) {
     res.status(500).json({ error: '获取合同详情失败' })
@@ -195,7 +209,7 @@ router.get('/:id', authenticateToken, applyDataScope('ownerId'), async (req: Aut
 // 创建合同
 router.post('/', authenticateToken, logOperation('合同管理', 'CREATE'), dateValidation('signDate', 'startDate', 'endDate'), async (req: AuthRequest, res) => {
   try {
-    const { name, organizationId, projectId, opportunityId, contactId, amount, signDate, startDate, endDate, status, content } = req.body
+    const { name, organizationId, projectId, opportunityId, contactId, amount, signDate, startDate, endDate, status, content, isPrivate } = req.body
 
     if (!name || !organizationId || !amount) {
       return res.status(400).json({ error: '必填字段缺失' })
@@ -214,6 +228,7 @@ router.post('/', authenticateToken, logOperation('合同管理', 'CREATE'), date
         endDate: endDate ? new Date(endDate) : null,
         status: status || 'DRAFT',
         content,
+        isPrivate: isPrivate === true || isPrivate === 'true',
         ownerId: req.user!.id
       },
       include: {
@@ -221,6 +236,10 @@ router.post('/', authenticateToken, logOperation('合同管理', 'CREATE'), date
         project: { select: { id: true, name: true } }
       }
     })
+
+    if (req.user?.id) {
+      autoWriteContractRecord(req.user.id, contract.name, 'CREATE', contract.id, contract.projectId, contract.amount?.toNumber()).catch(() => {})
+    }
 
     res.status(201).json(contract)
   } catch (error) {
@@ -288,7 +307,8 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
             ownerId: updatedContract.opportunity!.ownerId,
             opportunityId: updatedContract.opportunityId,
             status: 'IN_PROGRESS',
-            description: `由合同"${updatedContract.name}"自动创建`
+            description: `由合同"${updatedContract.name}"自动创建`,
+            contactId: updatedContract.contactId
           }
         })
         // 更新合同的 projectId
@@ -317,6 +337,12 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
     }
 
     logger.info(`Contract ${id} status changed from ${contract.status} to ${status} by ${req.user?.username}`)
+
+    if (req.user?.id) {
+      const action = status === 'CANCELLED' ? 'REJECT' : 'APPROVE'
+      autoWriteContractRecord(req.user.id, contract.name, action, contract.id, contract.projectId, contract.amount?.toNumber()).catch(() => {})
+    }
+
     res.json(updatedContract)
   } catch (error) {
     logger.error('Approve contract error:', error)
@@ -328,7 +354,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
 router.put('/:id', authenticateToken, logOperation('合同管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
-    const { name, organizationId, projectId, contactId, amount, signDate, startDate, endDate, status, content } = req.body
+    const { name, organizationId, projectId, contactId, amount, signDate, startDate, endDate, status, content, isPrivate } = req.body
 
     // 检查当前状态，不允许通过 PUT 直接修改状态
     const currentContract = await prisma.contract.findFirst({ where: { id: parseInt(id), deletedAt: null } })
@@ -355,9 +381,14 @@ router.put('/:id', authenticateToken, logOperation('合同管理', 'UPDATE'), as
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
         status,
-        content
+        content,
+        isPrivate: isPrivate !== undefined ? (isPrivate === true || isPrivate === 'true') : currentContract.isPrivate
       }
     })
+
+    if (req.user?.id) {
+      autoWriteContractRecord(req.user.id, contract.name, 'UPDATE', contract.id, contract.projectId, contract.amount?.toNumber()).catch(() => {})
+    }
 
     res.json(contract)
   } catch (error) {

@@ -38,6 +38,7 @@ interface Contact {
   organizationId: number
   name: string
   title?: string
+  department?: string
   phone?: string
   email?: string
   isPrimary?: boolean
@@ -54,7 +55,7 @@ interface TreeNodeData {
 
 // ───────────────────────── Helpers ─────────────────────────
 
-/** 将组织树数据转换为 Tree 组件所需的格式，保留所有原始字段 */
+/** 将客户树数据转换为 Tree 组件所需的格式，保留所有原始字段 */
 const convertToTreeData = (orgs: Organization[]): TreeNodeData[] => {
   return orgs.map((org) => ({
     ...org,  // 保留所有原始字段（id, name, type, parentId, address 等）
@@ -64,7 +65,7 @@ const convertToTreeData = (orgs: Organization[]): TreeNodeData[] => {
   }))
 }
 
-/** 递归查找组织节点 */
+/** 递归查找客户节点 */
 const findOrgById = (orgs: Organization[], id: number): Organization | null => {
   for (const org of orgs) {
     if (org.id === id) return org
@@ -128,7 +129,7 @@ function OrganizationList() {
   const [autoExpandParent, setAutoExpandParent] = useState(true)
   const [loading, setLoading] = useState(false)
 
-  // 组织表单弹窗
+  // 客户表单弹窗
   const [orgModalVisible, setOrgModalVisible] = useState(false)
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null)
   const [orgForm] = Form.useForm()
@@ -152,7 +153,7 @@ function OrganizationList() {
       const tree = Array.isArray(data) ? data : (data?.tree || [])
       setTreeData(tree)
     } catch (error: any) {
-      message.error(error?.error || '获取组织树失败')
+      message.error(error?.error || '获取客户树失败')
     } finally {
       setLoading(false)
     }
@@ -197,9 +198,9 @@ function OrganizationList() {
     if (org) fetchContacts(org.id)
   }
 
-  // ───── 组织操作 ─────
+  // ───── 客户操作 ─────
 
-  /** 新增根组织 或 在选中节点下新增子组织 */
+  /** 新增根客户 或 在选中节点下新增子客户 */
   const handleAddOrg = (parentId?: number) => {
     setEditingOrg(null)
     orgForm.resetFields()
@@ -208,7 +209,7 @@ function OrganizationList() {
     setOrgModalVisible(true)
   }
 
-  /** 编辑组织 */
+  /** 编辑客户 */
   const handleEditOrg = (org: Organization) => {
     setEditingOrg(org)
     setAddingParentId(org.parentId ?? null)
@@ -225,22 +226,22 @@ function OrganizationList() {
     setOrgModalVisible(true)
   }
 
-  /** 删除组织 */
+  /** 删除客户 */
   const handleDeleteOrg = async (id: number) => {
     try {
       await deleteOrganization(id)
-      message.success('组织删除成功')
+      message.success('客户删除成功')
       if (selectedOrg?.id === id) {
         setSelectedOrg(null)
         setContacts([])
       }
       fetchTree()
     } catch (error: any) {
-      message.error(error?.error || '删除组织失败')
+      message.error(error?.error || '删除客户失败')
     }
   }
 
-  /** 提交组织表单 */
+  /** 提交客户表单 */
   const handleOrgSubmit = async () => {
     try {
       const values = await orgForm.validateFields()
@@ -248,10 +249,10 @@ function OrganizationList() {
 
       if (editingOrg) {
         await updateOrganization(editingOrg.id, payload)
-        message.success('组织更新成功')
+        message.success('客户更新成功')
       } else {
         await createOrganization(payload)
-        message.success('组织创建成功')
+        message.success('客户创建成功')
       }
       setOrgModalVisible(false)
       fetchTree()
@@ -266,7 +267,7 @@ function OrganizationList() {
       } else if (error?.errorFields) {
         // 表单校验失败，不提示
       } else {
-        message.error('操作失败')
+        message.error(error?.error || '操作失败')
       }
     }
   }
@@ -284,9 +285,10 @@ function OrganizationList() {
     contactForm.setFieldsValue({
       name: contact.name,
       title: contact.title || '',
+      department: contact.department || '',
       phone: contact.phone || '',
       email: contact.email || '',
-      isPrimary: contact.isPrimary || false,
+      isPrimary: contact.isPrimary ?? false,
       notes: contact.notes || '',
     })
     setContactModalVisible(true)
@@ -332,7 +334,7 @@ function OrganizationList() {
   const getNodeMenuItems = (org: Organization): MenuProps['items'] => [
     {
       key: 'addChild',
-      label: '新增子组织',
+      label: '新增子客户',
       icon: <PlusOutlined />,
       onClick: () => handleAddOrg(org.id),
     },
@@ -351,7 +353,7 @@ function OrganizationList() {
       onClick: () => {
         Modal.confirm({
           title: '确认删除',
-          content: `确定要删除"${org.name}"吗？其下级组织也会被一并删除。`,
+          content: `确定要删除"${org.name}"吗？其下级客户也会被一并删除。`,
           okText: '确定',
           cancelText: '取消',
           onOk: () => handleDeleteOrg(org.id),
@@ -377,6 +379,7 @@ function OrganizationList() {
       ),
     },
     { title: '职务', dataIndex: 'title', key: 'title', render: (v: string) => v || '-' },
+    { title: '部门', dataIndex: 'department', key: 'department', render: (v: string) => v || '-' },
     { title: '电话', dataIndex: 'phone', key: 'phone', render: (v: string) => v || '-' },
     { title: '邮箱', dataIndex: 'email', key: 'email', render: (v: string) => v || '-' },
     {
@@ -415,13 +418,13 @@ function OrganizationList() {
 
   return (
     <Row gutter={16} wrap={false}>
-      {/* ───── 左侧：组织树 ───── */}
+      {/* ───── 左侧：客户列表 ───── */}
       <Col flex="0 0 320px" style={{ minWidth: 0 }}>
         <Card
           title={
             <span>
               <BankOutlined style={{ marginRight: 8 }} />
-              组织树
+              客户列表
             </span>
           }
           extra={
@@ -591,7 +594,7 @@ function OrganizationList() {
             </>
           ) : (
             <Empty
-              description={loading ? '加载中...' : '暂无组织数据'}
+              description={loading ? '加载中...' : '暂无客户数据'}
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               style={{ padding: 24 }}
             />
@@ -604,15 +607,15 @@ function OrganizationList() {
             block
             style={{ marginTop: 12 }}
           >
-            新增根组织
+            新增根客户
           </Button>
         </Card>
       </Col>
 
-      {/* ───── 右侧：组织详情 + 联系人 ───── */}
+      {/* ───── 右侧：客户详情 + 联系人 ───── */}
       <Col flex="1" style={{ minWidth: 0 }}>
         <Card
-          title={selectedOrg ? `${typeIcon(selectedOrg.type)} ${selectedOrg.name}` : '组织详情'}
+          title={selectedOrg ? `${typeIcon(selectedOrg.type)} ${selectedOrg.name}` : '客户详情'}
           extra={
             selectedOrg && (
               <Space>
@@ -621,14 +624,14 @@ function OrganizationList() {
                   icon={<PlusOutlined />}
                   onClick={() => handleAddOrg(selectedOrg.id)}
                 >
-                  新增子组织
+                  新增子客户
                 </Button>
                 <Button icon={<EditOutlined />} onClick={() => handleEditOrg(selectedOrg)}>
                   编辑
                 </Button>
                 <Popconfirm
                   title="确认删除"
-                  description="确定要删除该组织吗？其下级组织也会被一并删除。"
+                  description="确定要删除该客户吗？其下级客户也会被一并删除。"
                   onConfirm={() => handleDeleteOrg(selectedOrg.id)}
                   okText="确定"
                   cancelText="取消"
@@ -661,7 +664,7 @@ function OrganizationList() {
                   ) : '-'}
                 </Descriptions.Item>
                 <Descriptions.Item label="法定代表人">{selectedOrg.legalPerson || '-'}</Descriptions.Item>
-                <Descriptions.Item label="下级组织数">
+                <Descriptions.Item label="下级客户数">
                   {selectedOrg.children ? selectedOrg.children.length : 0}
                 </Descriptions.Item>
               </Descriptions>
@@ -688,16 +691,16 @@ function OrganizationList() {
           ) : (
             <div style={{ textAlign: 'center', padding: 80, color: '#9ca3af' }}>
               <HomeOutlined style={{ fontSize: 48, marginBottom: 16, display: 'block' }} />
-              <div style={{ fontSize: 16 }}>请选择组织</div>
-              <div style={{ fontSize: 13, marginTop: 4 }}>在左侧组织树中选择一个节点查看详情</div>
+              <div style={{ fontSize: 16 }}>请选择客户</div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>在左侧客户列表中选择一个节点查看详情</div>
             </div>
           )}
         </Card>
       </Col>
 
-      {/* ───── 新增 / 编辑组织弹窗 ───── */}
+      {/* ───── 新增 / 编辑客户弹窗 ───── */}
       <Modal
-        title={editingOrg ? '编辑组织' : '新增组织'}
+        title={editingOrg ? '编辑客户' : '新增客户'}
         open={orgModalVisible}
         onOk={handleOrgSubmit}
         onCancel={() => setOrgModalVisible(false)}
@@ -710,16 +713,16 @@ function OrganizationList() {
             <Col span={16}>
               <Form.Item
                 name="name"
-                label="组织名称"
-                rules={[{ required: true, message: '请输入组织名称' }]}
+                label="客户名称"
+                rules={[{ required: true, message: '请输入客户名称' }]}
               >
-                <Input placeholder="请输入组织名称" />
+                <Input placeholder="请输入客户名称" />
               </Form.Item>
             </Col>
             <Col span={8}>
               <Form.Item
                 name="type"
-                label="组织类型"
+                label="客户类型"
                 rules={[{ required: true, message: '请选择类型' }]}
               >
                 <Select
@@ -744,7 +747,7 @@ function OrganizationList() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="email" label="邮箱" rules={[{ type: 'email', message: '请输入有效的邮箱地址' }]}>
+              <Form.Item name="email" label="邮箱" rules={[{ validator: (_, value) => { if (!value) return Promise.resolve(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return Promise.reject('请输入有效的邮箱地址'); return Promise.resolve(); } }]}>
                 <Input placeholder="请输入邮箱" />
               </Form.Item>
             </Col>
@@ -795,17 +798,39 @@ function OrganizationList() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="phone" label="电话">
-                <Input placeholder="请输入电话" />
+              <Form.Item name="department" label="部门">
+                <Select placeholder="请选择部门" allowClear showSearch optionFilterProp="children">
+                  <Select.Option value="销售部">销售部</Select.Option>
+                  <Select.Option value="市场部">市场部</Select.Option>
+                  <Select.Option value="技术部">技术部</Select.Option>
+                  <Select.Option value="财务部">财务部</Select.Option>
+                  <Select.Option value="人事部">人事部</Select.Option>
+                  <Select.Option value="采购部">采购部</Select.Option>
+                  <Select.Option value="生产部">生产部</Select.Option>
+                  <Select.Option value="质量部">质量部</Select.Option>
+                  <Select.Option value="物流部">物流部</Select.Option>
+                  <Select.Option value="客服部">客服部</Select.Option>
+                  <Select.Option value="总经理办公室">总经理办公室</Select.Option>
+                  <Select.Option value="其他">其他</Select.Option>
+                </Select>
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item name="email" label="邮箱" rules={[{ type: 'email', message: '请输入有效的邮箱地址' }]}>
-            <Input placeholder="请输入邮箱" />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="phone" label="电话">
+                <Input placeholder="请输入电话" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="email" label="邮箱" rules={[{ validator: (_, value) => { if (!value) return Promise.resolve(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return Promise.reject('请输入有效的邮箱地址'); return Promise.resolve(); } }]}>
+                <Input placeholder="请输入邮箱" />
+              </Form.Item>
+            </Col>
+          </Row>
 
-          <Form.Item name="isPrimary" label="主要联系人" valuePropName="checked">
+          <Form.Item name="isPrimary" label="主要联系人">
             <Select
               options={[
                 { value: true, label: '是' },

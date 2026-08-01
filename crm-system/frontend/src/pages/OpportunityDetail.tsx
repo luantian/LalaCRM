@@ -59,7 +59,7 @@ function OpportunityDetail() {
         const data = await getOpportunityDetail(parseInt(id!))
         setOpportunity(data)
       } catch (error) {
-        console.error('获取商机详情失败:', error)
+        console.error('获取售前详情失败:', error)
         setError(true)
       } finally {
         setLoading(false)
@@ -109,7 +109,7 @@ function OpportunityDetail() {
     try {
       const data = await getOpportunityDetail(parseInt(id!))
       setOpportunity(data)
-    } catch (error) { console.error('刷新商机详情失败:', error) }
+    } catch (error) { console.error('刷新售前详情失败:', error) }
   }
 
   // ===== 编辑 =====
@@ -140,11 +140,11 @@ function OpportunityDetail() {
         expectedStart: values.expectedStart ? values.expectedStart.toDate() : null,
         expectedEnd: values.expectedEnd ? values.expectedEnd.toDate() : null
       })
-      message.success('商机信息更新成功')
+      message.success('售前信息更新成功')
       setModalVisible(false)
       refreshDetail()
-    } catch (error) {
-      message.error('更新失败')
+    } catch (error: any) {
+      message.error(error?.error || '更新失败')
     }
   }
 
@@ -170,8 +170,8 @@ function OpportunityDetail() {
       await removeOpportunityTeamMember(parseInt(id!), memberId)
       message.success('移除成功')
       refreshDetail()
-    } catch (error) {
-      message.error('移除失败')
+    } catch (error: any) {
+      message.error(error?.error || '移除失败')
     }
   }
 
@@ -226,8 +226,8 @@ function OpportunityDetail() {
       setRecordFiles([])
       setEditingRecord(null)
       fetchRecords()
-    } catch (error) {
-      message.error('操作失败')
+    } catch (error: any) {
+      message.error(error?.error || '操作失败')
     }
   }
 
@@ -236,8 +236,8 @@ function OpportunityDetail() {
       await deleteOpportunityRecord(parseInt(id!), recordId)
       message.success('记录删除成功')
       fetchRecords()
-    } catch (error) {
-      message.error('删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '删除失败')
     }
   }
 
@@ -245,7 +245,7 @@ function OpportunityDetail() {
   const handleConvert = async () => {
     try {
       const res: any = await convertOpportunity(parseInt(id!))
-      message.success(res?.message || '商机已成功转化为项目')
+      message.success(res?.message || '售前已成功转化为项目')
       refreshDetail()
     } catch (error: any) {
       message.error(error?.error || '转化失败')
@@ -263,11 +263,11 @@ function OpportunityDetail() {
     }
   }
 
-  // ===== 关闭商机 =====
+  // ===== 关闭售前 =====
   const handleCloseOpportunity = async () => {
     try {
       await updateOpportunity(parseInt(id!), { status: 'LOST' })
-      message.success('商机已关闭')
+      message.success('售前已关闭')
       refreshDetail()
     } catch (error: any) {
       message.error(error?.error || '操作失败')
@@ -337,9 +337,9 @@ function OpportunityDetail() {
       label: '基本信息',
       children: (
         <div>
-          <Card title="商机详情">
+          <Card title="售前详情">
             <Descriptions column={2} bordered>
-              <Descriptions.Item label="商机名称">{opportunity.name}</Descriptions.Item>
+              <Descriptions.Item label="售前名称">{opportunity.name}</Descriptions.Item>
               <Descriptions.Item label="客户">{(() => { const org = opportunity.organization?.name || '-'; const contact = opportunity.contact ? `${opportunity.contact.name}${opportunity.contact.title ? ` (${opportunity.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</Descriptions.Item>
               <Descriptions.Item label="应用领域">{opportunity.application || '-'}</Descriptions.Item>
               <Descriptions.Item label="预算金额">{opportunity.budget ? `${Number(opportunity.budget)}元` : '-'}</Descriptions.Item>
@@ -349,7 +349,7 @@ function OpportunityDetail() {
               <Descriptions.Item label="预计开始日期">{opportunity.expectedStart ? dayjs(opportunity.expectedStart).format('YYYY-MM-DD') : '-'}</Descriptions.Item>
               <Descriptions.Item label="预计结束日期">{opportunity.expectedEnd ? dayjs(opportunity.expectedEnd).format('YYYY-MM-DD') : '-'}</Descriptions.Item>
               <Descriptions.Item label="竞争对手" span={2}>{opportunity.competitors || '-'}</Descriptions.Item>
-              <Descriptions.Item label="成单率">{opportunity.winRate ?? 0}%</Descriptions.Item>
+              <Descriptions.Item label="签订率">{opportunity.winRate ?? 0}%</Descriptions.Item>
               <Descriptions.Item label="状态"><Tag color={status.color}>{status.text}</Tag></Descriptions.Item>
               <Descriptions.Item label="负责人">{opportunity.owner?.name || '-'}</Descriptions.Item>
               <Descriptions.Item label="创建时间">{dayjs(opportunity.createdAt).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>
@@ -489,7 +489,7 @@ function OpportunityDetail() {
               <Tag color={status.color}>{status.text}</Tag>
               <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>预算: <strong style={{ color: '#2563eb' }}>{opportunity.budget ? Number(opportunity.budget).toFixed(2) : '0.00'}元</strong></span>
-              <span style={{ color: '#6b7280', fontSize: 13 }}>成单率: <strong style={{ color: '#059669' }}>{opportunity.winRate ?? 0}%</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>签订率: <strong style={{ color: '#059669' }}>{opportunity.winRate ?? 0}%</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>团队: <strong style={{ color: '#7c3aed' }}>{opportunity.teamMembers?.length || 0}人</strong></span>
               {opportunity.owner?.name && (
                 <>
@@ -534,7 +534,7 @@ function OpportunityDetail() {
                 </>
               ) : (
                 <Popconfirm
-                  title="确定将此商机转化为项目？"
+                  title="确定将此售前转化为项目？"
                   onConfirm={handleConvert}
                   okText="确定"
                   cancelText="取消"
@@ -550,14 +550,14 @@ function OpportunityDetail() {
               )}
               {opportunity.status !== 'LOST' && opportunity.status !== 'WON' && (
                 <Popconfirm
-                  title="确定关闭此商机？"
-                  description="关闭后商机将无法重新打开"
+                  title="确定关闭此售前？"
+                  description="关闭后售前将无法重新打开"
                   onConfirm={handleCloseOpportunity}
                   okText="确定"
                   cancelText="取消"
                   okButtonProps={{ danger: true }}
                 >
-                  <Button danger icon={<CloseOutlined />}>关闭商机</Button>
+                  <Button danger icon={<CloseOutlined />}>关闭售前</Button>
                 </Popconfirm>
               )}
               <Button
@@ -578,14 +578,14 @@ function OpportunityDetail() {
 
       {/* 编辑 Modal */}
       <Modal
-        title="编辑商机"
+        title="编辑项目机会"
         open={modalVisible}
         onOk={handleSubmit}
         onCancel={() => setModalVisible(false)}
         width={700}
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="name" label="商机名称" rules={[{ required: true, message: '请输入商机名称' }]}>
+          <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
             <Input />
           </Form.Item>
           <Form.Item name="contactId" label="客户" rules={[{ required: true, message: '请选择客户联系人' }]}>
@@ -629,7 +629,7 @@ function OpportunityDetail() {
           <Form.Item name="competitors" label="竞争对手">
             <Input />
           </Form.Item>
-          <Form.Item name="winRate" label="成单率 (%)">
+          <Form.Item name="winRate" label="签订率 (%)">
             <InputNumber style={{ width: '100%' }} min={0} max={100} />
           </Form.Item>
           <Form.Item name="status" label="状态">
@@ -699,7 +699,7 @@ function OpportunityDetail() {
                           files: prev.files.filter((f: any) => f.id !== file.id)
                         }))
                         fetchRecords()
-                      } catch (e) { message.error('删除失败') }
+                      } catch (e: any) { message.error(e?.error || '删除失败') }
                     }}>
                       <Button type="text" size="small" danger icon={<DeleteOutlined />} />
                     </Popconfirm>

@@ -21,7 +21,7 @@ const QuotationDetail: React.FC = () => {
 
   const fetchDetail = async () => {
     try { const data: any = await getQuotationDetail(parseInt(id!)); setQuotation(data) }
-    catch { message.error('获取报价单详情失败') }
+    catch (e: any) { message.error(e?.error || '获取报价单详情失败') }
     setLoading(false)
   }
 
@@ -30,7 +30,7 @@ const QuotationDetail: React.FC = () => {
       const fileList = { length: 1, 0: file } as unknown as FileList
       await uploadQuotationFiles(parseInt(id!), fileList)
       message.success('上传成功'); fetchDetail()
-    } catch { message.error('上传失败') }
+    } catch (e: any) { message.error(e?.error || '上传失败') }
     return false
   }
 
@@ -38,7 +38,7 @@ const QuotationDetail: React.FC = () => {
     Modal.confirm({ title: '确认删除', content: '确定删除该文件？',
       onOk: async () => {
         try { await deleteQuotationFile(parseInt(id!), fileId); message.success('删除成功'); fetchDetail() }
-        catch { message.error('删除失败') }
+        catch (e: any) { message.error(e?.error || '删除失败') }
       }
     })
   }
@@ -102,7 +102,7 @@ const QuotationDetail: React.FC = () => {
               <span style={{ color: '#6b7280', fontSize: 13 }}>有效期: <strong style={{ color: '#2563eb' }}>{quotation.validUntil ? dayjs(quotation.validUntil).format('YYYY-MM-DD') : '未设置'}</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>明细: <strong style={{ color: '#7c3aed' }}>{quotation.items?.length || 0}项</strong></span>
             </div>
-            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>商机: {quotation.opportunity?.name || '-'} · 客户: {(() => { const org = quotation.organization?.name || '-'; const contact = quotation.contact ? `${quotation.contact.name}${quotation.contact.title ? ` (${quotation.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>售前: {quotation.opportunity?.name || '-'} · 客户: {(() => { const org = quotation.organization?.name || '-'; const contact = quotation.contact ? `${quotation.contact.name}${quotation.contact.title ? ` (${quotation.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</div>
           </Col>
           <Col flex="none" />
         </Row>
@@ -114,7 +114,7 @@ const QuotationDetail: React.FC = () => {
             <Descriptions bordered column={2}>
               <Descriptions.Item label="报价单名称">{quotation.name}</Descriptions.Item>
               <Descriptions.Item label="版本号">v{quotation.version}</Descriptions.Item>
-              <Descriptions.Item label="关联商机">{quotation.opportunity?.name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="关联售前">{quotation.opportunity?.name || '-'}</Descriptions.Item>
               <Descriptions.Item label="客户">{(() => { const org = quotation.organization?.name || '-'; const contact = quotation.contact ? `${quotation.contact.name}${quotation.contact.title ? ` (${quotation.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</Descriptions.Item>
               <Descriptions.Item label="创建人">{quotation.owner?.name}</Descriptions.Item>
               <Descriptions.Item label="创建时间">{dayjs(quotation.createdAt).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>

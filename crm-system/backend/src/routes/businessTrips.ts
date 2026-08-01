@@ -6,6 +6,7 @@ import { applyDataScope } from '../middleware/dataScope'
 import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { autoWriteBusinessTripRecord } from '../utils/autoDailyReport'
 import { upload } from '../middleware/upload'
 
 const router = Router()
@@ -59,7 +60,7 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), clampPagination(),
         owner: { select: { id: true, name: true } },
         expenses: {
           where: { deletedAt: null },
-          select: { id: true, amount: true, status: true }
+          select: { id: true, totalAmount: true, status: true }
         }
       },
       orderBy: { startDate: 'desc' },
@@ -86,15 +87,17 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), clampPagination(),
 router.get('/stats/overview', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
-    const trips = await prisma.businessTrip.findMany({ where: { deletedAt: null, ...dataScopeWhere } })
+    const trips = await prisma.businessTrip.findMany({ 
+      where: { deletedAt: null, ...dataScopeWhere },
+      include: { expenses: { where: { deletedAt: null }, select: { totalAmount: true } } }
+    })
 
     const totalTrips = trips.length
     const totalDays = trips.reduce((sum, t) => sum + t.days, 0)
-    const totalAmount = trips.reduce((sum, t) => sum + Number(t.totalAmount), 0)
-    const totalAccommodation = trips.reduce((sum, t) => sum + Number(t.accommodation || 0), 0)
-    const totalTransportation = trips.reduce((sum, t) => sum + Number(t.transportation || 0), 0)
-    const totalMeals = trips.reduce((sum, t) => sum + Number(t.meals || 0), 0)
-    const totalOther = trips.reduce((sum, t) => sum + Number(t.otherExpenses || 0), 0)
+    // 从关联的费用报销聚合金额
+    const totalAmount = trips.reduce((sum, t) => 
+      sum + t.expenses.reduce((s, e) => s + Number(e.totalAmount), 0), 0
+    )
 
     // 按状态统计
     const statusCount = trips.reduce((acc, t) => {
@@ -106,10 +109,6 @@ router.get('/stats/overview', authenticateToken, applyDataScope('ownerId'), asyn
       totalTrips,
       totalDays,
       totalAmount,
-      totalAccommodation,
-      totalTransportation,
-      totalMeals,
-      totalOther,
       draft: statusCount['DRAFT'] || 0,
       submitted: statusCount['SUBMITTED'] || 0,
       approved: statusCount['APPROVED'] || 0,
@@ -137,7 +136,7 @@ router.get('/:id', authenticateToken, applyDataScope('ownerId'), async (req: Aut
         owner: { select: { id: true, name: true } },
         expenses: {
           where: { deletedAt: null },
-          orderBy: { expenseDate: 'desc' }
+          orderBy: { createdAt: 'desc' }
         }
       }
     })
@@ -165,18 +164,8 @@ router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), date
       startDate,
       endDate,
       days,
-      accommodation,
-      transportation,
-      meals,
-      otherExpenses,
       notes
     } = req.body
-
-    // 计算总费用（使用 toFixed 避免浮点精度问题）
-    const totalAmount = parseFloat((parseFloat(accommodation || 0) +
-                        parseFloat(transportation || 0) +
-                        parseFloat(meals || 0) +
-                        parseFloat(otherExpenses || 0)).toFixed(2))
 
     const trip = await prisma.businessTrip.create({
       data: {
@@ -189,11 +178,6 @@ router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), date
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         days: parseInt(days),
-        accommodation: parseFloat(accommodation || 0),
-        transportation: parseFloat(transportation || 0),
-        meals: parseFloat(meals || 0),
-        otherExpenses: parseFloat(otherExpenses || 0),
-        totalAmount,
         notes,
         ownerId: req.user!.id
         // status 默认为 DRAFT，由 schema 控制
@@ -203,6 +187,10 @@ router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), date
         project: { select: { id: true, name: true } }
       }
     })
+
+    if (req.user?.id) {
+      autoWriteBusinessTripRecord(req.user.id, trip.title, 'CREATE', trip.id, trip.destination, new Date(trip.startDate), new Date(trip.endDate)).catch(() => {})
+    }
 
     res.status(201).json(trip)
   } catch (error) {
@@ -276,6 +264,10 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_business
       }
     })
 
+    if (req.user?.id) {
+      autoWriteBusinessTripRecord(req.user.id, updated.title, 'APPROVE', id, updated.destination, new Date(updated.startDate), new Date(updated.endDate)).catch(() => {})
+    }
+
     res.json(updated)
   } catch (error) {
     logger.error('Approve business trip error:', error)
@@ -302,6 +294,11 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_business_
       return res.status(400).json({ error: '只有待审批状态可以驳回' })
     }
 
+    // 防止自驳回
+    if (trip.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '不能驳回自己提交的申请' })
+    }
+
     const approverName = req.user?.username || '审批人'
     const rejectText = `\n[驳回 by ${approverName}]: ${reason}`
 
@@ -316,6 +313,10 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_business_
         project: { select: { id: true, name: true } }
       }
     })
+
+    if (req.user?.id) {
+      autoWriteBusinessTripRecord(req.user.id, updated.title, 'REJECT', id, updated.destination, new Date(updated.startDate), new Date(updated.endDate)).catch(() => {})
+    }
 
     res.json(updated)
   } catch (error) {
@@ -385,6 +386,10 @@ router.post('/:id/complete', authenticateToken, logOperation('出差管理', 'CO
       }
     })
 
+    if (req.user?.id) {
+      autoWriteBusinessTripRecord(req.user.id, updated.title, 'COMPLETE', id, updated.destination, new Date(updated.startDate), new Date(updated.endDate)).catch(() => {})
+    }
+
     res.json(updated)
   } catch (error) {
     logger.error('Complete business trip error:', error)
@@ -406,10 +411,6 @@ router.put('/:id', authenticateToken, logOperation('出差管理', 'UPDATE'), as
       startDate,
       endDate,
       days,
-      accommodation,
-      transportation,
-      meals,
-      otherExpenses,
       notes
     } = req.body
 
@@ -428,11 +429,6 @@ router.put('/:id', authenticateToken, logOperation('出差管理', 'UPDATE'), as
       return res.status(403).json({ error: '只能编辑自己的出差记录' })
     }
 
-    const totalAmount = parseFloat((parseFloat(accommodation || 0) +
-                        parseFloat(transportation || 0) +
-                        parseFloat(meals || 0) +
-                        parseFloat(otherExpenses || 0)).toFixed(2))
-
     const trip = await prisma.businessTrip.update({
       where: { id },
       data: {
@@ -445,15 +441,14 @@ router.put('/:id', authenticateToken, logOperation('出差管理', 'UPDATE'), as
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         days: parseInt(days),
-        accommodation: parseFloat(accommodation || 0),
-        transportation: parseFloat(transportation || 0),
-        meals: parseFloat(meals || 0),
-        otherExpenses: parseFloat(otherExpenses || 0),
-        totalAmount,
         notes
         // 不允许通过 PUT 修改 status
       }
     })
+
+    if (req.user?.id) {
+      autoWriteBusinessTripRecord(req.user.id, trip.title, 'UPDATE', trip.id, trip.destination, new Date(trip.startDate), new Date(trip.endDate)).catch(() => {})
+    }
 
     res.json(trip)
   } catch (error) {
@@ -495,7 +490,6 @@ const columns = [
   { key: 'startDate', label: '开始日期' },
   { key: 'endDate', label: '结束日期' },
   { key: 'days', label: '天数' },
-  { key: 'totalAmount', label: '总费用' },
   { key: 'status', label: '状态' },
   { key: 'owner.name', label: '负责人' }
 ]
@@ -506,8 +500,7 @@ const labelMap: Record<string, string> = {
   '目的': 'purpose',
   '开始日期': 'startDate',
   '结束日期': 'endDate',
-  '天数': 'days',
-  '总费用': 'totalAmount'
+  '天数': 'days'
 }
 
 router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
@@ -542,7 +535,6 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
             startDate: mapped.startDate ? new Date(mapped.startDate) : new Date(),
             endDate: mapped.endDate ? new Date(mapped.endDate) : new Date(),
             days: parseInt(mapped.days) || 1,
-            totalAmount: parseFloat(mapped.totalAmount) || 0,
             status: 'DRAFT',
             ownerId: req.user!.id,
           } as any

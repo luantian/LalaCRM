@@ -7,6 +7,7 @@ import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { upload } from '../middleware/upload'
+import { autoWriteExpenseRecord } from '../utils/autoDailyReport'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -64,9 +65,10 @@ router.get('/', authenticateToken, checkPermission('view_expenses'), applyDataSc
         contact: { select: { id: true, name: true, title: true } },
         project: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } },
-        trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } }
+        trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } },
+        items: true
       },
-      orderBy: { expenseDate: 'desc' },
+      orderBy: { createdAt: 'desc' },
       skip,
       take
     })
@@ -105,23 +107,26 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_expenses'
     const expenses = await prisma.expense.findMany({ where: { deletedAt: null, ...dataScopeWhere } })
 
     const totalExpenses = expenses.length
-    const totalAmount = expenses.reduce((sum, e) => sum + Number(e.amount), 0)
-
-    // 按类别统计
-    const categoryStats = expenses.reduce((acc, e) => {
-      if (!acc[e.category]) {
-        acc[e.category] = { count: 0, amount: 0 }
-      }
-      acc[e.category].count++
-      acc[e.category].amount += Number(e.amount)
-      return acc
-    }, {} as Record<string, { count: number; amount: number }>)
+    const totalAmount = expenses.reduce((sum, e) => sum + Number(e.totalAmount), 0)
 
     // 按状态统计
     const statusCount = expenses.reduce((acc, e) => {
       acc[e.status] = (acc[e.status] || 0) + 1
       return acc
     }, {} as Record<string, number>)
+
+    // 按类别统计（从明细中聚合）
+    const items = await prisma.expenseItem.findMany({
+      where: { expense: { deletedAt: null, ...dataScopeWhere } }
+    })
+    const categoryStats = items.reduce((acc, item) => {
+      if (!acc[item.category]) {
+        acc[item.category] = { count: 0, amount: 0 }
+      }
+      acc[item.category].count++
+      acc[item.category].amount += Number(item.amount)
+      return acc
+    }, {} as Record<string, { count: number; amount: number }>)
 
     res.json({
       totalExpenses,
@@ -152,7 +157,8 @@ router.get('/:id', authenticateToken, checkPermission('view_expenses'), applyDat
         contact: { select: { id: true, name: true, title: true } },
         project: true,
         owner: { select: { id: true, name: true } },
-        trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } }
+        trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } },
+        items: { orderBy: { id: 'asc' } }
       }
     })
 
@@ -167,7 +173,7 @@ router.get('/:id', authenticateToken, checkPermission('view_expenses'), applyDat
 })
 
 // 创建费用报销记录（默认为草稿）
-router.post('/', authenticateToken, checkPermission('submit_expenses'), logOperation('费用报销', 'CREATE'), dateValidation('expenseDate'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('submit_expenses'), logOperation('费用报销', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const {
       title,
@@ -175,16 +181,16 @@ router.post('/', authenticateToken, checkPermission('submit_expenses'), logOpera
       contactId,
       projectId,
       tripId,
-      category,
-      amount,
-      expenseDate,
-      description,
-      receipt
+      items,
+      description
     } = req.body
 
-    if (!title || !category || !amount || !expenseDate || !projectId) {
-      return res.status(400).json({ error: '标题、费用类别、金额、费用日期和关联项目不能为空' })
+    if (!title || !items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: '标题和费用明细不能为空' })
     }
+
+    // 计算总金额
+    const totalAmount = items.reduce((sum: number, item: any) => sum + parseFloat(item.amount || 0), 0)
 
     const expense = await prisma.expense.create({
       data: {
@@ -193,21 +199,30 @@ router.post('/', authenticateToken, checkPermission('submit_expenses'), logOpera
         contactId: contactId || null,
         projectId: projectId || null,
         tripId: tripId || null,
-        category,
-        amount: parseFloat(amount),
-        expenseDate: new Date(expenseDate),
-        description,
-        receipt,
-        ownerId: req.user!.id
-        // status 默认为 DRAFT，由 schema 控制
+        totalAmount,
+        ownerId: req.user!.id,
+        items: {
+          create: items.map((item: any) => ({
+            category: item.category,
+            amount: parseFloat(item.amount),
+            expenseDate: new Date(item.expenseDate),
+            description: item.description || '',
+            receipt: item.receipt || null
+          }))
+        }
       },
       include: {
         organization: { select: { id: true, name: true } },
         contact: { select: { id: true, name: true, title: true } },
         project: { select: { id: true, name: true } },
-        trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } }
+        trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } },
+        items: true
       }
     })
+
+    if (req.user?.id) {
+      autoWriteExpenseRecord(req.user.id, expense.title, 'CREATE', expense.id, expense.projectId, typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)).catch(() => {})
+    }
 
     res.status(201).json(expense)
   } catch (error) {
@@ -226,11 +241,8 @@ router.put('/:id', authenticateToken, checkPermission('submit_expenses'), logOpe
       contactId,
       projectId,
       tripId,
-      category,
-      amount,
-      expenseDate,
-      description,
-      receipt
+      items,
+      description
     } = req.body
 
     const existing = await prisma.expense.findFirst({ where: { id, deletedAt: null } })
@@ -248,6 +260,19 @@ router.put('/:id', authenticateToken, checkPermission('submit_expenses'), logOpe
       return res.status(400).json({ error: '当前状态不允许编辑' })
     }
 
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: '费用明细不能为空' })
+    }
+
+    // 计算总金额
+    const totalAmount = items.reduce((sum: number, item: any) => sum + parseFloat(item.amount || 0), 0)
+
+    // 删除旧明细（软删除），创建新明细
+    await prisma.expenseItem.updateMany({
+      where: { expenseId: id, deletedAt: null },
+      data: { deletedAt: new Date() }
+    })
+
     const expense = await prisma.expense.update({
       where: { id },
       data: {
@@ -256,14 +281,29 @@ router.put('/:id', authenticateToken, checkPermission('submit_expenses'), logOpe
         contactId: contactId !== undefined ? (contactId || null) : existing.contactId,
         projectId: projectId || null,
         tripId: tripId !== undefined ? (tripId || null) : existing.tripId,
-        category,
-        amount: amount ? parseFloat(amount) : existing.amount,
-        expenseDate: expenseDate ? new Date(expenseDate) : existing.expenseDate,
-        description,
-        receipt
-        // 不允许通过 PUT 修改 status
+        totalAmount,
+        items: {
+          create: items.map((item: any) => ({
+            category: item.category,
+            amount: parseFloat(item.amount),
+            expenseDate: new Date(item.expenseDate),
+            description: item.description || '',
+            receipt: item.receipt || null
+          }))
+        }
+      },
+      include: {
+        organization: { select: { id: true, name: true } },
+        contact: { select: { id: true, name: true, title: true } },
+        project: { select: { id: true, name: true } },
+        trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } },
+        items: true
       }
     })
+
+    if (req.user?.id) {
+      autoWriteExpenseRecord(req.user.id, expense.title, 'UPDATE', expense.id, expense.projectId, typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)).catch(() => {})
+    }
 
     res.json(expense)
   } catch (error) {
@@ -291,6 +331,7 @@ router.delete('/:id', authenticateToken, checkPermission('submit_expenses'), log
       return res.status(400).json({ error: '当前状态不允许删除' })
     }
 
+    await prisma.expenseItem.updateMany({ where: { expenseId: id, deletedAt: null }, data: { deletedAt: new Date() } })
     await prisma.expenseFile.updateMany({ where: { expenseId: id }, data: { deletedAt: new Date() } })
     await prisma.expense.update({ where: { id }, data: { deletedAt: new Date() } })
     res.json({ message: '删除成功' })
@@ -361,8 +402,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_expenses
       data: {
         status: 'APPROVED',
         approvedBy: req.user!.id,
-        approvedAt: new Date(),
-        description: (expense.description || '') + remarkText
+        approvedAt: new Date()
       },
       include: {
         organization: { select: { id: true, name: true } },
@@ -370,6 +410,11 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_expenses
         project: { select: { id: true, name: true } }
       }
     })
+
+    if (req.user?.id) {
+      const amt = typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)
+      autoWriteExpenseRecord(req.user.id, expense.title, 'APPROVE', expense.id, expense.projectId, amt).catch(() => {})
+    }
 
     res.json(updated)
   } catch (error) {
@@ -397,6 +442,11 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_expenses'
       return res.status(400).json({ error: '只有待审批状态可以驳回' })
     }
 
+    // 防止自驳回
+    if (expense.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+      return res.status(403).json({ error: '不能驳回自己提交的申请' })
+    }
+
     const approver = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { name: true } })
     const approverName = approver?.name || req.user!.username || '审批人'
     const rejectText = `\n[驳回 by ${approverName}]: ${reason}`
@@ -406,8 +456,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_expenses'
       data: {
         status: 'REJECTED',
         approvedBy: req.user!.id,
-        approvedAt: new Date(),
-        description: (expense.description || '') + rejectText
+        approvedAt: new Date()
       },
       include: {
         organization: { select: { id: true, name: true } },
@@ -415,6 +464,11 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_expenses'
         project: { select: { id: true, name: true } }
       }
     })
+
+    if (req.user?.id) {
+      const amt = typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)
+      autoWriteExpenseRecord(req.user.id, expense.title, 'REJECT', expense.id, expense.projectId, amt).catch(() => {})
+    }
 
     res.json(updated)
   } catch (error) {
@@ -487,6 +541,11 @@ router.post('/:id/pay', authenticateToken, checkPermission('approve_expenses'), 
       }
     })
 
+    if (req.user?.id) {
+      const amt = typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)
+      autoWriteExpenseRecord(req.user.id, expense.title, 'PAY', expense.id, expense.projectId, amt).catch(() => {})
+    }
+
     res.json(updated)
   } catch (error) {
     logger.error('Pay expense error:', error)
@@ -496,9 +555,8 @@ router.post('/:id/pay', authenticateToken, checkPermission('approve_expenses'), 
 
 const columns = [
   { key: 'title', label: '报销标题' },
-  { key: 'category', label: '类别' },
-  { key: 'amount', label: '金额' },
-  { key: 'expenseDate', label: '费用日期' },
+  { key: 'totalAmount', label: '总金额' },
+  { key: 'itemCount', label: '明细数量' },
   { key: 'organization.name', label: '组织' },
   { key: 'project.name', label: '项目' },
   { key: 'status', label: '状态' },
@@ -507,9 +565,7 @@ const columns = [
 
 const labelMap: Record<string, string> = {
   '报销标题': 'title',
-  '类别': 'category',
-  '金额': 'amount',
-  '费用日期': 'expenseDate',
+  '总金额': 'totalAmount',
   '状态': 'status'
 }
 
@@ -518,10 +574,19 @@ router.get('/export/excel', authenticateToken, checkPermission('view_expenses'),
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.expense.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, organization: { select: { name: true } }, project: { select: { name: true } } },
+      include: { 
+        owner: { select: { name: true } }, 
+        organization: { select: { name: true } }, 
+        project: { select: { name: true } },
+        items: true
+      },
       orderBy: { createdAt: 'desc' }
     })
-    exportExcel(res, 'expenses.xlsx', '费用报销', columns, data)
+    const exportData = data.map(e => ({
+      ...e,
+      itemCount: e.items.length
+    }))
+    exportExcel(res, 'expenses.xlsx', '费用报销', columns, exportData)
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })
@@ -539,14 +604,22 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
     for (const row of data) {
       try {
         const mapped = mapImportRow(row, labelMap)
+        // 导入时创建一个默认明细
         await prisma.expense.create({
           data: {
-            ...mapped,
-            expenseDate: mapped.expenseDate ? new Date(mapped.expenseDate) : new Date(),
-            amount: parseFloat(mapped.amount) || 0,
+            title: mapped.title,
+            totalAmount: parseFloat(mapped.totalAmount) || 0,
             status: mapped.status || 'DRAFT',
             ownerId: req.user!.id,
-          } as any
+            items: {
+              create: [{
+                category: '其他',
+                amount: parseFloat(mapped.totalAmount) || 0,
+                expenseDate: new Date(),
+                description: '导入的报销记录'
+              }]
+            }
+          }
         })
         success++
       } catch { failed++ }

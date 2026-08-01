@@ -132,7 +132,7 @@ function UserManagement() {
       if (error?.error) {
         message.error(error?.error)
       } else {
-        message.error('操作失败')
+        message.error(error?.error || '操作失败')
       }
     }
   }

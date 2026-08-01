@@ -42,8 +42,8 @@ function OpportunityList() {
         pageSize: response.pagination?.pageSize || 10,
         total: response.pagination?.total || 0
       })
-    } catch (error) {
-      message.error('获取商机列表失败')
+    } catch (error: any) {
+      message.error(error?.error || '获取售前列表失败')
     } finally {
       setLoading(false)
     }
@@ -111,8 +111,8 @@ function OpportunityList() {
       message.success('删除成功')
       fetchOpportunities(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '删除失败')
     }
   }
 
@@ -122,13 +122,13 @@ function OpportunityList() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `商机数据.${type === 'csv' ? 'csv' : 'xlsx'}`
+      a.download = `售前数据.${type === 'csv' ? 'csv' : 'xlsx'}`
       document.body.appendChild(a)
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
       message.success('导出成功')
-    } catch { message.error('导出失败') }
+    } catch (e: any) { message.error(e?.error || '导出失败') }
   }
 
   const handleImport = async (file: File) => {
@@ -159,8 +159,8 @@ function OpportunityList() {
           setSelectedRowKeys([])
           fetchOpportunities(pagination.current, pagination.pageSize)
           fetchStats()
-        } catch (error) {
-          message.error('批量删除失败')
+        } catch (error: any) {
+          message.error(error?.error || '批量删除失败')
         }
       }
     })
@@ -172,8 +172,8 @@ function OpportunityList() {
       message.success('转化为项目成功')
       fetchOpportunities(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('转化失败')
+    } catch (error: any) {
+      message.error(error?.error || '转化失败')
     }
   }
 
@@ -183,8 +183,8 @@ function OpportunityList() {
       message.success('已关闭')
       fetchOpportunities(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('关闭失败')
+    } catch (error: any) {
+      message.error(error?.error || '关闭失败')
     }
   }
 
@@ -194,8 +194,8 @@ function OpportunityList() {
       message.success('已标记为丢单')
       fetchOpportunities(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('操作失败')
+    } catch (error: any) {
+      message.error(error?.error || '操作失败')
     }
   }
 
@@ -217,8 +217,8 @@ function OpportunityList() {
       setModalVisible(false)
       fetchOpportunities(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('操作失败')
+    } catch (error: any) {
+      message.error(error?.error || '操作失败')
     }
   }
 
@@ -229,7 +229,7 @@ function OpportunityList() {
 
   const columns = [
     {
-      title: '商机名称',
+      title: '项目名称',
       dataIndex: 'name',
       key: 'name',
       render: (text: string, record: any) => (
@@ -249,7 +249,7 @@ function OpportunityList() {
     { title: '联系人', key: 'contact', render: (_: any, r: any) => r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : r.decisionMaker || '-' },
     { title: '应用领域', dataIndex: 'application', key: 'application', render: (v: string) => v || '-' },
     { title: '预算', dataIndex: 'budget', key: 'budget', render: (v: number) => v ? `${v}元` : '-' },
-    { title: '成单率', dataIndex: 'winRate', key: 'winRate', render: (v: number) => v !== null && v !== undefined ? `${v}%` : '-' },
+    { title: '签订率', dataIndex: 'winRate', key: 'winRate', render: (v: number) => v !== null && v !== undefined ? `${v}%` : '-' },
     {
       title: '状态',
       dataIndex: 'status',
@@ -315,16 +315,16 @@ function OpportunityList() {
       <Card size="small" style={{ marginBottom: 16, borderRadius: 12, border: 'none', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
         <Row gutter={16}>
           <Col xs={12} sm={6}>
-            <Statistic title="商机总数" value={stats?.total || 0} />
+            <Statistic title="项目机会" value={stats?.total || 0} />
           </Col>
           <Col xs={12} sm={6}>
             <Statistic title="开放中" value={stats?.open || 0} valueStyle={{ color: '#1890ff' }} />
           </Col>
           <Col xs={12} sm={6}>
-            <Statistic title="已赢单" value={stats?.won || 0} valueStyle={{ color: '#52c41a' }} />
+            <Statistic title="已签订" value={stats?.won || 0} valueStyle={{ color: '#52c41a' }} />
           </Col>
           <Col xs={12} sm={6}>
-            <Statistic title="赢单率" value={stats?.winRate || 0} suffix="%" />
+            <Statistic title="签订比例" value={stats?.winRate || 0} suffix="%" />
           </Col>
         </Row>
       </Card>
@@ -334,7 +334,7 @@ function OpportunityList() {
         <Row gutter={[16, 16]} align="middle">
           <Col xs={24} sm={16}>
             <Input
-              placeholder="搜索商机名称"
+              placeholder="搜索项目名称"
               prefix={<SearchOutlined />}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
@@ -355,7 +355,7 @@ function OpportunityList() {
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => fetchOpportunities(pagination.current, pagination.pageSize)}>刷新</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增商机</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增项目机会</Button>
           {selectedRowKeys.length > 0 && (
             <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete}>
               批量删除 ({selectedRowKeys.length})
@@ -394,7 +394,7 @@ function OpportunityList() {
 
       {/* 新增/编辑弹窗 */}
       <Modal
-        title={editingOpportunity ? '编辑商机' : '新增商机'}
+        title={editingOpportunity ? '编辑项目机会' : '新增项目机会'}
         open={modalVisible}
         onOk={handleSubmit}
         onCancel={() => { form.resetFields(); setModalVisible(false) }}
@@ -402,7 +402,7 @@ function OpportunityList() {
         style={{ top: 20 }}
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="name" label="商机名称" rules={[{ required: true, message: '请输入商机名称' }]}>
+          <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
             <Input />
           </Form.Item>
           <Form.Item
@@ -437,7 +437,7 @@ function OpportunityList() {
           <Form.Item name="competitors" label="竞争对手">
             <Input />
           </Form.Item>
-          <Form.Item name="winRate" label="成单率">
+          <Form.Item name="winRate" label="签订率">
             <InputNumber style={{ width: '100%' }} min={0} max={100} />
           </Form.Item>
           <Form.Item name="expectedStart" label="预计开始日期">

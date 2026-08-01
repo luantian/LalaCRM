@@ -172,8 +172,6 @@ router.get('/:id', authenticateToken, checkPermission('view_opportunities'), asy
     }
 
     res.json(opportunity)
-
-    res.json(opportunity)
   } catch (error) {
     res.status(500).json({ error: '获取商机详情失败' })
   }
@@ -737,7 +735,8 @@ router.delete('/:id/records/:recordId', authenticateToken, checkPermission('edit
       where: { recordId, deletedAt: null }
     })
     for (const file of files) {
-      if (fs.existsSync(file.filePath)) fs.unlinkSync(file.filePath)
+      const filePath = path.join(__dirname, '../uploads', file.filePath)
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
     }
     await prisma.opportunityRecordFile.updateMany({
       where: { recordId },
@@ -779,7 +778,7 @@ router.post('/:id/records/:recordId/files', authenticateToken, upload.array('fil
           data: {
             recordId,
             fileName: file.originalname,
-            filePath: file.path,
+            filePath: file.filename,
             fileSize: file.size,
             fileType: file.mimetype,
             uploadedBy: req.user!.id
@@ -863,7 +862,8 @@ router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, logOper
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    if (fs.existsSync(file.filePath)) fs.unlinkSync(file.filePath)
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
     await prisma.opportunityRecordFile.update({
       where: { id: fileId },
       data: { deletedAt: new Date() }

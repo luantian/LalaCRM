@@ -71,8 +71,8 @@ function ExpenseList() {
         pageSize: response.pagination?.pageSize || 10,
         total: response.pagination?.total || 0
       })
-    } catch (error) {
-      message.error('获取费用报销记录失败')
+    } catch (error: any) {
+      message.error(error?.error || '获取费用报销记录失败')
     } finally {
       setLoading(false)
     }
@@ -171,8 +171,8 @@ function ExpenseList() {
       await deleteExpenseFile(currentExpense.id, fileId)
       message.success('文件删除成功')
       fetchExpenseFiles(currentExpense.id)
-    } catch (error) {
-      message.error('文件删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '文件删除失败')
     }
   }
 
@@ -192,7 +192,7 @@ function ExpenseList() {
         a.remove()
         window.URL.revokeObjectURL(url)
       })
-      .catch(() => message.error('下载失败'))
+      .catch((e: any) => message.error(e?.error || '下载失败'))
   }
 
   const formatFileSize = (bytes: number) => {
@@ -211,10 +211,23 @@ function ExpenseList() {
     // Check if we're coming from a business trip detail page
     const state = location.state as any
     if (state?.tripId) {
-      form.setFieldsValue({ tripId: state.tripId })
+      form.setFieldsValue({ 
+        tripId: state.tripId,
+        items: [] // 初始化空的 items 数组
+      })
     }
     setModalVisible(true)
   }
+
+  // 从出差详情页面跳转过来时，自动打开新增弹窗
+  useEffect(() => {
+    const state = location.state as any
+    if (state?.openAddModal && state?.tripId) {
+      handleAdd()
+      // 清除 state，防止刷新时重复打开
+      window.history.replaceState({}, '')
+    }
+  }, [location.state])
 
   const handleEdit = (expense: any) => {
     const isOwner = expense.ownerId === user.id
@@ -225,9 +238,16 @@ function ExpenseList() {
     }
     setEditingExpense(expense)
     form.setFieldsValue({
-      ...expense,
-      expenseDate: dayjs(expense.expenseDate),
-      tripId: expense.tripId || undefined
+      title: expense.title,
+      organizationId: expense.organizationId,
+      contactId: expense.contactId,
+      projectId: expense.projectId,
+      tripId: expense.tripId || undefined,
+      description: expense.description,
+      items: (expense.items || []).map((item: any) => ({
+        ...item,
+        expenseDate: dayjs(item.expenseDate)
+      }))
     })
     setModalVisible(true)
   }
@@ -244,8 +264,8 @@ function ExpenseList() {
       message.success('删除成功')
       fetchExpenses(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '删除失败')
     }
   }
 
@@ -267,8 +287,8 @@ function ExpenseList() {
           setSelectedRowKeys([])
           fetchExpenses(pagination.current, pagination.pageSize)
           fetchStats()
-        } catch (error) {
-          message.error('批量删除失败')
+        } catch (error: any) {
+          message.error(error?.error || '批量删除失败')
         }
       }
     })
@@ -345,9 +365,14 @@ function ExpenseList() {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
+      // 处理 items 中的日期
+      const items = values.items.map((item: any) => ({
+        ...item,
+        expenseDate: item.expenseDate.toDate()
+      }))
       const data = {
         ...values,
-        expenseDate: values.expenseDate.toDate()
+        items
       }
 
       if (editingExpense) {
@@ -360,8 +385,12 @@ function ExpenseList() {
       setModalVisible(false)
       fetchExpenses(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('操作失败')
+    } catch (error: any) {
+      if (error?.errorFields?.length) {
+        message.error('请检查表单填写是否完整')
+      } else {
+        message.error(error?.error || '操作失败')
+      }
     }
   }
 
@@ -410,17 +439,16 @@ function ExpenseList() {
       )
     },
     {
-      title: '类别',
-      dataIndex: 'category',
-      key: 'category',
-      render: (category: string) => <Tag>{category}</Tag>
+      title: '总金额',
+      dataIndex: 'totalAmount',
+      key: 'totalAmount',
+      render: (amount: number) => `${amount}元`,
+      sorter: (a: any, b: any) => a.totalAmount - b.totalAmount
     },
     {
-      title: '金额',
-      dataIndex: 'amount',
-      key: 'amount',
-      render: (amount: number) => `${amount}元`,
-      sorter: (a: any, b: any) => a.amount - b.amount
+      title: '明细数',
+      key: 'itemCount',
+      render: (_: any, record: any) => `${record.items?.length || 0} 条`
     },
     {
       title: '客户',
@@ -447,12 +475,6 @@ function ExpenseList() {
           {trip.title}
         </a>
       ) : '-'
-    },
-    {
-      title: '费用日期',
-      dataIndex: 'expenseDate',
-      key: 'expenseDate',
-      render: (date: string) => dayjs(date).format('YYYY-MM-DD')
     },
     {
       title: '状态',
@@ -674,22 +696,6 @@ function ExpenseList() {
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="category" label="费用类别" rules={[{ required: true, message: '请选择费用类别' }]}>
-                <Select placeholder="请选择费用类别">
-                  {expenseCategories.map(cat => (
-                    <Select.Option key={cat} value={cat}>{cat}</Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="amount" label="金额" rules={[{ required: true, message: '请输入金额' }]}>
-                <InputNumber style={{ width: '100%' }} precision={2} addonAfter="元" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}>
               <Form.Item name="contactId" label="客户">
                 <OrgContactSelector
                   placeholder="请选择客户联系人"
@@ -702,14 +708,87 @@ function ExpenseList() {
               <Form.Item name="organizationId" hidden><Input /></Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="expenseDate" label="费用日期" rules={[{ required: true, message: '请选择费用日期' }]}>
-                <DatePicker style={{ width: '100%' }} />
+              <Form.Item name="description" label="备注">
+                <Input.TextArea rows={1} />
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea rows={3} />
-          </Form.Item>
+
+          {/* 费用明细 */}
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>费用明细</div>
+          <Form.List name="items" rules={[{
+            validator: async (_, items) => {
+              if (!items || items.length === 0) {
+                return Promise.reject(new Error('至少添加一条费用明细'))
+              }
+            }
+          }]}>
+            {(fields, { add, remove }, { errors }) => (
+              <>
+                {fields.map(({ key, name, ...restField }) => (
+                  <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
+                    <Col span={5}>
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'category']}
+                        rules={[{ required: true, message: '类别' }]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Select placeholder="费用类别">
+                          {expenseCategories.map(cat => (
+                            <Select.Option key={cat} value={cat}>{cat}</Select.Option>
+                          ))}
+                        </Select>
+                      </Form.Item>
+                    </Col>
+                    <Col span={5}>
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'amount']}
+                        rules={[{ required: true, message: '金额' }]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <InputNumber style={{ width: '100%' }} precision={2} placeholder="金额" addonAfter="元" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={5}>
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'expenseDate']}
+                        rules={[{ required: true, message: '日期' }]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <DatePicker style={{ width: '100%' }} placeholder="费用日期" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={7}>
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'description']}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Input placeholder="费用说明（可选）" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={2}>
+                      <Button
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => remove(name)}
+                      />
+                    </Col>
+                  </Row>
+                ))}
+                <Form.Item>
+                  <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                    添加费用明细
+                  </Button>
+                  <Form.ErrorList errors={errors} />
+                </Form.Item>
+              </>
+            )}
+          </Form.List>
         </Form>
       </Modal>
 

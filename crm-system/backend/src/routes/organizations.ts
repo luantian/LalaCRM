@@ -6,6 +6,7 @@ import { validate } from '../middleware/validation'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
 import logger from '../utils/logger'
+import { autoWriteOrganizationRecord } from '../utils/autoDailyReport'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -18,7 +19,7 @@ const createOrgValidation = [
   body('parentId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('parentId必须是正整数'),
   body('address').optional().trim(),
   body('phone').optional().trim(),
-  body('email').optional().trim().isEmail().withMessage('邮箱格式不正确'),
+  body('email').optional({ values: 'falsy' }).trim().isEmail().withMessage('邮箱格式不正确'),
   body('taxNo').optional().trim(),
   body('website').optional().trim(),
   body('legalPerson').optional().trim(),
@@ -33,7 +34,7 @@ const updateOrgValidation = [
   body('parentId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('parentId必须是正整数'),
   body('address').optional().trim(),
   body('phone').optional().trim(),
-  body('email').optional().trim().isEmail().withMessage('邮箱格式不正确'),
+  body('email').optional({ values: 'falsy' }).trim().isEmail().withMessage('邮箱格式不正确'),
   body('taxNo').optional().trim(),
   body('website').optional().trim(),
   body('legalPerson').optional().trim(),
@@ -48,7 +49,7 @@ const createContactValidation = [
   body('title').optional().trim(),
   body('department').optional().trim(),
   body('phone').optional().trim(),
-  body('email').optional().trim().isEmail().withMessage('邮箱格式不正确'),
+  body('email').optional({ values: 'falsy' }).trim().isEmail().withMessage('邮箱格式不正确'),
   body('wechat').optional().trim(),
   body('isPrimary').optional().isBoolean().withMessage('isPrimary必须是布尔值'),
   body('notes').optional().trim()
@@ -61,7 +62,7 @@ const updateContactValidation = [
   body('title').optional().trim(),
   body('department').optional().trim(),
   body('phone').optional().trim(),
-  body('email').optional().trim().isEmail().withMessage('邮箱格式不正确'),
+  body('email').optional({ values: 'falsy' }).trim().isEmail().withMessage('邮箱格式不正确'),
   body('wechat').optional().trim(),
   body('isPrimary').optional().isBoolean().withMessage('isPrimary必须是布尔值'),
   body('notes').optional().trim()
@@ -112,6 +113,36 @@ function buildTree(orgs: any[], parentId: number | null = null): OrgTreeNode[] {
       ...org,
       children: buildTree(orgs, org.id)
     }))
+}
+
+// 判断当前用户是否有权查看联系人电话（仅管理员、总经理、销售经理可见）
+async function canViewContactPhone(req: AuthRequest): Promise<boolean> {
+  if (req.user?.role === 'ADMIN') return true
+  if (!req.user?.id) return false
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    include: {
+      userRoles: { include: { role: { select: { name: true, displayName: true } } } },
+      roleRef: { select: { name: true, displayName: true } }
+    }
+  })
+  if (!user) return false
+  const roleNames: string[] = []
+  if (user.roleRef) {
+    roleNames.push(user.roleRef.name, user.roleRef.displayName)
+  }
+  user.userRoles?.forEach(ur => {
+    roleNames.push(ur.role.name, ur.role.displayName)
+  })
+  return roleNames.includes('GENERAL_MANAGER') || roleNames.includes('SALES_MANAGER') ||
+         roleNames.includes('总经理') || roleNames.includes('销售经理')
+}
+
+// 脱敏电话号码：只显示后4位，其余用 * 代替
+function maskPhone(phone: string | null): string | null {
+  if (!phone) return null
+  if (phone.length <= 4) return phone
+  return '***' + phone.slice(-4)
 }
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
@@ -200,6 +231,8 @@ router.get(
   authenticateToken,
   async (req: AuthRequest, res: Response) => {
     try {
+      const canViewPhone = await canViewContactPhone(req)
+      
       const contacts = await prisma.orgContact.findMany({
         where: { deletedAt: null },
         include: {
@@ -212,7 +245,7 @@ router.get(
         id: c.id,
         name: c.name,
         title: c.title,
-        phone: c.phone,
+        phone: canViewPhone ? c.phone : maskPhone(c.phone),
         email: c.email,
         organizationId: c.organizationId,
         organizationName: c.organization?.name || ''
@@ -233,6 +266,8 @@ router.get(
   async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id as string)
+      const canViewPhone = await canViewContactPhone(req)
+      
       const contact = await prisma.orgContact.findFirst({
         where: { id, deletedAt: null },
         include: { organization: { select: { id: true, name: true } } }
@@ -244,7 +279,7 @@ router.get(
         id: contact.id,
         name: contact.name,
         title: contact.title,
-        phone: contact.phone,
+        phone: canViewPhone ? contact.phone : maskPhone(contact.phone),
         email: contact.email,
         organizationId: contact.organizationId,
         organizationName: contact.organization?.name || ''
@@ -265,6 +300,7 @@ router.get(
   async (req: AuthRequest, res: Response) => {
     try {
       const id = Number(req.params.id)
+      const canViewPhone = await canViewContactPhone(req)
 
       const org = await prisma.organization.findFirst({
         where: { id, deletedAt: null },
@@ -285,7 +321,16 @@ router.get(
         return res.status(404).json({ error: '组织不存在' })
       }
 
-      res.json(org)
+      // 对联系人电话进行脱敏处理
+      const orgData = { ...org }
+      if (!canViewPhone && orgData.contacts) {
+        orgData.contacts = orgData.contacts.map(c => ({
+          ...c,
+          phone: maskPhone(c.phone)
+        }))
+      }
+
+      res.json(orgData)
     } catch (error) {
       logger.error('Get organization detail error:', error)
       res.status(500).json({ error: '获取组织详情失败' })
@@ -339,6 +384,9 @@ router.post(
       })
 
       logger.info(`Organization created: ${org.name} by user ${req.user?.username}`)
+      if (req.user?.id) {
+        autoWriteOrganizationRecord(req.user.id, org.name, 'CREATE', org.id).catch(() => {})
+      }
       res.status(201).json(org)
     } catch (error) {
       logger.error('Create organization error:', error)
@@ -410,6 +458,9 @@ router.put(
       })
 
       logger.info(`Organization updated: ${updated.name} by user ${req.user?.username}`)
+      if (req.user?.id) {
+        autoWriteOrganizationRecord(req.user.id, updated.name, 'UPDATE', updated.id).catch(() => {})
+      }
       res.json(updated)
     } catch (error) {
       logger.error('Update organization error:', error)

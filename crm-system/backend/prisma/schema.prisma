@@ -193,6 +193,7 @@ model Sale {
 model Project {
   id              Int           @id @default(autoincrement())
   name            String        // 项目名称
+  projectNo       String?       // 项目编号
   organizationId  Int?          // 暂时设为可选，用于数据迁移
   organization    Organization? @relation(fields: [organizationId], references: [id])
   contactId       Int?          // 客户对接人
@@ -247,6 +248,7 @@ model Contract {
   endDate     DateTime?
   status      ContractStatus @default(DRAFT)
   content     String?  // 合同内容/条款
+  isPrivate   Boolean  @default(false) // 不公开标记：仅上传人/管理员可见
   ownerId     Int
   owner       User     @relation(fields: [ownerId], references: [id])
   deletedAt   DateTime? // 软删除标记
@@ -412,11 +414,6 @@ model BusinessTrip {
   startDate       DateTime // 开始日期
   endDate         DateTime // 结束日期
   days            Int      // 出差天数
-  accommodation   Decimal? @db.Decimal(12, 2) // 住宿费
-  transportation  Decimal? @db.Decimal(12, 2) // 交通费
-  meals           Decimal? @db.Decimal(12, 2) // 餐饮费
-  otherExpenses   Decimal? @db.Decimal(12, 2) // 其他费用
-  totalAmount     Decimal  @db.Decimal(12, 2) // 总费用
   status          TripStatus @default(DRAFT)
   notes           String?  // 备注
   ownerId         Int
@@ -438,23 +435,35 @@ model Expense {
   contact        OrgContact? @relation(fields: [contactId], references: [id])
   projectId      Int?
   project        Project?     @relation(fields: [projectId], references: [id])
+  totalAmount    Decimal      @db.Decimal(12, 2) @default(0) // 总金额（所有明细之和）
+  status         ExpenseStatus @default(DRAFT)
+  approvedBy     Int?     // 审批人
+  approvedAt     DateTime? // 审批时间
+  assignedTo     Int?     // 报销管理人（指定审批人）
+  tripId         Int?     // 关联出差记录
+  trip           BusinessTrip? @relation(fields: [tripId], references: [id])
+  ownerId        Int
+  owner          User     @relation(fields: [ownerId], references: [id])
+  deletedAt      DateTime? // 软删除标记
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  files          ExpenseFile[] // 报销附件
+  items          ExpenseItem[] // 费用明细
+}
+
+// 费用明细表
+model ExpenseItem {
+  id          Int      @id @default(autoincrement())
+  expenseId   Int
+  expense     Expense  @relation(fields: [expenseId], references: [id])
   category    String   // 费用类别
   amount      Decimal  @db.Decimal(12, 2) // 金额
   expenseDate DateTime // 费用发生日期
   description String?  // 描述
   receipt     String?  // 发票/凭证
-  status      ExpenseStatus @default(DRAFT)
-  approvedBy  Int?     // 审批人
-  approvedAt  DateTime? // 审批时间
-  assignedTo  Int?     // 报销管理人（指定审批人）
-  tripId      Int?     // 关联出差记录
-  trip        BusinessTrip? @relation(fields: [tripId], references: [id])
-  ownerId     Int
-  owner       User     @relation(fields: [ownerId], references: [id])
   deletedAt   DateTime? // 软删除标记
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  files       ExpenseFile[] // 报销附件
 }
 
 // 报销附件表
@@ -871,6 +880,8 @@ model DailyReportItem {
   report      DailyReport @relation(fields: [reportId], references: [id])
   projectId   Int?     // 关联项目
   project     Project? @relation(fields: [projectId], references: [id])
+  taskId      Int?     // 关联任务（用于展示任务流转记录）
+  task        Task?    @relation(fields: [taskId], references: [id])
   title       String   // 工作标题
   content     String   // 工作内容
   hours       Decimal? @db.Decimal(4, 1) // 工时（小时）
@@ -887,6 +898,7 @@ model DailyReportItem {
 
   @@index([reportId])
   @@index([projectId])
+  @@index([taskId])
 }
 
 // 日报工时条目表（细化工时管理）
@@ -1524,6 +1536,7 @@ model Task {
   notifications Notification[]
   records       TaskRecord[]        // 任务信息记录
   files         TaskFile[]          // 任务附件
+  dailyReportItems DailyReportItem[] // 关联的日报记录
 
   @@index([assignerId])
   @@index([status])
@@ -1624,6 +1637,8 @@ enum TaskRecordType {
   MEETING    // 会议
   EMAIL      // 邮件
   VISIT      // 拜访
+  CREATE     // 创建任务
+  START      // 开始任务
   SUBMIT     // 提交
   REJECT     // 驳回
   COMPLETE   // 完成

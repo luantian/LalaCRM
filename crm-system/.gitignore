@@ -7,3 +7,4 @@ postgres_data/
 uploads/
 backend/logs/
 nul
+build/

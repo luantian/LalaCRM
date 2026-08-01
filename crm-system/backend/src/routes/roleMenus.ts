@@ -151,6 +151,7 @@ router.post('/:roleId', authenticateToken, logOperation('角色菜单', 'UPDATE'
         }))
     }
 
+    // 返回结果（children已包含在include中）
     res.json(sortMenus(topMenus))
   } catch (error) {
     logger.error('Assign role menus error:', error)

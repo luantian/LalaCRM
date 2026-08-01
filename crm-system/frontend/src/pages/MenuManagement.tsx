@@ -366,7 +366,7 @@ function MenuManagement() {
             label="菜单名称"
             rules={[{ required: true, message: '请输入菜单名称' }]}
           >
-            <Input placeholder="例如：仪表盘、用户管理" />
+            <Input placeholder="例如：工作总览、用户管理" />
           </Form.Item>
 
           <Form.Item

@@ -84,8 +84,8 @@ const LoginLogList: React.FC = () => {
           pageSize,
           total: payload.total ?? 0,
         });
-      } catch {
-        message.error('获取登录日志失败');
+      } catch (error: any) {
+        message.error(error?.error || '获取登录日志失败');
       } finally {
         setLoading(false);
       }

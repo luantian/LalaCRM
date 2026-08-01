@@ -15,7 +15,7 @@ async function main() {
   // 菜单数据（按 CRM 业务流程排列）
   const menus = [
     // 工作台
-    { id: 1,  key: 'dashboard',      icon: 'DashboardOutlined',    label: '仪表盘',   order: 1,  menuType: 'MENU',      path: '/',                component: 'Dashboard' },
+    { id: 1,  key: 'dashboard',      icon: 'DashboardOutlined',    label: '工作总览',   order: 1,  menuType: 'MENU',      path: '/',                component: 'Dashboard' },
     // 售前
     { id: 5,  key: 'opportunities',   icon: 'FundOutlined',         label: '售前管理', order: 2,  menuType: 'MENU',      path: '/opportunities',  component: 'OpportunityList',  perm: 'view_opportunities' },
     { id: 20, key: 'quotations',      icon: 'FileTextOutlined',     label: '报价单',   order: 3,  menuType: 'MENU',      path: '/quotations',     component: 'QuotationList',    perm: 'view_quotations' },

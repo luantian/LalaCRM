@@ -49,8 +49,8 @@ function ProjectArchive() {
         pageSize: response.pagination?.pageSize || 10,
         total: response.pagination?.total || 0
       })
-    } catch (error) {
-      message.error(activeTab === 'pending' ? '获取商机列表失败' : '获取项目列表失败')
+    } catch (error: any) {
+      message.error(error?.error || (activeTab === 'pending' ? '获取售前列表失败' : '获取项目列表失败'))
     } finally {
       setLoading(false)
     }
@@ -95,8 +95,8 @@ function ProjectArchive() {
       }
       message.success('删除成功')
       fetchData(pagination.current, pagination.pageSize)
-    } catch (error) {
-      message.error('删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '删除失败')
     }
   }
 
@@ -116,8 +116,8 @@ function ProjectArchive() {
       message.success(`批量删除 ${selectedRowKeys.length} 条记录成功`)
       setSelectedRowKeys([])
       fetchData(pagination.current, pagination.pageSize)
-    } catch (error) {
-      message.error('批量删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '批量删除失败')
     }
   }
 
@@ -150,10 +150,10 @@ function ProjectArchive() {
     onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
   }
 
-  // 未完成商机列
+  // 未完成售前列
   const pendingColumns = [
     {
-      title: '商机名称',
+      title: '售前名称',
       dataIndex: 'name',
       key: 'name',
       render: (text: string, record: any) => (
@@ -291,7 +291,7 @@ function ProjectArchive() {
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} sm={8}>
           <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <Statistic title="待转化商机" value={oppStats?.open || 0} valueStyle={{ color: '#1890ff' }} prefix={<FundOutlined />} suffix="个" />
+            <Statistic title="待转化售前" value={oppStats?.open || 0} valueStyle={{ color: '#1890ff' }} prefix={<FundOutlined />} suffix="个" />
           </Card>
         </Col>
         <Col xs={12} sm={8}>
@@ -330,7 +330,7 @@ function ProjectArchive() {
                 </Popconfirm>
               )}
               <Input
-                placeholder={activeTab === 'pending' ? '搜索商机名称' : '搜索项目名称'}
+                placeholder={activeTab === 'pending' ? '搜索售前名称' : '搜索项目名称'}
                 prefix={<SearchOutlined />}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
@@ -357,7 +357,7 @@ function ProjectArchive() {
             loading={loading}
             rowKey="id"
             rowSelection={rowSelection}
-            locale={{ emptyText: <Empty description={activeTab === 'pending' ? '没有未转化的商机' : '没有已归档的项目'} /> }}
+            locale={{ emptyText: <Empty description={activeTab === 'pending' ? '没有未转化的售前' : '没有已归档的项目'} /> }}
             pagination={{
               current: pagination.current,
               pageSize: pagination.pageSize,

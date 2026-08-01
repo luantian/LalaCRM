@@ -74,10 +74,6 @@ function BusinessTripDetail() {
   const handleEdit = () => {
     form.setFieldsValue({
       ...trip,
-      accommodation: trip.accommodation ? Number(trip.accommodation) : null,
-      transportation: trip.transportation ? Number(trip.transportation) : null,
-      meals: trip.meals ? Number(trip.meals) : null,
-      otherExpenses: trip.otherExpenses ? Number(trip.otherExpenses) : null,
       dateRange: trip.startDate && trip.endDate ? [dayjs(trip.startDate), dayjs(trip.endDate)] : []
     })
     setModalVisible(true)
@@ -98,8 +94,8 @@ function BusinessTripDetail() {
       message.success('出差记录更新成功')
       setModalVisible(false)
       refreshTrip()
-    } catch (error) {
-      message.error('更新失败')
+    } catch (error: any) {
+      message.error(error?.error || '更新失败')
     }
   }
 
@@ -120,11 +116,8 @@ function BusinessTripDetail() {
 
   const status = statusConfig[trip.status] || { text: trip.status, color: 'default' }
 
-  const totalAmount = Number(trip.totalAmount) || 0
-  const accommodation = Number(trip.accommodation) || 0
-  const transportation = Number(trip.transportation) || 0
-  const meals = Number(trip.meals) || 0
-  const otherExpenses = Number(trip.otherExpenses) || 0
+  // 从关联费用报销聚合总金额
+  const totalExpenseAmount = (trip.expenses || []).reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
 
   return (
     <div>
@@ -143,7 +136,7 @@ function BusinessTripDetail() {
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>{trip.title}</h3>
               <Tag color={status.color}>{status.text}</Tag>
               <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
-              <span style={{ color: '#6b7280', fontSize: 13 }}>总费用: <strong style={{ color: '#f5222d' }}>{totalAmount}元</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>报销金额: <strong style={{ color: '#f5222d' }}>{totalExpenseAmount.toFixed(2)}元</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>天数: <strong style={{ color: '#2563eb' }}>{trip.days || 0}天</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>日期: <strong style={{ color: '#7c3aed' }}>{trip.startDate ? dayjs(trip.startDate).format('MM-DD') : '-'} ~ {trip.endDate ? dayjs(trip.endDate).format('MM-DD') : '-'}</strong></span>
             </div>
@@ -182,66 +175,21 @@ function BusinessTripDetail() {
         </Descriptions>
       </Card>
 
-      <Card title="费用明细" style={{ marginBottom: 16 }}>
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={6}>
-            <Statistic
-              title="住宿费"
-              value={accommodation}
-              precision={2}
-              suffix="元"
-            />
-          </Col>
-          <Col xs={24} sm={6}>
-            <Statistic
-              title="交通费"
-              value={transportation}
-              precision={2}
-              suffix="元"
-            />
-          </Col>
-          <Col xs={24} sm={6}>
-            <Statistic
-              title="餐饮费"
-              value={meals}
-              precision={2}
-              suffix="元"
-            />
-          </Col>
-          <Col xs={24} sm={6}>
-            <Statistic
-              title="其他费用"
-              value={otherExpenses}
-              precision={2}
-              suffix="元"
-            />
-          </Col>
-        </Row>
-        <Row style={{ marginTop: 16 }}>
-          <Col span={24}>
-            <Statistic
-              title="合计"
-              value={totalAmount}
-              precision={2}
-              valueStyle={{ color: '#f5222d', fontSize: 28 }}
-              suffix="元"
-            />
-          </Col>
-        </Row>
-      </Card>
-
       <Card
         title={
           <Space>
             <span>关联费用报销</span>
             <Tag color="blue">{trip.expenses?.length || 0} 条</Tag>
+            <span style={{ color: '#f5222d', fontSize: 16, fontWeight: 600 }}>
+              合计: ¥{totalExpenseAmount.toFixed(2)}
+            </span>
           </Space>
         }
         extra={
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => navigate('/expenses/new', { state: { tripId: trip.id, tripTitle: trip.title } })}
+            onClick={() => navigate('/expenses', { state: { tripId: trip.id, tripTitle: trip.title, openAddModal: true } })}
           >
             添加费用
           </Button>
@@ -370,30 +318,6 @@ function BusinessTripDetail() {
           <Form.Item name="dateRange" label="出差日期" rules={[{ required: true, message: '请选择出差日期' }]}>
             <RangePicker style={{ width: '100%' }} />
           </Form.Item>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="accommodation" label="住宿费">
-                <InputNumber style={{ width: '100%' }} precision={2} addonAfter="元" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="transportation" label="交通费">
-                <InputNumber style={{ width: '100%' }} precision={2} addonAfter="元" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="meals" label="餐饮费">
-                <InputNumber style={{ width: '100%' }} precision={2} addonAfter="元" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="otherExpenses" label="其他费用">
-                <InputNumber style={{ width: '100%' }} precision={2} addonAfter="元" />
-              </Form.Item>
-            </Col>
-          </Row>
           <Form.Item name="notes" label="备注">
             <Input.TextArea rows={3} />
           </Form.Item>

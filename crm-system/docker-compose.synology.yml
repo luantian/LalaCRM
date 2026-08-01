@@ -1,0 +1,57 @@
+version: '3.8'
+
+# ===================================================
+#  群晖 NAS 生产部署配置
+#  使用方式：在群晖 Container Manager 中导入此文件
+# ===================================================
+
+services:
+  postgres:
+    image: postgres:15-alpine-arm64
+    container_name: crm-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: crm_db
+      POSTGRES_USER: crm_user
+      POSTGRES_PASSWORD: Crm2026!Secure   # ← 请修改为你自己的强密码
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - crm-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm_user -d crm_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: crm-backend:arm64    # 使用本地构建的 ARM64 镜像
+    container_name: crm-backend
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://crm_user:Crm2026!Secure@postgres:5432/crm_db?schema=public&charset=utf8
+      JWT_SECRET: change-this-to-a-random-64-char-string-please    # ← 必须修改！用 openssl rand -base64 48 生成
+      PORT: 5000
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/uploads:/app/src/uploads       # 上传文件持久化
+    networks:
+      - crm-network
+
+  frontend:
+    image: crm-frontend:arm64    # 使用本地构建的 ARM64 镜像
+    container_name: crm-frontend
+    restart: always
+    ports:
+      - "8880:80"             # 群晖上避免和其他服务冲突，映射到 8880
+    depends_on:
+      - backend
+    networks:
+      - crm-network
+
+networks:
+  crm-network:
+    driver: bridge

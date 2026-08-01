@@ -7,7 +7,7 @@ import { sendToUser, sendToUsers } from '../websocket'
 import { upload } from '../middleware/upload'
 import path from 'path'
 import fs from 'fs'
-import { autoWriteTaskCompletion, autoWriteTaskRecord } from '../utils/autoDailyReport'
+import { autoWriteTaskCompletion, autoWriteTaskRecord, autoWriteTaskFlow } from '../utils/autoDailyReport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 
 const router = Router()
@@ -61,7 +61,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       include: {
         assigner: { select: { id: true, name: true } },
         assignees: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } }
+        project: { select: { id: true, name: true } },
+        files: { where: { deletedAt: null } }
       },
       orderBy: [
         { completedAt: 'desc' },
@@ -88,7 +89,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       include: {
         assigner: { select: { id: true, name: true } },
         assignees: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } }
+        project: { select: { id: true, name: true } },
+        files: { where: { deletedAt: null } }
       }
     })
     if (!task) {
@@ -155,6 +157,16 @@ router.post('/', authenticateToken, logOperation('任务管理', 'CREATE'), asyn
       })
       sendToUser(assigneeId, { type: 'TASK_ASSIGNED', taskId: task.id, title })
     }
+
+    // 自动创建"创建任务"记录
+    await prisma.taskRecord.create({
+      data: {
+        taskId: task.id,
+        userId: req.user!.id,
+        type: 'CREATE',
+        content: `${task.assigner.name} 创建了任务${description ? `：${description}` : ''}`
+      }
+    })
 
     res.status(201).json(task)
   } catch (error) {
@@ -239,6 +251,10 @@ router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), as
       if (status === 'SUBMITTED') {
         recordType = 'SUBMIT'
         recordContent = `${userName} 提交了任务${completionNote ? `：${completionNote}` : ''}`
+      } else if (status === 'IN_PROGRESS' && existingTask.status === 'PENDING') {
+        // 开始任务
+        recordType = 'START'
+        recordContent = `${userName} 开始处理任务`
       } else if (status === 'IN_PROGRESS' && existingTask.status === 'SUBMITTED') {
         recordType = 'REJECT'
         recordContent = `${userName} 驳回了任务${rejectionReason ? `：${rejectionReason}` : ''}`
@@ -256,6 +272,18 @@ router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), as
             content: recordContent
           }
         })
+
+        // 自动记录到日报
+        const flowAction: 'START' | 'SUBMIT' | 'REJECT' | null = 
+          recordType === 'START' ? 'START' :
+          recordType === 'SUBMIT' ? 'SUBMIT' :
+          recordType === 'REJECT' ? 'REJECT' : null
+        
+        if (flowAction) {
+          const note = recordType === 'REJECT' ? rejectionReason : 
+                       recordType === 'SUBMIT' ? completionNote : undefined
+          autoWriteTaskFlow(req.user!.id, id, flowAction, note).catch(() => {})
+        }
       }
     }
 
@@ -393,7 +421,7 @@ router.get('/:id/records', authenticateToken, async (req: AuthRequest, res: Resp
         user: { select: { id: true, name: true } },
         files: { where: { deletedAt: null } }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'asc' }
     })
 
     res.json(records)
@@ -567,7 +595,7 @@ router.post('/:id/records/:recordId/files', authenticateToken, upload.array('fil
         data: {
           recordId,
           fileName: file.originalname,
-          filePath: file.path,
+          filePath: file.filename,
           fileSize: file.size,
           fileType: file.mimetype,
           uploadedBy: req.user!.id
@@ -613,6 +641,12 @@ router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, logOper
     const file = await prisma.taskRecordFile.findFirst({ where: { id: fileId, deletedAt: null } })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 删除磁盘文件
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
     }
 
     // 软删除
@@ -665,7 +699,7 @@ router.post('/:id/files', authenticateToken, upload.array('files', 10), logOpera
         data: {
           taskId: id,
           fileName: file.originalname,
-          filePath: file.path,
+          filePath: file.filename,
           fileSize: file.size,
           fileType: file.mimetype,
           uploadedBy: req.user!.id
@@ -711,6 +745,12 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('任务管�
     const file = await prisma.taskFile.findFirst({ where: { id: fileId, deletedAt: null } })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 删除磁盘文件
+    const filePath = path.join(__dirname, '../uploads', file.filePath)
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
     }
 
     // 软删除

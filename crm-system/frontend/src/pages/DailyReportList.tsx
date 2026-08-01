@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Tooltip, Descriptions, Empty, Divider, Popconfirm, TimePicker, Upload, Dropdown } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Tooltip, Descriptions, Empty, Divider, Popconfirm, TimePicker, Upload, Dropdown, Timeline } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, DownloadOutlined, EyeOutlined, CheckCircleOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, exportDailyReports, exportDailyReportsExcel, importDailyReports, getDailyReportItems, createDailyReportItem, updateDailyReportItem, deleteDailyReportItem, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
@@ -46,6 +46,8 @@ function DailyReportList() {
   const [formItemModalVisible, setFormItemModalVisible] = useState(false)
   const [editingFormItem, setEditingFormItem] = useState<any>(null)
   const [formItemForm] = Form.useForm()
+  const [itemDetailVisible, setItemDetailVisible] = useState(false)
+  const [viewingItem, setViewItem] = useState<any>(null)
 
   const typeMap: Record<string, { text: string; color: string }> = {
     WORK: { text: '日常工作', color: 'default' },
@@ -54,6 +56,25 @@ function DailyReportList() {
     MEETING: { text: '会议', color: 'orange' },
     TRAINING: { text: '培训', color: 'purple' },
     OTHER: { text: '其他', color: 'default' }
+  }
+
+  const priorityConfig: Record<string, { label: string; color: string; icon: string }> = {
+    URGENT: { label: '紧急', color: '#f5222d', icon: '🔥' },
+    HIGH: { label: '高', color: '#ff4d4f', icon: '⬆' },
+    MEDIUM: { label: '中', color: '#1890ff', icon: '●' },
+    LOW: { label: '低', color: '#52c41a', icon: '⬇' },
+  }
+  const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
+    COMPLETED: { label: '已完成', color: '#52c41a', bg: '#f6ffed' },
+    IN_PROGRESS: { label: '进行中', color: '#1890ff', bg: '#e6f7ff' },
+    DELAYED: { label: '已延期', color: '#faad14', bg: '#fffbe6' },
+    CANCELLED: { label: '已取消', color: '#999', bg: '#fafafa' },
+  }
+  const timeTypeConfig: Record<string, { label: string; color: string; icon: string }> = {
+    NORMAL: { label: '正常', color: '#13c2c2', icon: '⏱' },
+    OVERTIME: { label: '加班', color: '#f5222d', icon: '🔥' },
+    LEAVE: { label: '请假', color: '#faad14', icon: '🏖' },
+    OTHER: { label: '其他', color: '#8c8c8c', icon: '📌' },
   }
 
   const fetchReports = useCallback(async (page = 1, pageSize = 10) => {
@@ -78,8 +99,8 @@ function DailyReportList() {
         pageSize: response.pagination?.pageSize || 10,
         total: response.pagination?.total || 0
       })
-    } catch (error) {
-      message.error('获取工作日报失败')
+    } catch (error: any) {
+      message.error(error?.error || '获取工作日报失败')
     } finally {
       setLoading(false)
     }
@@ -163,8 +184,8 @@ function DailyReportList() {
       message.success('删除成功')
       fetchReports(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '删除失败')
     }
   }
 
@@ -227,8 +248,8 @@ function DailyReportList() {
       setFormItems([])
       fetchReports(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('操作失败')
+    } catch (error: any) {
+      message.error(error?.error || '操作失败')
     }
   }
 
@@ -247,9 +268,9 @@ function DailyReportList() {
       document.body.appendChild(a); a.click(); a.remove()
       URL.revokeObjectURL(url)
       message.success('导出成功')
-    } catch (e) {
+    } catch (e: any) {
       console.error('[导出] 失败:', e)
-      message.error('导出失败')
+      message.error(e?.error || '导出失败')
     }
   }
 
@@ -326,6 +347,11 @@ function DailyReportList() {
     setItemFormVisible(true)
   }
 
+  const handleViewItemDetail = (item: any) => {
+    setViewItem(item)
+    setItemDetailVisible(true)
+  }
+
   const handleAddItem = () => {
     setEditingItem(null)
     itemForm.resetFields()
@@ -338,8 +364,8 @@ function DailyReportList() {
       await deleteDailyReportItem(viewingReport.id, itemId)
       message.success('删除成功')
       fetchItems(viewingReport.id)
-    } catch (error) {
-      message.error('删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '删除失败')
     }
   }
 
@@ -363,8 +389,8 @@ function DailyReportList() {
       }
       setItemFormVisible(false)
       fetchItems(viewingReport.id)
-    } catch (error) {
-      message.error('操作失败')
+    } catch (error: any) {
+      message.error(error?.error || '操作失败')
     }
   }
 
@@ -728,24 +754,6 @@ function DailyReportList() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {items.map((item: any, index: number) => {
-                  const priorityConfig: Record<string, { label: string; color: string; icon: string }> = {
-                    URGENT: { label: '紧急', color: '#f5222d', icon: '🔥' },
-                    HIGH: { label: '高', color: '#ff4d4f', icon: '⬆' },
-                    MEDIUM: { label: '中', color: '#1890ff', icon: '●' },
-                    LOW: { label: '低', color: '#52c41a', icon: '⬇' },
-                  }
-                  const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
-                    COMPLETED: { label: '已完成', color: '#52c41a', bg: '#f6ffed' },
-                    IN_PROGRESS: { label: '进行中', color: '#1890ff', bg: '#e6f7ff' },
-                    DELAYED: { label: '已延期', color: '#faad14', bg: '#fffbe6' },
-                    CANCELLED: { label: '已取消', color: '#999', bg: '#fafafa' },
-                  }
-                  const timeTypeConfig: Record<string, { label: string; color: string; icon: string }> = {
-                    NORMAL: { label: '正常', color: '#13c2c2', icon: '⏱' },
-                    OVERTIME: { label: '加班', color: '#f5222d', icon: '🔥' },
-                    LEAVE: { label: '请假', color: '#faad14', icon: '🏖' },
-                    OTHER: { label: '其他', color: '#8c8c8c', icon: '📌' },
-                  }
                   const pc = priorityConfig[item.priority] || priorityConfig.MEDIUM
                   const sc = statusConfig[item.status] || statusConfig.COMPLETED
                   const tc = timeTypeConfig[item.timeType] || timeTypeConfig.NORMAL
@@ -760,7 +768,9 @@ function DailyReportList() {
                         padding: '14px 18px',
                         transition: 'all 0.2s',
                         boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+                        cursor: 'pointer',
                       }}
+                      onClick={() => handleViewItemDetail(item)}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.08)'
                         e.currentTarget.style.borderColor = '#d9d9d9'
@@ -770,7 +780,7 @@ function DailyReportList() {
                         e.currentTarget.style.borderColor = '#f0f0f0'
                       }}
                     >
-                      {/* 顶部行：序号 + 内容 + 操作 */}
+                      {/* 顶部行：序号 + 标题 + 内容 + 操作 */}
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                         <div style={{
                           minWidth: 24, height: 24, borderRadius: 6,
@@ -781,7 +791,14 @@ function DailyReportList() {
                           {index + 1}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 500, color: '#262626', lineHeight: 1.6, wordBreak: 'break-word' }}>
+                          {/* 标题行（来自 title 字段） */}
+                          {item.title && (
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1890ff', lineHeight: 1.5, marginBottom: 4 }}>
+                              {item.title}
+                            </div>
+                          )}
+                          {/* 内容行：截断显示前2行，完整内容在详情弹窗中查看 */}
+                          <div style={{ fontSize: 14, fontWeight: 500, color: '#262626', lineHeight: 1.6, wordBreak: 'break-word', whiteSpace: 'pre-wrap', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as any}>
                             {item.content}
                           </div>
                           {/* 标签行 */}
@@ -810,18 +827,20 @@ function DailyReportList() {
                                 {sc.label}
                               </span>
                             </span>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
-                              <span style={{ color: '#999' }}>工时类型</span>
-                              <span style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 3,
-                                padding: '1px 8px', borderRadius: 4,
-                                fontSize: 11, fontWeight: 500,
-                                color: tc.color, background: `${tc.color}08`,
-                                border: `1px solid ${tc.color}25`
-                              }}>
-                                <span style={{ fontSize: 10 }}>{tc.icon}</span>{tc.label}
+                            {item.timeType && item.timeType !== 'NORMAL' && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                                <span style={{ color: '#999' }}>类型</span>
+                                <span style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                                  padding: '1px 8px', borderRadius: 4,
+                                  fontSize: 11, fontWeight: 500,
+                                  color: tc.color, background: `${tc.color}10`,
+                                  border: `1px solid ${tc.color}30`
+                                }}>
+                                  <span style={{ fontSize: 10 }}>{tc.icon}</span>{tc.label}
+                                </span>
                               </span>
-                            </span>
+                            )}
                             {item.hours != null && Number(item.hours) > 0 && (
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
                                 <span style={{ color: '#999' }}>工时</span>
@@ -840,9 +859,9 @@ function DailyReportList() {
                         </div>
                         {viewingReport?.userId === user?.id && (
                           <Space size={2} style={{ flexShrink: 0 }}>
-                            <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleViewItem(item)} style={{ color: '#1890ff' }} />
-                            <Popconfirm title="确定删除此工作记录吗？" onConfirm={() => handleDeleteItem(item.id)} okText="确定" cancelText="取消">
-                              <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                            <Button type="text" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleViewItem(item) }} style={{ color: '#1890ff' }} />
+                            <Popconfirm title="确定删除此工作记录吗？" onConfirm={(e) => { e?.stopPropagation(); handleDeleteItem(item.id) }} onCancel={(e) => e?.stopPropagation()} okText="确定" cancelText="取消">
+                              <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
                             </Popconfirm>
                           </Space>
                         )}
@@ -856,7 +875,7 @@ function DailyReportList() {
                           <span>🕐 {dayjs(item.startTime).format('HH:mm')} – {dayjs(item.endTime).format('HH:mm')}</span>
                         )}
                         {item.result && (
-                          <span style={{ color: '#52c41a' }}>✅ {item.result}</span>
+                          <span style={{ color: '#52c41a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300, display: 'inline-block' }}>✅ {item.result}</span>
                         )}
                       </div>
                     </div>
@@ -864,6 +883,190 @@ function DailyReportList() {
                 })}
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* 工作记录详情弹窗 */}
+      <Modal
+        title="工作记录详情"
+        open={itemDetailVisible}
+        onCancel={() => setItemDetailVisible(false)}
+        footer={null}
+        width={700}
+      >
+        {viewingItem && (
+          <div style={{ padding: '16px 0' }}>
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 18, fontWeight: 600, color: '#1890ff', marginBottom: 12 }}>
+                {viewingItem.title || '无标题'}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', fontSize: 13 }}>
+                <span style={{ color: '#8c8c8c' }}>
+                  优先级：<span style={{ 
+                    color: priorityConfig[viewingItem.priority]?.color || priorityConfig.MEDIUM.color,
+                    fontWeight: 500
+                  }}>
+                    {priorityConfig[viewingItem.priority]?.icon || priorityConfig.MEDIUM.icon}
+                    {' '}{priorityConfig[viewingItem.priority]?.label || priorityConfig.MEDIUM.label}
+                  </span>
+                </span>
+                <span style={{ color: '#8c8c8c' }}>
+                  状态：<span style={{ 
+                    color: statusConfig[viewingItem.status]?.color || statusConfig.COMPLETED.color,
+                    fontWeight: 500
+                  }}>
+                    {statusConfig[viewingItem.status]?.label || statusConfig.COMPLETED.label}
+                  </span>
+                </span>
+                {viewingItem.timeType && viewingItem.timeType !== 'NORMAL' && (
+                  <span style={{ color: '#8c8c8c' }}>
+                    类型：<span style={{ 
+                      color: timeTypeConfig[viewingItem.timeType]?.color || timeTypeConfig.NORMAL.color,
+                      fontWeight: 500
+                    }}>
+                      {timeTypeConfig[viewingItem.timeType]?.icon || timeTypeConfig.NORMAL.icon}
+                      {' '}{timeTypeConfig[viewingItem.timeType]?.label || timeTypeConfig.NORMAL.label}
+                    </span>
+                  </span>
+                )}
+                {viewingItem.hours != null && Number(viewingItem.hours) > 0 && (
+                  <span style={{ color: '#8c8c8c' }}>
+                    工时：<span style={{ color: '#722ed1', fontWeight: 600 }}>⏳ {viewingItem.hours}h</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#262626', marginBottom: 8 }}>
+                工作内容
+              </div>
+              <div style={{ 
+                fontSize: 14, 
+                color: '#595959', 
+                lineHeight: 1.8, 
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                padding: '12px 16px',
+                background: '#fafafa',
+                borderRadius: 6,
+                border: '1px solid #f0f0f0'
+              }}>
+                {viewingItem.content || '暂无内容'}
+              </div>
+            </div>
+
+            {viewingItem.result && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#262626', marginBottom: 8 }}>
+                  工作成果
+                </div>
+                <div style={{ 
+                  fontSize: 14, 
+                  color: '#52c41a', 
+                  lineHeight: 1.8,
+                  padding: '12px 16px',
+                  background: '#f6ffed',
+                  borderRadius: 6,
+                  border: '1px solid #b7eb8f'
+                }}>
+                  {viewingItem.result}
+                </div>
+              </div>
+            )}
+
+            {viewingItem.task?.rejectionReason && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#262626', marginBottom: 8 }}>
+                  驳回理由
+                </div>
+                <div style={{ 
+                  fontSize: 14, 
+                  color: '#f5222d', 
+                  lineHeight: 1.8,
+                  padding: '12px 16px',
+                  background: '#fff1f0',
+                  borderRadius: 6,
+                  border: '1px solid #ffa39e'
+                }}>
+                  {viewingItem.task.rejectionReason}
+                </div>
+              </div>
+            )}
+
+            {viewingItem.task?.records && viewingItem.task.records.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#262626', marginBottom: 8 }}>
+                  任务流转记录
+                </div>
+                <div style={{ padding: '12px 16px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
+                  <Timeline style={{ marginTop: 16 }}>
+                    {viewingItem.task.records.map((record: any) => {
+                      const typeConfig: Record<string, { color: string; icon: string }> = {
+                        'START': { color: '#1890ff', icon: '▶️' },
+                        'SUBMIT': { color: '#52c41a', icon: '✅' },
+                        'COMPLETE': { color: '#52c41a', icon: '🎉' },
+                        'REJECT': { color: '#f5222d', icon: '❌' },
+                        'NOTE': { color: '#8c8c8c', icon: '📝' },
+                        'CALL': { color: '#8c8c8c', icon: '📞' },
+                        'MEETING': { color: '#8c8c8c', icon: '👥' },
+                        'EMAIL': { color: '#8c8c8c', icon: '📧' },
+                        'VISIT': { color: '#8c8c8c', icon: '🏃' },
+                      }
+                      const config = typeConfig[record.type] || { color: '#8c8c8c', icon: '📌' }
+                      return (
+                        <Timeline.Item key={record.id} color={config.color}>
+                          <div>
+                            <span style={{ marginRight: 8 }}>{config.icon}</span>
+                            <span style={{ fontWeight: 500 }}>{record.content}</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+                            {record.user?.name} · {dayjs(record.createdAt).format('YYYY-MM-DD HH:mm')}
+                          </div>
+                        </Timeline.Item>
+                      )
+                    })}
+                  </Timeline>
+                </div>
+              </div>
+            )}
+
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(2, 1fr)', 
+              gap: '12px 24px',
+              fontSize: 13,
+              color: '#8c8c8c',
+              padding: '16px',
+              background: '#fafafa',
+              borderRadius: 6
+            }}>
+              {viewingItem.project?.name && (
+                <div>
+                  <span style={{ color: '#595959', fontWeight: 500 }}>关联项目：</span>
+                  <span>{viewingItem.project.name}</span>
+                </div>
+              )}
+              {viewingItem.startTime && viewingItem.endTime && (
+                <div>
+                  <span style={{ color: '#595959', fontWeight: 500 }}>工作时段：</span>
+                  <span>{dayjs(viewingItem.startTime).format('HH:mm')} – {dayjs(viewingItem.endTime).format('HH:mm')}</span>
+                </div>
+              )}
+              {viewingItem.createdAt && (
+                <div>
+                  <span style={{ color: '#595959', fontWeight: 500 }}>创建时间：</span>
+                  <span>{dayjs(viewingItem.createdAt).format('YYYY-MM-DD HH:mm')}</span>
+                </div>
+              )}
+              {viewingItem.updatedAt && (
+                <div>
+                  <span style={{ color: '#595959', fontWeight: 500 }}>更新时间：</span>
+                  <span>{dayjs(viewingItem.updatedAt).format('YYYY-MM-DD HH:mm')}</span>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </Modal>

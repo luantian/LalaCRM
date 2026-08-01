@@ -30,7 +30,18 @@ function ProjectList() {
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [importModalVisible, setImportModalVisible] = useState(false)
   const searchTextRef = useRef(searchText)
+  const lastRefreshTriggerRef = useRef<number | null>(null) // 防止 StrictMode 下重复请求，同时允许 refreshTrigger 变化时刷新
   useEffect(() => { searchTextRef.current = searchText }, [searchText])
+
+  // 用 ref 存储筛选条件，避免 fetchProjects 引用频繁变化导致 useEffect 重复触发
+  const filterStatusRef = useRef(filterStatus)
+  const filterOrgIdRef = useRef(filterOrgId)
+  const filterArchivedRef = useRef(filterArchived)
+  const filterFullyPaidRef = useRef(filterFullyPaid)
+  useEffect(() => { filterStatusRef.current = filterStatus }, [filterStatus])
+  useEffect(() => { filterOrgIdRef.current = filterOrgId }, [filterOrgId])
+  useEffect(() => { filterArchivedRef.current = filterArchived }, [filterArchived])
+  useEffect(() => { filterFullyPaidRef.current = filterFullyPaid }, [filterFullyPaid])
 
   const fetchProjects = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
@@ -39,10 +50,10 @@ function ProjectList() {
       if (searchTextRef.current.trim()) {
         params.search = searchTextRef.current.trim()
       }
-      if (filterStatus) params.status = filterStatus
-      if (filterOrgId) params.organizationId = filterOrgId
-      if (filterArchived) params.isArchived = filterArchived
-      if (filterFullyPaid) params.fullyPaid = filterFullyPaid
+      if (filterStatusRef.current) params.status = filterStatusRef.current
+      if (filterOrgIdRef.current) params.organizationId = filterOrgIdRef.current
+      if (filterArchivedRef.current) params.isArchived = filterArchivedRef.current
+      if (filterFullyPaidRef.current) params.fullyPaid = filterFullyPaidRef.current
       const response: any = await getProjects(params)
       setProjects(response.data || [])
       setPagination({
@@ -50,12 +61,12 @@ function ProjectList() {
         pageSize: response.pagination?.pageSize || 10,
         total: response.pagination?.total || 0
       })
-    } catch (error) {
-      message.error('获取项目列表失败')
+    } catch (error: any) {
+      message.error(error?.error || '获取项目列表失败')
     } finally {
       setLoading(false)
     }
-  }, [filterStatus, filterOrgId, filterArchived, filterFullyPaid])
+  }, []) // 空依赖：fetchProjects 引用稳定，不会触发重复请求
 
   const fetchOrganizations = async () => {
     try {
@@ -75,12 +86,20 @@ function ProjectList() {
     }
   }
 
+  const initTriggeredRef = useRef(false) // 防止初始化和统计请求重复
   useEffect(() => {
+    if (initTriggeredRef.current) return
+    initTriggeredRef.current = true
     fetchOrganizations()
     fetchStats()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    // 防止 StrictMode 导致的重复请求，同时允许 refreshTrigger 变化时刷新
+    if (lastRefreshTriggerRef.current === refreshTrigger) {
+      return
+    }
+    lastRefreshTriggerRef.current = refreshTrigger
     fetchProjects()
   }, [refreshTrigger, fetchProjects]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -123,8 +142,8 @@ function ProjectList() {
       message.success('删除成功')
       fetchProjects(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '删除失败')
     }
   }
 
@@ -140,7 +159,7 @@ function ProjectList() {
       a.remove()
       URL.revokeObjectURL(url)
       message.success('导出成功')
-    } catch { message.error('导出失败') }
+    } catch (e: any) { message.error(e?.error || '导出失败') }
   }
 
   const handleImport = async (file: File) => {
@@ -171,8 +190,8 @@ function ProjectList() {
           setSelectedRowKeys([])
           fetchProjects(pagination.current, pagination.pageSize)
           fetchStats()
-        } catch (error) {
-          message.error('批量删除失败')
+        } catch (error: any) {
+          message.error(error?.error || '批量删除失败')
         }
       }
     })
@@ -196,8 +215,8 @@ function ProjectList() {
       setModalVisible(false)
       fetchProjects(pagination.current, pagination.pageSize)
       fetchStats()
-    } catch (error) {
-      message.error('操作失败')
+    } catch (error: any) {
+      message.error(error?.error || '操作失败')
     }
   }
 
@@ -207,6 +226,7 @@ function ProjectList() {
   }
 
   const columns = [
+    { title: '项目编号', dataIndex: 'projectNo', key: 'projectNo', width: 120, render: (v: string) => v || '-' },
     { title: '项目名称', dataIndex: 'name', key: 'name', render: (name: string, record: any) => <a onClick={() => navigate(`/projects/${record.id}`)} style={{ color: '#1890ff' }}>{name}</a> },
     {
       title: '客户',
@@ -395,6 +415,9 @@ function ProjectList() {
         style={{ top: 20 }}
       >
         <Form form={form} layout="vertical">
+          <Form.Item name="projectNo" label="项目编号">
+            <Input placeholder="请输入项目编号" />
+          </Form.Item>
           <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
             <Input />
           </Form.Item>

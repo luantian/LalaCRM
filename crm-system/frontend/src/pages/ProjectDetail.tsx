@@ -205,7 +205,7 @@ function ProjectDetail() {
       message.success('项目更新成功')
       setProjectModalVisible(false)
       refreshProject()
-    } catch (error) { message.error('更新失败') }
+    } catch (error: any) { message.error(error?.error || '更新失败') }
   }
 
   if (loading) return <div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'60vh'}}><Spin size="large" tip="加载中..."><div style={{ padding: 48 }} /></Spin></div>
@@ -242,7 +242,7 @@ function ProjectDetail() {
       if (editingContract) { await updateContract(editingContract.id, data); message.success('更新成功') }
       else { await createContract(data); message.success('创建成功') }
       setContractModalVisible(false); refreshProject()
-    } catch (error) { message.error('操作失败') }
+    } catch (error: any) { message.error(error?.error || '操作失败') }
   }
 
   // ===== 订货明细 =====
@@ -256,7 +256,7 @@ function ProjectDetail() {
       if (editingOrderItem) { await updateOrderItem(editingOrderItem.id, data); message.success('更新成功') }
       else { await createOrderItem(data); message.success('添加成功') }
       setOrderModalVisible(false); if (orderContractId) fetchOrderItems(orderContractId)
-    } catch (error) { message.error('操作失败') }
+    } catch (error: any) { message.error(error?.error || '操作失败') }
   }
   const handleOrderFileUpload = async (orderItemId: number, fileList: FileList) => {
     setOrderUploading(prev => ({ ...prev, [orderItemId]: true }))
@@ -265,7 +265,7 @@ function ProjectDetail() {
   }
   const handleOrderFileDelete = async (orderItemId: number, fileId: number) => {
     try { await deleteOrderItemFile(orderItemId, fileId); message.success('删除成功'); if (orderContractId) fetchOrderItems(orderContractId) }
-    catch (e) { message.error('删除失败') }
+    catch (e: any) { message.error(e?.error || '删除失败') }
   }
 
   // ===== 付款记录 =====
@@ -279,7 +279,7 @@ function ProjectDetail() {
       if (editingPayment) { await updatePayment(editingPayment.id, data); message.success('更新成功') }
       else { await createPayment(data); message.success('添加成功') }
       setPaymentModalVisible(false); if (paymentContractId) fetchPayments(paymentContractId)
-    } catch (error) { message.error('操作失败') }
+    } catch (error: any) { message.error(error?.error || '操作失败') }
   }
   const handlePaymentFileUpload = async (paymentId: number, fileList: FileList) => {
     setPaymentUploading(prev => ({ ...prev, [paymentId]: true }))
@@ -288,7 +288,7 @@ function ProjectDetail() {
   }
   const handlePaymentFileDelete = async (paymentId: number, fileId: number) => {
     try { await deletePaymentFile(paymentId, fileId); message.success('删除成功'); if (paymentContractId) fetchPayments(paymentContractId) }
-    catch (e) { message.error('删除失败') }
+    catch (e: any) { message.error(e?.error || '删除失败') }
   }
 
   // ===== 发货记录 =====
@@ -302,7 +302,7 @@ function ProjectDetail() {
       if (editingShipment) { await updateShipment(editingShipment.id, data); message.success('更新成功') }
       else { await createShipment(data); message.success('添加成功') }
       setShipmentModalVisible(false); if (shipmentContractId) fetchShipments(shipmentContractId)
-    } catch (error) { message.error('操作失败') }
+    } catch (error: any) { message.error(error?.error || '操作失败') }
   }
   const handleShipmentFileUpload = async (shipmentId: number, fileList: FileList) => {
     setShipmentUploading(prev => ({ ...prev, [shipmentId]: true }))
@@ -311,7 +311,7 @@ function ProjectDetail() {
   }
   const handleShipmentFileDelete = async (shipmentId: number, fileId: number) => {
     try { await deleteShipmentFile(shipmentId, fileId); message.success('删除成功'); if (shipmentContractId) fetchShipments(shipmentContractId) }
-    catch (e) { message.error('删除失败') }
+    catch (e: any) { message.error(e?.error || '删除失败') }
   }
 
   // ===== 开票记录 =====
@@ -345,11 +345,11 @@ function ProjectDetail() {
       if (editingInvoice) { await updateInvoice(editingInvoice.id, data); message.success('更新成功') }
       else { await createInvoice(data); message.success('添加成功') }
       setInvoiceModalVisible(false); if (invoiceContractId) fetchInvoices(invoiceContractId)
-    } catch (error) { console.error(error); message.error('操作失败') }
+    } catch (error: any) { console.error(error); message.error(error?.error || '操作失败') }
   }
   const handleDeleteInvoice = async (id: number) => {
     try { await deleteInvoice(id); message.success('删除成功'); if (invoiceContractId) fetchInvoices(invoiceContractId) }
-    catch (e) { message.error('删除失败') }
+    catch (e: any) { message.error(e?.error || '删除失败') }
   }
   const handleInvoiceFileUpload = async (invoiceId: number, fileList: FileList) => {
     setInvoiceUploading(prev => ({ ...prev, [invoiceId]: true }))
@@ -358,7 +358,7 @@ function ProjectDetail() {
   }
   const handleInvoiceFileDelete = async (invoiceId: number, fileId: number) => {
     try { await deleteInvoiceFile(invoiceId, fileId); message.success('删除成功'); if (invoiceContractId) fetchInvoices(invoiceContractId) }
-    catch (e) { message.error('删除失败') }
+    catch (e: any) { message.error(e?.error || '删除失败') }
   }
 
   // ===== 合同附件 =====
@@ -372,7 +372,7 @@ function ProjectDetail() {
   }
   const handleContractFileDelete = async (contractId: number, fileId: number) => {
     try { await deleteContractFile(contractId, fileId); message.success('删除成功'); fetchContractFiles(contractId) }
-    catch (e) { message.error('删除失败') }
+    catch (e: any) { message.error(e?.error || '删除失败') }
   }
 
   // ===== 采购管理 =====
@@ -560,7 +560,7 @@ function ProjectDetail() {
       setInfoFiles([])
       setEditingInfoRecord(null)
       fetchInfoRecords()
-    } catch (error) { message.error('操作失败') }
+    } catch (error: any) { message.error(error?.error || '操作失败') }
     finally { setInfoSubmitting(false) }
   }
   const handleEditInfoRecord = (record: any) => {
@@ -570,7 +570,7 @@ function ProjectDetail() {
   }
   const handleDeleteInfoRecord = async (noteId: number) => {
     try { await deleteProjectNote(noteId); message.success('删除成功'); fetchInfoRecords() }
-    catch (e) { message.error('删除失败') }
+    catch (e: any) { message.error(e?.error || '删除失败') }
   }
 
   // ===== 项目团队 =====
@@ -608,7 +608,7 @@ function ProjectDetail() {
         // 多选：批量添加
         const userIds = Array.isArray(values.userId) ? values.userId : [values.userId]
         for (const uid of userIds) {
-          await addProjectTeamMember(parseInt(id!), { userId: uid, projectRole: values.projectRole, responsibility: values.responsibility })
+          await addProjectTeamMember(parseInt(id!), { userId: uid, responsibility: values.responsibility })
         }
         message.success(`成功添加 ${userIds.length} 名成员`)
       }
@@ -625,7 +625,7 @@ function ProjectDetail() {
           await removeProjectTeamMember(parseInt(id!), memberId)
           message.success('已移除')
           fetchTeamMembers()
-        } catch { message.error('移除失败') }
+        } catch (e: any) { message.error(e?.error || '移除失败') }
       }
     })
   }
@@ -696,7 +696,7 @@ function ProjectDetail() {
       message.success('采购明细添加成功')
       setProcItemModalVisible(false)
       handleViewProcurement(currentProcurement)
-    } catch (e) { message.error('操作失败') }
+    } catch (e: any) { message.error(e?.error || '操作失败') }
   }
   const fetchProcPayments = async (procurementId: number) => {
     try {
@@ -717,7 +717,7 @@ function ProjectDetail() {
       }
       setProcPaymentModalVisible(false)
       fetchProcPayments(currentProcurement.id)
-    } catch (e) { message.error('操作失败') }
+    } catch (e: any) { message.error(e?.error || '操作失败') }
   }
 
   // 采购附件（和合同附件同模式）
@@ -737,7 +737,7 @@ function ProjectDetail() {
   }
   const handleProcFileDelete = async (procurementId: number, fileId: number) => {
     try { await deleteProcurementFile(fileId); message.success('删除成功'); fetchProcFiles(procurementId) }
-    catch (e) { message.error('删除失败') }
+    catch (e: any) { message.error(e?.error || '删除失败') }
   }
 
   // 采购明细附件
@@ -757,7 +757,7 @@ function ProjectDetail() {
   }
   const handleProcItemFileDelete = async (itemId: number, fileId: number) => {
     try { await deleteProcurementItemFile(fileId); message.success('删除成功'); fetchProcItemFiles(itemId) }
-    catch (e) { message.error('删除失败') }
+    catch (e: any) { message.error(e?.error || '删除失败') }
   }
 
   // 采购付款记录附件
@@ -777,7 +777,7 @@ function ProjectDetail() {
   }
   const handleProcPaymentFileDelete = async (paymentId: number, fileId: number) => {
     try { await deleteProcurementPaymentFile(fileId); message.success('删除成功'); fetchProcPaymentFiles(paymentId) }
-    catch (e) { message.error('删除失败') }
+    catch (e: any) { message.error(e?.error || '删除失败') }
   }
 
   // ===== Tab 项 =====
@@ -1335,12 +1335,10 @@ function ProjectDetail() {
           columns={[
             { title: '姓名', key: 'name', render: (_: any, r: any) => r.user?.name || '-' },
             { title: '邮箱', key: 'email', render: (_: any, r: any) => r.user?.email || '-' },
-            { title: '角色', dataIndex: 'projectRole', key: 'projectRole',
-              render: (v: string) => {
-                const map: Record<string, string> = { MANAGER: '项目经理', DEVELOPER: '开发', TESTER: '测试', TECH_LEAD: '技术负责人', SALES: '销售', BUSINESS: '商务', OTHER: '其他' }
-                return map[v] || v
-              }
-            },
+            { title: '系统角色', key: 'role', render: (_: any, r: any) => {
+              const roleMap: Record<string, string> = { ADMIN: '管理员', USER: '普通员工', PROJECT_MANAGER: '项目经理', SALES_MANAGER: '销售经理', GENERAL_MANAGER: '总经理' }
+              return roleMap[r.user?.role] || r.user?.role || '-'
+            }},
             { title: '职责', dataIndex: 'responsibility', key: 'responsibility', ellipsis: true },
             { title: '加入时间', dataIndex: 'joinDate', key: 'joinDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
             { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
@@ -1601,7 +1599,7 @@ function ProjectDetail() {
                           files: prev.files.filter((f: any) => f.id !== file.id)
                         }))
                         fetchInfoRecords()
-                      } catch (e) { message.error('删除失败') }
+                      } catch (e: any) { message.error(e?.error || '删除失败') }
                     }}>
                       <Button type="text" size="small" danger icon={<DeleteOutlined />} />
                     </Popconfirm>
@@ -1652,17 +1650,6 @@ function ProjectDetail() {
               {editingMember && allUsers.map((u: any) => (
                 <Select.Option key={u.id} value={u.id}>{u.name} ({u.username})</Select.Option>
               ))}
-            </Select>
-          </Form.Item>
-          <Form.Item name="projectRole" label="项目角色" initialValue="DEVELOPER">
-            <Select>
-              <Select.Option value="MANAGER">项目经理</Select.Option>
-              <Select.Option value="TECH_LEAD">技术负责人</Select.Option>
-              <Select.Option value="DEVELOPER">开发工程师</Select.Option>
-              <Select.Option value="TESTER">测试工程师</Select.Option>
-              <Select.Option value="SALES">销售</Select.Option>
-              <Select.Option value="BUSINESS">商务</Select.Option>
-              <Select.Option value="OTHER">其他</Select.Option>
             </Select>
           </Form.Item>
           <Form.Item name="responsibility" label="职责描述"><TextArea rows={2} placeholder="描述该成员在项目中的职责" /></Form.Item>

@@ -345,7 +345,7 @@ export const deleteProjectVersion = (id: number) => api.delete(`/project-notes/v
 // ==================== 项目费用汇总 ====================
 export const getProjectCostSummary = (projectId: number) => api.get(`/project-costs/${projectId}/summary`)
 
-// 仪表盘
+// 工作总览
 export const getDashboardStats = () => api.get('/dashboard/stats')
 export const getMyInProgressProjects = () => api.get('/dashboard/my-projects')
 
@@ -374,7 +374,7 @@ export const deleteQuotationFile = (id: number, fileId: number) => api.delete(`/
 export const downloadQuotationFile = (fileId: number) => `${api.defaults.baseURL}/quotations/files/${fileId}/download`
 export const previewQuotationFileUrl = (fileId: number) => `${api.defaults.baseURL}/quotations/files/${fileId}/preview`
 
-// ==================== 组织管理 ====================
+// ==================== 客户管理 ====================
 export const getOrganizations = (params?: any) => api.get('/organizations', { params })
 export const getOrganizationTree = () => api.get('/organizations/tree')
 export const getOrganizationDetail = (id: number) => api.get(`/organizations/${id}`)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, App as AntApp, List, Upload, Typography, Divider, Progress, Dropdown, Pagination } from 'antd'
+import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, App as AntApp, Upload, Typography, Divider, Progress, Dropdown, Pagination, Timeline } from 'antd'
 import {
   CheckCircleOutlined, ClockCircleOutlined,
   DashboardOutlined, PlusOutlined, CheckOutlined, PlayCircleOutlined,
@@ -11,7 +11,7 @@ import {
   ProjectOutlined, TeamOutlined, CheckSquareOutlined,
   EllipsisOutlined, UserOutlined
 } from '@ant-design/icons'
-import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse, getTaskRecords, createTaskRecord, updateTaskRecord, deleteTaskRecord, uploadTaskRecordFiles, deleteTaskRecordFile, downloadTaskRecordFileUrl, previewTaskRecordFileUrl, openFilePreview, isPreviewableFile, getProjects, getMyInProgressProjects } from '../services/api'
+import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse, getTaskRecords, createTaskRecord, updateTaskRecord, deleteTaskRecord, uploadTaskFiles, uploadTaskRecordFiles, deleteTaskRecordFile, downloadTaskRecordFileUrl, downloadTaskFileUrl, previewTaskFileUrl, previewTaskRecordFileUrl, openFilePreview, isPreviewableFile, getPreviewUrl, getProjects, getMyInProgressProjects } from '../services/api'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 
@@ -48,6 +48,7 @@ function Dashboard() {
   const [editingRecord, setEditingRecord] = useState<any>(null)
   const [recordForm] = Form.useForm()
   const [recordUploading, setRecordUploading] = useState(false)
+  const [recordsFileList, setRecordsFileList] = useState<any[]>([])
   const [recordModalFiles, setRecordModalFiles] = useState<File[]>([])
 
   // 驳回弹窗相关状态
@@ -59,6 +60,7 @@ function Dashboard() {
   const [submitModalVisible, setSubmitModalVisible] = useState(false)
   const [submittingTaskId, setSubmittingTaskId] = useState<number | null>(null)
   const [submitNote, setSubmitNote] = useState('')
+  const [submitFiles, setSubmitFiles] = useState<FileList | null>(null)
 
   // 项目列表相关状态
   const [projects, setProjects] = useState<any[]>([])
@@ -152,6 +154,15 @@ function Dashboard() {
     OTHER: { text: '其他任务', color: 'default' },
   }
 
+  // 文件大小格式化
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+  }
+
   const handleUpdateTask = async (id: number, status: string, completionNote?: string) => {
     try {
       const updateData: any = { status }
@@ -161,8 +172,8 @@ function Dashboard() {
       await updateTask(id, updateData)
       message.success(status === 'COMPLETED' ? '任务已完成 🎉' : '任务已更新')
       fetchTasks()
-    } catch (e) {
-      message.error('更新失败')
+    } catch (e: any) {
+      message.error(e?.error || '更新失败')
     }
   }
 
@@ -196,8 +207,8 @@ function Dashboard() {
         setRejectingTaskId(null)
         setRejectionReason('')
         fetchTasks()
-      } catch (e) {
-        message.error('驳回失败')
+      } catch (e: any) {
+        message.error(e?.error || '驳回失败')
       }
     } else {
       message.warning('请填写驳回理由')
@@ -214,13 +225,20 @@ function Dashboard() {
     if (submittingTaskId && submitNote.trim()) {
       try {
         await updateTask(submittingTaskId, { status: 'SUBMITTED', completionNote: submitNote })
+        
+        // 上传附件
+        if (submitFiles && submitFiles.length > 0) {
+          await uploadTaskFiles(submittingTaskId, submitFiles)
+        }
+        
         message.success('任务已提交')
         setSubmitModalVisible(false)
         setSubmittingTaskId(null)
         setSubmitNote('')
+        setSubmitFiles(null)
         fetchTasks()
-      } catch (e) {
-        message.error('提交失败')
+      } catch (e: any) {
+        message.error(e?.error || '提交失败')
       }
     } else {
       message.warning('请填写完成内容')
@@ -232,8 +250,8 @@ function Dashboard() {
       await deleteTask(id)
       message.success('任务已删除')
       fetchTasks()
-    } catch (e) {
-      message.error('删除失败')
+    } catch (e: any) {
+      message.error(e?.error || '删除失败')
     }
   }
 
@@ -264,8 +282,8 @@ function Dashboard() {
       setEditingTask(null)
       taskForm.resetFields()
       fetchTasks()
-    } catch (e) {
-      message.error('操作失败')
+    } catch (e: any) {
+      message.error(e?.error || '操作失败')
     }
   }
 
@@ -329,8 +347,8 @@ function Dashboard() {
       recordForm.resetFields()
       setRecordModalFiles([])
       await fetchTaskRecords(selectedTask.id)
-    } catch (error) {
-      message.error('操作失败')
+    } catch (error: any) {
+      message.error(error?.error || '操作失败')
     }
   }
 
@@ -338,6 +356,7 @@ function Dashboard() {
   const openEditRecord = (record: any) => {
     setEditingRecord(record)
     recordForm.setFieldsValue({
+      type: record.type || 'NOTE',
       content: record.content,
     })
     setRecordModalFiles([])
@@ -351,8 +370,8 @@ function Dashboard() {
       await deleteTaskRecord(selectedTask.id, recordId)
       message.success('记录已删除')
       await fetchTaskRecords(selectedTask.id)
-    } catch (error) {
-      message.error('删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '删除失败')
     }
   }
 
@@ -364,8 +383,8 @@ function Dashboard() {
       await uploadTaskRecordFiles(selectedTask.id, recordId, files)
       message.success('文件上传成功')
       await fetchTaskRecords(selectedTask.id)
-    } catch (error) {
-      message.error('上传失败')
+    } catch (error: any) {
+      message.error(error?.error || '上传失败')
     } finally {
       setRecordUploading(false)
     }
@@ -378,8 +397,8 @@ function Dashboard() {
       await deleteTaskRecordFile(selectedTask.id, recordId, fileId)
       message.success('文件已删除')
       await fetchTaskRecords(selectedTask.id)
-    } catch (error) {
-      message.error('删除失败')
+    } catch (error: any) {
+      message.error(error?.error || '删除失败')
     }
   }
 
@@ -493,12 +512,13 @@ function Dashboard() {
           border: '1px solid #e2e8f0',
           borderLeft: `4px solid ${p.hex}`,
           transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-          cursor: 'default',
+          cursor: 'pointer',
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
           position: 'relative',
         }}
+        onClick={() => openTaskDetail(task)}
         onMouseEnter={(e) => {
           e.currentTarget.style.boxShadow = '0 8px 24px rgba(79,70,229,0.12)'
           e.currentTarget.style.transform = 'translateY(-3px)'
@@ -513,7 +533,7 @@ function Dashboard() {
         }}
       >
         {/* 右上角更多菜单 */}
-        <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1 }}>
+        <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1 }} onClick={(e) => e.stopPropagation()}>
           <Dropdown menu={{ items: moreMenuItems }} trigger={['click']}>
             <Button
               size="small"
@@ -622,6 +642,12 @@ function Dashboard() {
               {task.completionNote}
             </div>
           )}
+          {task.files && task.files.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#6366f1', marginTop: 4 }}>
+              <PaperClipOutlined style={{ fontSize: 11 }} />
+              <span>{task.files.length} 个附件</span>
+            </div>
+          )}
         </div>
 
         {/* Row 4: Actions */}
@@ -630,15 +656,15 @@ function Dashboard() {
           paddingTop: 10, borderTop: '1px solid #f1f5f9',
         }}>
           {!isDelegated && !isDone && !isSubmitted && task.status === 'PENDING' && (
-            <Button size="small" icon={<PlayCircleOutlined />} style={{ color: '#4f46e5', borderColor: '#c7d2fe', background: '#eef2ff', fontWeight: 600, borderRadius: 6 }} onClick={() => handleUpdateTask(task.id, 'IN_PROGRESS')}>开始</Button>
+            <Button size="small" icon={<PlayCircleOutlined />} style={{ color: '#4f46e5', borderColor: '#c7d2fe', background: '#eef2ff', fontWeight: 600, borderRadius: 6 }} onClick={(e) => { e.stopPropagation(); handleUpdateTask(task.id, 'IN_PROGRESS') }}>开始</Button>
           )}
           {!isDelegated && !isDone && !isSubmitted && (
-            <Button size="small" icon={<CheckOutlined />} style={{ color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5', fontWeight: 600, borderRadius: 6 }} onClick={() => handleSubmitTask(task.id)}>提交</Button>
+            <Button size="small" icon={<CheckOutlined />} style={{ color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5', fontWeight: 600, borderRadius: 6 }} onClick={(e) => { e.stopPropagation(); handleSubmitTask(task.id) }}>提交</Button>
           )}
           {isDelegated && isSubmitted && (
             <>
-              <Button size="small" icon={<CheckCircleOutlined />} style={{ color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5', fontWeight: 600, borderRadius: 6 }} onClick={() => handleCompleteTask(task.id)}>确认</Button>
-              <Button size="small" danger style={{ borderRadius: 6, fontWeight: 600 }} onClick={() => handleRejectTask(task.id)}>驳回</Button>
+              <Button size="small" icon={<CheckCircleOutlined />} style={{ color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5', fontWeight: 600, borderRadius: 6 }} onClick={(e) => { e.stopPropagation(); handleCompleteTask(task.id) }}>确认</Button>
+              <Button size="small" danger style={{ borderRadius: 6, fontWeight: 600 }} onClick={(e) => { e.stopPropagation(); handleRejectTask(task.id) }}>驳回</Button>
             </>
           )}
         </div>
@@ -1215,7 +1241,7 @@ function Dashboard() {
         width={800}
         styles={{ body: { paddingTop: 16 } }}
       >
-        {selectedTask && (
+        {selectedTask && (<>
           <Tabs
             defaultActiveKey="info"
             items={[
@@ -1280,6 +1306,79 @@ function Dashboard() {
                         </div>
                       </div>
                     )}
+                    {selectedTask.files && selectedTask.files.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <Text type="secondary">附件：</Text>
+                        <div style={{ marginTop: 4 }}>
+                          {selectedTask.files.map((file: any) => (
+                            <div
+                              key={file.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                padding: '8px 12px',
+                                background: '#f9fafb',
+                                borderRadius: 6,
+                                marginBottom: 6,
+                                cursor: 'pointer',
+                                transition: 'background 0.2s',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#f3f4f6'
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#f9fafb'
+                              }}
+                              onClick={() => {
+                                const url = getPreviewUrl(downloadTaskFileUrl, file.id)
+                                window.open(url, '_blank')
+                              }}
+                            >
+                              <PaperClipOutlined style={{ color: '#6366f1', fontSize: 14 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{
+                                  fontSize: 13,
+                                  fontWeight: 500,
+                                  color: '#1e293b',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}>
+                                  {file.fileName}
+                                </div>
+                                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                                  {formatFileSize(file.fileSize)}
+                                </div>
+                              </div>
+                              {isPreviewableFile(file.fileName) && (
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  icon={<EyeOutlined />}
+                                  style={{ color: '#0ea5e9' }}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openFilePreview(previewTaskFileUrl, file.id)
+                                  }}
+                                />
+                              )}
+                              <Button
+                                type="text"
+                                size="small"
+                                icon={<DownloadOutlined />}
+                                style={{ color: '#6366f1' }}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const url = getPreviewUrl(downloadTaskFileUrl, file.id)
+                                  window.open(url, '_blank')
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ),
               },
@@ -1287,143 +1386,108 @@ function Dashboard() {
                 key: 'records',
                 label: (
                   <span>
-                    信息记录
+                    操作日志
                     {taskRecords.length > 0 && <Badge count={taskRecords.length} size="small" style={{ marginLeft: 6 }} />}
                   </span>
                 ),
                 children: (
                   <div>
                     <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text strong>工作记录</Text>
+                      <Text strong>任务流转记录</Text>
                       <Button
                         type="primary"
                         size="small"
                         icon={<PlusOutlined />}
                         onClick={() => { setEditingRecord(null); recordForm.resetFields(); setRecordModalFiles([]); setRecordModalVisible(true) }}
                       >
-                        Notes信息文本
+                        Notes信息
                       </Button>
                     </div>
                     {taskRecords.length === 0 ? (
                       <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af' }}>
                         <InboxOutlined style={{ fontSize: 48, marginBottom: 12 }} />
-                        <div>暂无记录</div>
+                        <div>暂无操作记录</div>
                       </div>
                     ) : (
-                      <List
-                        dataSource={taskRecords}
-                        renderItem={(record: any) => {
-                          const isSystemRecord = ['SUBMIT', 'REJECT', 'COMPLETE'].includes(record.type)
-                          const recordStyle: Record<string, { bg: string; border: string; label: string; color: string }> = {
-                            SUBMIT: { bg: '#eff6ff', border: '#3b82f6', label: '提交', color: '#1d4ed8' },
-                            REJECT: { bg: '#fef2f2', border: '#ef4444', label: '驳回', color: '#dc2626' },
-                            COMPLETE: { bg: '#f0fdf4', border: '#22c55e', label: '完成', color: '#16a34a' },
-                          }
-                          const style = recordStyle[record.type]
-                          return (
-                          <List.Item
-                            style={style ? { background: style.bg, borderLeft: `3px solid ${style.border}`, borderRadius: 6, marginBottom: 8, padding: '12px 16px' } : {}}
-                            actions={isSystemRecord ? [] : [
-                              <Button
-                                key="edit"
-                                type="link"
-                                size="small"
-                                icon={<EditOutlined />}
-                                onClick={() => openEditRecord(record)}
-                              >
-                                编辑
-                              </Button>,
-                              <Popconfirm
-                                key="delete"
-                                title="确定删除此记录？"
-                                onConfirm={() => handleDeleteRecord(record.id)}
-                              >
-                                <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-                                  删除
-                                </Button>
-                              </Popconfirm>,
-                            ]}
-                          >
-                            <List.Item.Meta
-                              title={
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  {style && (
-                                    <Tag color={style.border.replace('#', '')} style={{ color: style.color, fontSize: 11, marginRight: 0 }}>
-                                      {style.label}
-                                    </Tag>
-                                  )}
-                                  <Text type="secondary" style={{ fontSize: 12 }}>
-                                    {record.user?.name} · {dayjs(record.createdAt).format('MM-DD HH:mm')}
-                                  </Text>
-                                </div>
-                              }
-                              description={
+                      <Timeline
+                        items={(() => {
+                          // 按时间正序排列（最早在上）
+                          const sorted = [...taskRecords].sort((a, b) => dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf())
+                          return sorted.map((record: any) => {
+                            const isSystemRecord = ['CREATE', 'START', 'SUBMIT', 'REJECT', 'COMPLETE'].includes(record.type)
+                            const recordStyle: Record<string, { color: string; label: string; bg: string }> = {
+                              CREATE: { color: '#4f46e5', label: '委派', bg: '#eef2ff' },
+                              START: { color: '#3b82f6', label: '开始', bg: '#eff6ff' },
+                              SUBMIT: { color: '#059669', label: '提交', bg: '#f0fdf4' },
+                              REJECT: { color: '#ef4444', label: '驳回', bg: '#fef2f2' },
+                              COMPLETE: { color: '#22c55e', label: '完成', bg: '#f0fdf4' },
+                            }
+                            const style = recordStyle[record.type]
+                            return {
+                              key: record.id,
+                              color: style?.color || '#94a3b8',
+                              children: (
                                 <div>
-                                  <div style={{ marginBottom: 8 }}>{record.content}</div>
-                                  <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                                    {record.files && record.files.length > 0 && record.files.map((file: any) => (
-                                      <div
-                                        key={file.id}
-                                        style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: 4,
-                                          padding: '4px 8px',
-                                          background: '#f3f4f6',
-                                          borderRadius: 4,
-                                          fontSize: 12,
-                                        }}
-                                      >
-                                        <PaperClipOutlined />
-                                        {isPreviewableFile(file.fileName) ? (
-                                          <a
-                                            onClick={() => openFilePreview(previewTaskRecordFileUrl, file.id)}
-                                            style={{ color: '#0ea5e9', cursor: 'pointer' }}
-                                          >
-                                            {file.fileName}
-                                          </a>
-                                        ) : (
-                                          <a
-                                            href={downloadTaskRecordFileUrl(file.id)}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={{ color: '#0ea5e9' }}
-                                          >
-                                            {file.fileName}
-                                          </a>
-                                        )}
-                                        <Popconfirm
-                                          title="确定删除此文件？"
-                                          onConfirm={() => handleDeleteRecordFile(record.id, file.id)}
-                                        >
-                                          <Button type="text" size="small" danger icon={<DeleteOutlined />} style={{ padding: 0, height: 'auto' }} />
-                                        </Popconfirm>
-                                      </div>
-                                    ))}
-                                    <Upload
-                                      showUploadList={false}
-                                      multiple
-                                      beforeUpload={(file, fileList) => {
-                                        const lastFile = fileList[fileList.length - 1]
-                                        if (file === lastFile) {
-                                          const dataTransfer = new DataTransfer()
-                                          fileList.forEach(f => dataTransfer.items.add(f))
-                                          handleUploadRecordFiles(record.id, dataTransfer.files)
-                                        }
-                                        return false
-                                      }}
-                                    >
-                                        <Button type="link" size="small" icon={<UploadOutlined />} loading={recordUploading}>
-                                          上传附件
-                                        </Button>
-                                      </Upload>
+                                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+                                    <span>{dayjs(record.createdAt).format('YYYY-MM-DD HH:mm')}</span>
+                                    <span style={{ margin: '0 8px', color: '#e5e7eb' }}>|</span>
+                                    <span>{record.user?.name}</span>
+                                  </div>
+                                  <div
+                                    style={{
+                                      background: style?.bg || '#f9fafb',
+                                      padding: '10px 14px',
+                                      borderRadius: 8,
+                                      borderLeft: style ? `3px solid ${style.color}` : '3px solid #d1d5db',
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                      {style && (
+                                        <Tag color={style.color} style={{ fontSize: 11, margin: 0, color: '#fff' }}>
+                                          {style.label}
+                                        </Tag>
+                                      )}
+                                      {!isSystemRecord && record.type && (
+                                        <Tag style={{ fontSize: 11, margin: 0 }}>{record.type === 'NOTE' ? 'note' : record.type === 'CALL' ? '电话' : record.type === 'MEETING' ? '会议' : record.type === 'EMAIL' ? '邮件' : record.type === 'VISIT' ? '拜访' : record.type}</Tag>
+                                      )}
                                     </div>
+                                    <div style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.6, marginBottom: record.files?.length ? 8 : 0 }}>{record.content}</div>
+                                    {record.files && record.files.length > 0 && (
+                                      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                        {record.files.map((file: any) => (
+                                          <div
+                                            key={file.id}
+                                            style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: 4,
+                                              padding: '4px 8px',
+                                              background: '#fff',
+                                              border: '1px solid #e5e7eb',
+                                              borderRadius: 4,
+                                              fontSize: 12,
+                                            }}
+                                          >
+                                            <PaperClipOutlined />
+                                            {isPreviewableFile(file.fileName) ? (
+                                              <a onClick={() => openFilePreview(previewTaskRecordFileUrl, file.id)} style={{ color: '#0ea5e9', cursor: 'pointer' }}>
+                                                {file.fileName}
+                                              </a>
+                                            ) : (
+                                              <a href={getPreviewUrl(downloadTaskRecordFileUrl, file.id)} target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9' }}>
+                                                {file.fileName}
+                                              </a>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              }
-                            />
-                          </List.Item>
-                          )
-                        }}
+                              ),
+                            }
+                          })
+                        })()}
                       />
                     )}
                   </div>
@@ -1431,19 +1495,63 @@ function Dashboard() {
               },
             ]}
           />
-        )}
+          
+          {/* 任务操作按钮 */}
+          {selectedTask && selectedTask.status === 'SUBMITTED' && String(selectedTask.assigner?.id) === String(user?.id) && (
+            <div style={{ marginTop: 16, padding: '12px 0', borderTop: '1px solid #f0f0f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+                <Button
+                  danger
+                  style={{ borderRadius: 6, fontWeight: 600 }}
+                  onClick={() => {
+                    setRejectingTaskId(selectedTask.id)
+                    setRejectionModalVisible(true)
+                  }}
+                >
+                  驳回
+                </Button>
+                <Button
+                  icon={<CheckCircleOutlined />}
+                  style={{ color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5', fontWeight: 600, borderRadius: 6 }}
+                  onClick={async () => {
+                    try {
+                      await updateTask(selectedTask.id, { status: 'COMPLETED' })
+                      message.success('任务已确认完成')
+                      setTaskDetailVisible(false)
+                      setSelectedTask(null)
+                      fetchTasks()
+                    } catch (e: any) {
+                      message.error(e?.error || '操作失败')
+                    }
+                  }}
+                >
+                  确认完成
+                </Button>
+              </div>
+            </div>
+          )}
+        </>)}
       </Modal>
 
       {/* 任务记录编辑弹窗 */}
       <Modal
-        title={editingRecord ? '编辑记录' : 'Notes信息文本'}
+        title={editingRecord ? '编辑记录' : 'Notes信息'}
         open={recordModalVisible}
         onOk={handleSaveRecord}
         onCancel={() => { setRecordModalVisible(false); setEditingRecord(null); recordForm.resetFields(); setRecordModalFiles([]) }}
         okText="保存"
         cancelText="取消"
       >
-        <Form form={recordForm} layout="vertical">
+        <Form form={recordForm} layout="vertical" initialValues={{ type: 'NOTE' }}>
+          <Form.Item name="type" label="记录类型">
+            <Select>
+              <Select.Option value="NOTE">note</Select.Option>
+              <Select.Option value="CALL">电话</Select.Option>
+              <Select.Option value="MEETING">会议</Select.Option>
+              <Select.Option value="EMAIL">邮件</Select.Option>
+              <Select.Option value="VISIT">拜访</Select.Option>
+            </Select>
+          </Form.Item>
           <Form.Item name="content" label="记录内容" rules={[{ required: true, message: '请输入记录内容' }]}>
             <TextArea rows={4} placeholder="请输入记录内容..." />
           </Form.Item>
@@ -1451,7 +1559,7 @@ function Dashboard() {
             <Upload
               multiple
               beforeUpload={() => false}
-              fileList={recordModalFiles.map((f, i) => ({ uid: f.uid || `${i}`, name: f.name, status: 'done' as const }))}
+              fileList={recordModalFiles.map((f, i) => ({ uid: `${i}`, name: f.name, status: 'done' as const }))}
               onChange={({ fileList }) => {
                 setRecordModalFiles(fileList.map(f => f.originFileObj as File).filter(Boolean))
               }}
@@ -1486,7 +1594,7 @@ function Dashboard() {
           rows={4}
           value={completionNote}
           onChange={(e) => setCompletionNote(e.target.value)}
-          placeholder="请描述完成的工作内容、成果或备注信息..."
+          placeholder="请描述完成的工作内容、成果或 note 信息..."
           style={{ borderRadius: 8 }}
           autoFocus
         />
@@ -1528,6 +1636,7 @@ function Dashboard() {
           setSubmitModalVisible(false)
           setSubmittingTaskId(null)
           setSubmitNote('')
+          setSubmitFiles(null)
         }}
         okText="确认提交"
         cancelText="取消"
@@ -1540,10 +1649,35 @@ function Dashboard() {
           rows={4}
           value={submitNote}
           onChange={(e) => setSubmitNote(e.target.value)}
-          placeholder="请描述你完成的工作内容、成果或备注信息..."
-          style={{ borderRadius: 8 }}
+          placeholder="请描述你完成的工作内容、成果或 note 信息..."
+          style={{ borderRadius: 8, marginBottom: 16 }}
           autoFocus
         />
+        
+        <div style={{ marginBottom: 8, color: '#6b7280', fontSize: 14 }}>
+          附件（可选）：
+        </div>
+        <Upload.Dragger
+          beforeUpload={() => false}
+          multiple
+          onChange={(info) => {
+            const files = info.fileList.map(f => f.originFileObj).filter(Boolean) as File[]
+            const dt = new DataTransfer()
+            files.forEach(file => dt.items.add(file))
+            setSubmitFiles(dt.files)
+          }}
+          onRemove={() => {
+            setSubmitFiles(null)
+            return true
+          }}
+          style={{ borderRadius: 8 }}
+        >
+          <p className="ant-upload-drag-icon">
+            <InboxOutlined />
+          </p>
+          <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+          <p className="ant-upload-hint">支持单个或批量上传，最多10个文件</p>
+        </Upload.Dragger>
       </Modal>
     </div>
   )
