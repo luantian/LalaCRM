@@ -1,6 +1,6 @@
 import { Router, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 import { sendToUser, sendToUsers } from '../websocket'
@@ -112,7 +112,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
 })
 
 // 创建任务（委派任务，支持多人）
-router.post('/', authenticateToken, logOperation('任务管理', 'CREATE'), async (req: AuthRequest, res: Response) => {
+router.post('/', authenticateToken, checkPermission('project:task:edit'), logOperation('任务管理', 'CREATE'), async (req: AuthRequest, res: Response) => {
   try {
     const { title, description, assigneeIds, priority, dueDate, taskType, projectId } = req.body
 
@@ -176,7 +176,7 @@ router.post('/', authenticateToken, logOperation('任务管理', 'CREATE'), asyn
 })
 
 // 更新任务（支持多人指派）
-router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), async (req: AuthRequest, res: Response) => {
+router.put('/:id', authenticateToken, checkPermission('project:task:edit'), logOperation('任务管理', 'UPDATE'), async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id as string)
     if (isNaN(id)) {
@@ -364,7 +364,7 @@ router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), as
 })
 
 // 删除任务
-router.delete('/:id', authenticateToken, logOperation('任务管理', 'DELETE'), async (req: AuthRequest, res: Response) => {
+router.delete('/:id', authenticateToken, checkPermission('project:task:edit'), logOperation('任务管理', 'DELETE'), async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id as string)
     if (isNaN(id)) {
@@ -432,7 +432,7 @@ router.get('/:id/records', authenticateToken, async (req: AuthRequest, res: Resp
 })
 
 // 创建任务记录
-router.post('/:id/records', authenticateToken, logOperation('任务管理', 'CREATE_RECORD'), async (req: AuthRequest, res: Response) => {
+router.post('/:id/records', authenticateToken, checkPermission('project:task:edit'), logOperation('任务管理', 'CREATE_RECORD'), async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id as string)
     if (isNaN(id)) {
@@ -494,7 +494,7 @@ router.post('/:id/records', authenticateToken, logOperation('任务管理', 'CRE
 })
 
 // 更新任务记录
-router.put('/:id/records/:recordId', authenticateToken, logOperation('任务管理', 'UPDATE_RECORD'), async (req: AuthRequest, res: Response) => {
+router.put('/:id/records/:recordId', authenticateToken, checkPermission('project:task:edit'), logOperation('任务管理', 'UPDATE_RECORD'), async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id as string)
     const recordId = parseInt(req.params.recordId as string)
@@ -536,7 +536,7 @@ router.put('/:id/records/:recordId', authenticateToken, logOperation('任务管�
 })
 
 // 删除任务记录
-router.delete('/:id/records/:recordId', authenticateToken, logOperation('任务管理', 'DELETE_RECORD'), async (req: AuthRequest, res: Response) => {
+router.delete('/:id/records/:recordId', authenticateToken, checkPermission('project:task:edit'), logOperation('任务管理', 'DELETE_RECORD'), async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id as string)
     const recordId = parseInt(req.params.recordId as string)
@@ -574,7 +574,7 @@ router.delete('/:id/records/:recordId', authenticateToken, logOperation('任务�
 // ==================== 任务记录附件管理 ====================
 
 // 上传任务记录附件
-router.post('/:id/records/:recordId/files', authenticateToken, upload.array('files', 10), logOperation('任务管理', 'UPLOAD_RECORD_FILE'), async (req: AuthRequest, res: Response) => {
+router.post('/:id/records/:recordId/files', authenticateToken, checkPermission('project:task:edit'), upload.array('files', 10), logOperation('任务管理', 'UPLOAD_RECORD_FILE'), async (req: AuthRequest, res: Response) => {
   try {
     const recordId = parseInt(req.params.recordId as string)
     if (isNaN(recordId)) {
@@ -631,7 +631,7 @@ router.get('/:id/records/:recordId/files', authenticateToken, async (req: AuthRe
 })
 
 // 删除任务记录附件
-router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, logOperation('任务管理', 'DELETE_RECORD_FILE'), async (req: AuthRequest, res: Response) => {
+router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, checkPermission('project:task:edit'), logOperation('任务管理', 'DELETE_RECORD_FILE'), async (req: AuthRequest, res: Response) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     if (isNaN(fileId)) {
@@ -667,7 +667,7 @@ router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, logOper
 // ==================== 任务文件管理 ====================
 
 // 上传任务文件
-router.post('/:id/files', authenticateToken, upload.array('files', 10), logOperation('任务管理', 'UPLOAD_FILE'), async (req: AuthRequest, res: Response) => {
+router.post('/:id/files', authenticateToken, checkPermission('project:task:edit'), upload.array('files', 10), logOperation('任务管理', 'UPLOAD_FILE'), async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id as string)
     if (isNaN(id)) {
@@ -735,7 +735,7 @@ router.get('/:id/files', authenticateToken, async (req: AuthRequest, res: Respon
 })
 
 // 删除任务文件
-router.delete('/:id/files/:fileId', authenticateToken, logOperation('任务管理', 'DELETE_FILE'), async (req: AuthRequest, res: Response) => {
+router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:task:edit'), logOperation('任务管理', 'DELETE_FILE'), async (req: AuthRequest, res: Response) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     if (isNaN(fileId)) {

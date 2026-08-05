@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
 import logger from '../utils/logger'
@@ -36,7 +36,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 创建订货明细
-router.post('/', authenticateToken, logOperation('合同订货', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同订货', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const { contractId, productName, spec, quantity, unit, unitPrice, totalPrice, deliveryDate, contactName, contactPhone, remarks } = req.body
 
@@ -78,7 +78,7 @@ router.post('/', authenticateToken, logOperation('合同订货', 'CREATE'), asyn
 })
 
 // 更新订货明细
-router.put('/:id', authenticateToken, logOperation('合同订货', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同订货', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { productName, spec, quantity, unit, unitPrice, totalPrice, deliveryDate, contactName, contactPhone, remarks } = req.body
@@ -121,7 +121,7 @@ router.put('/:id', authenticateToken, logOperation('合同订货', 'UPDATE'), as
 })
 
 // 上传订货明细附件
-router.post('/:id/files', authenticateToken, upload.array('files', 10), logOperation('合同订货', 'UPLOAD'), async (req: AuthRequest, res) => {
+router.post('/:id/files', authenticateToken, checkPermission('project:contract:edit'), upload.array('files', 10), logOperation('合同订货', 'UPLOAD'), async (req: AuthRequest, res) => {
   try {
     const orderItemId = parseInt(req.params.id as string)
     const files = req.files as Express.Multer.File[]
@@ -218,7 +218,7 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
 })
 
 // 删除订货明细附件
-router.delete('/:id/files/:fileId', authenticateToken, logOperation('合同订货', 'DELETE_FILE'), async (req: AuthRequest, res) => {
+router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同订货', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.contractOrderItemFile.findFirst({ where: { id: fileId, deletedAt: null } })
@@ -239,7 +239,7 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('合同订�
 })
 
 // 删除订货明细
-router.delete('/:id', authenticateToken, logOperation('合同订货', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同订货', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 

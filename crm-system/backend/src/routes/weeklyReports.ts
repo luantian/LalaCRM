@@ -201,7 +201,7 @@ router.delete('/:id', authenticateToken, checkPermission('office:dailyreport:add
 })
 
 // 提交周报
-router.post('/:id/submit', authenticateToken, logOperation('周报', 'SUBMIT'), async (req: AuthRequest, res) => {
+router.post('/:id/submit', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('周报', 'SUBMIT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 

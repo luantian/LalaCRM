@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, checkAdmin } from '../middleware/auth'
+import { authenticateToken, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
@@ -8,7 +8,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有角色
-router.get('/', authenticateToken, async (req: Request, res: Response) => {
+router.get('/', authenticateToken, checkPermission('system:role:list'), async (req: Request, res: Response) => {
   try {
     const roles = await prisma.roleModel.findMany({
       orderBy: { createdAt: 'desc' }
@@ -22,7 +22,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
 })
 
 // 创建角色（仅admin）
-router.post('/', authenticateToken, checkAdmin, logOperation('角色管理', 'CREATE'), async (req: Request, res: Response) => {
+router.post('/', authenticateToken, checkPermission('system:role:add'), logOperation('角色管理', 'CREATE'), async (req: Request, res: Response) => {
   try {
     const { name, displayName, description, permissions } = req.body
 
@@ -63,7 +63,7 @@ router.post('/', authenticateToken, checkAdmin, logOperation('角色管理', 'CR
 })
 
 // 更新角色（仅admin）
-router.put('/:id', authenticateToken, checkAdmin, logOperation('角色管理', 'UPDATE'), async (req: Request, res: Response) => {
+router.put('/:id', authenticateToken, checkPermission('system:role:edit'), logOperation('角色管理', 'UPDATE'), async (req: Request, res: Response) => {
   try {
     const roleId = parseInt(req.params.id as string)
     const { displayName, description, permissions } = req.body
@@ -94,7 +94,7 @@ router.put('/:id', authenticateToken, checkAdmin, logOperation('角色管理', '
 })
 
 // 删除角色（仅admin）
-router.delete('/:id', authenticateToken, checkAdmin, logOperation('角色管理', 'DELETE'), async (req: Request, res: Response) => {
+router.delete('/:id', authenticateToken, checkPermission('system:role:delete'), logOperation('角色管理', 'DELETE'), async (req: Request, res: Response) => {
   try {
     const roleId = parseInt(req.params.id as string)
 

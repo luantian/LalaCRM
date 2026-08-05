@@ -82,14 +82,14 @@ router.get('/:id', authenticateToken, checkPermission('project:procurement:list'
     const id = parseInt(req.params.id as string)
     const procurement = await prisma.procurement.findFirst({
       where: { id, deletedAt: null },
-      include: { project: true, items: true, files: { where: { deletedAt: null } } }
+      include: { project: true, items: { where: { deletedAt: null } }, files: { where: { deletedAt: null } } }
     })
     if (!procurement) return res.status(404).json({ error: '采购单不存在' })
 
     // 数据范围检查：项目owner或团队成员可以查看（管理员除外）
     const project = await prisma.project.findFirst({
       where: { id: procurement.projectId, deletedAt: null },
-      select: { ownerId: true, teamMembers: { select: { userId: true } } }
+      select: { ownerId: true, teamMembers: { where: { deletedAt: null }, select: { userId: true } } }
     })
     if (project?.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       const isTeamMember = project?.teamMembers.some(tm => tm.userId === req.user!.id)

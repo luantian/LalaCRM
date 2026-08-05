@@ -67,7 +67,7 @@ router.get('/', authenticateToken, checkPermission('finance:expense:list'), appl
         project: { select: { id: true, name: true } },
         owner: { select: { id: true, name: true } },
         trip: { select: { id: true, title: true, destination: true, startDate: true, endDate: true } },
-        items: true
+        items: { where: { deletedAt: null } }
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -594,7 +594,7 @@ router.get('/export/excel', authenticateToken, checkPermission('finance:expense:
   }
 })
 
-router.post('/import', authenticateToken, upload.single('file'), logOperation('费用报销', 'IMPORT'), async (req: AuthRequest, res) => {
+router.post('/import', authenticateToken, checkPermission('finance:expense:add'), upload.single('file'), logOperation('费用报销', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
     const { data, error } = parseImportFile(req.file)

@@ -1,6 +1,6 @@
 import { Router, Request } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
 import { sortValidation } from '../middleware/validation'
@@ -194,7 +194,7 @@ router.get('/:id', authenticateToken, applyDataScope('ownerId'), async (req: Aut
 })
 
 // 创建销售记录
-router.post('/', authenticateToken, logOperation('销售管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('销售管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const { organizationId, contactId, projectId, contractId, type, category, amount, description, date } = req.body
 
@@ -228,7 +228,7 @@ router.post('/', authenticateToken, logOperation('销售管理', 'CREATE'), asyn
 })
 
 // 更新销售记录
-router.put('/:id', authenticateToken, logOperation('销售管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('销售管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
     const { organizationId, projectId, contractId, type, category, amount, description, date } = req.body
@@ -260,7 +260,7 @@ router.put('/:id', authenticateToken, logOperation('销售管理', 'UPDATE'), as
 })
 
 // 删除销售记录
-router.delete('/:id', authenticateToken, logOperation('销售管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('销售管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
     const numericId = parseInt(id)
@@ -308,7 +308,7 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
 })
 
 // 导入销售数据
-router.post('/import', authenticateToken, upload.single('file'), logOperation('销售管理', 'IMPORT'), async (req: AuthRequest, res) => {
+router.post('/import', authenticateToken, checkPermission('crm:opportunity:edit'), upload.single('file'), logOperation('销售管理', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
     const { data, error } = parseImportFile(req.file)

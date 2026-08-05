@@ -478,6 +478,7 @@ router.get(
 router.post(
   '/',
   authenticateToken,
+  checkPermission('crm:organization:add'),
   createOrgValidation,
   validate,
   logOperation('组织管理', 'CREATE'),
@@ -535,6 +536,7 @@ router.post(
 router.put(
   '/:id',
   authenticateToken,
+  checkPermission('crm:organization:edit'),
   updateOrgValidation,
   validate,
   logOperation('组织管理', 'UPDATE'),
@@ -609,6 +611,7 @@ router.put(
 router.delete(
   '/:id',
   authenticateToken,
+  checkPermission('crm:organization:delete'),
   param('id').isInt({ min: 1 }).withMessage('ID必须是正整数'),
   validate,
   logOperation('组织管理', 'DELETE'),
@@ -652,6 +655,7 @@ router.delete(
 router.post(
   '/:id/contacts',
   authenticateToken,
+  checkPermission('crm:organization:contact:add'),
   createContactValidation,
   validate,
   logOperation('组织管理', 'ADD_CONTACT'),
@@ -743,6 +747,7 @@ router.get(
 router.put(
   '/:id/contacts/:contactId',
   authenticateToken,
+  checkPermission('crm:organization:contact:edit'),
   updateContactValidation,
   validate,
   logOperation('组织管理', 'UPDATE_CONTACT'),
@@ -803,6 +808,7 @@ router.put(
 router.delete(
   '/:id/contacts/:contactId',
   authenticateToken,
+  checkPermission('crm:organization:contact:delete'),
   param('id').isInt({ min: 1 }).withMessage('ID必须是正整数'),
   param('contactId').isInt({ min: 1 }).withMessage('contactId必须是正整数'),
   validate,

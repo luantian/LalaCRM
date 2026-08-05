@@ -549,7 +549,7 @@ router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (r
 })
 
 // 导入报价单
-router.post('/import', authenticateToken, upload.single('file'), logOperation('报价管理', 'IMPORT'), async (req: AuthRequest, res) => {
+router.post('/import', authenticateToken, checkPermission('crm:quotation:edit'), upload.single('file'), logOperation('报价管理', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
     const { data, error } = parseImportFile(req.file)

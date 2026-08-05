@@ -1,7 +1,7 @@
 import { Router } from 'express'
-import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
+import { isAdmin } from '../utils/permission'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -102,12 +102,8 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 清理 30 天前的日志（仅管理员）
-router.delete('/clean', authenticateToken, async (req: AuthRequest, res) => {
+router.delete('/clean', authenticateToken, checkPermission('system:log:delete'), async (req: AuthRequest, res) => {
   try {
-    if (!(await isAdmin(req.user!.id))) {
-      return res.status(403).json({ code: 403, message: '无权限' })
-    }
-
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 

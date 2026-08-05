@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
 import logger from '../utils/logger'
@@ -47,7 +47,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 创建付款记录
-router.post('/', authenticateToken, logOperation('合同付款', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同付款', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const { contractId, amount, paymentDate, paymentMethod, paymentType, status, invoiceNo, remarks } = req.body
 
@@ -85,7 +85,7 @@ router.post('/', authenticateToken, logOperation('合同付款', 'CREATE'), asyn
 })
 
 // 更新付款记录
-router.put('/:id', authenticateToken, logOperation('合同付款', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同付款', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { amount, paymentDate, paymentMethod, paymentType, status, invoiceNo, remarks } = req.body
@@ -122,7 +122,7 @@ router.put('/:id', authenticateToken, logOperation('合同付款', 'UPDATE'), as
 })
 
 // 上传付款记录附件
-router.post('/:id/files', authenticateToken, upload.array('files', 10), logOperation('合同付款', 'UPLOAD'), async (req: AuthRequest, res) => {
+router.post('/:id/files', authenticateToken, checkPermission('project:contract:edit'), upload.array('files', 10), logOperation('合同付款', 'UPLOAD'), async (req: AuthRequest, res) => {
   try {
     const paymentId = parseInt(req.params.id as string)
     const files = req.files as Express.Multer.File[]
@@ -213,7 +213,7 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
 })
 
 // 删除付款记录附件
-router.delete('/:id/files/:fileId', authenticateToken, logOperation('合同付款', 'DELETE_FILE'), async (req: AuthRequest, res) => {
+router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同付款', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.contractPaymentFile.findFirst({ where: { id: fileId, deletedAt: null } })
@@ -234,7 +234,7 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('合同付�
 })
 
 // 删除付款记录
-router.delete('/:id', authenticateToken, logOperation('合同付款', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同付款', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const existing = await prisma.contractPayment.findFirst({

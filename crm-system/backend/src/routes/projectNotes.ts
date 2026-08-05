@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth';
 import { logOperation } from '../middleware/logOperation';
 import { upload } from '../middleware/upload';
 import logger from '../utils/logger';
@@ -78,7 +78,7 @@ router.get('/notes', authenticateToken, async (req: AuthRequest, res: Response) 
 });
 
 // POST /notes - Create note
-router.post('/notes', authenticateToken, logOperation('项目备注', 'CREATE'), async (req: AuthRequest, res: Response) => {
+router.post('/notes', authenticateToken, checkPermission('project:project:edit'), logOperation('项目备注', 'CREATE'), async (req: AuthRequest, res: Response) => {
   try {
     const { projectId, title, content, noteType } = req.body;
 
@@ -133,7 +133,7 @@ router.post('/notes', authenticateToken, logOperation('项目备注', 'CREATE'),
 });
 
 // PUT /notes/:id - Update note
-router.put('/notes/:id', authenticateToken, logOperation('项目备注', 'UPDATE'), async (req: AuthRequest, res: Response) => {
+router.put('/notes/:id', authenticateToken, checkPermission('project:project:edit'), logOperation('项目备注', 'UPDATE'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { title, content, noteType } = req.body;
@@ -176,7 +176,7 @@ router.put('/notes/:id', authenticateToken, logOperation('项目备注', 'UPDATE
 });
 
 // DELETE /notes/:id - Delete note
-router.delete('/notes/:id', authenticateToken, logOperation('项目备注', 'DELETE'), async (req: AuthRequest, res: Response) => {
+router.delete('/notes/:id', authenticateToken, checkPermission('project:project:edit'), logOperation('项目备注', 'DELETE'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -248,7 +248,7 @@ router.get('/versions', authenticateToken, async (req: AuthRequest, res: Respons
 });
 
 // POST /versions - Create version
-router.post('/versions', authenticateToken, logOperation('项目备注', 'CREATE'), async (req: AuthRequest, res: Response) => {
+router.post('/versions', authenticateToken, checkPermission('project:project:edit'), logOperation('项目备注', 'CREATE'), async (req: AuthRequest, res: Response) => {
   try {
     const { projectId, version, title, content, releaseDate } = req.body;
 
@@ -288,7 +288,7 @@ router.post('/versions', authenticateToken, logOperation('项目备注', 'CREATE
 });
 
 // PUT /versions/:id - Update version
-router.put('/versions/:id', authenticateToken, logOperation('项目备注', 'UPDATE'), async (req: AuthRequest, res: Response) => {
+router.put('/versions/:id', authenticateToken, checkPermission('project:project:edit'), logOperation('项目备注', 'UPDATE'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { version, title, content, releaseDate } = req.body;
@@ -332,7 +332,7 @@ router.put('/versions/:id', authenticateToken, logOperation('项目备注', 'UPD
 });
 
 // DELETE /versions/:id - Delete version
-router.delete('/versions/:id', authenticateToken, logOperation('项目备注', 'DELETE'), async (req: AuthRequest, res: Response) => {
+router.delete('/versions/:id', authenticateToken, checkPermission('project:project:edit'), logOperation('项目备注', 'DELETE'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -364,7 +364,7 @@ router.delete('/versions/:id', authenticateToken, logOperation('项目备注', '
 // ===== 备注附件 =====
 
 // 上传备注附件
-router.post('/notes/:id/files', authenticateToken, upload.array('files', 10), logOperation('项目备注', 'UPLOAD'), async (req: AuthRequest, res: Response) => {
+router.post('/notes/:id/files', authenticateToken, checkPermission('project:project:edit'), upload.array('files', 10), logOperation('项目备注', 'UPLOAD'), async (req: AuthRequest, res: Response) => {
   try {
     const noteId = Number(req.params.id);
     const files = req.files as Express.Multer.File[];
@@ -424,7 +424,7 @@ router.get('/notes/files/:fileId/download', authenticateToken, async (req: AuthR
 });
 
 // 删除备注附件
-router.delete('/notes/:noteId/files/:fileId', authenticateToken, logOperation('项目备注', 'DELETE_FILE'), async (req: AuthRequest, res: Response) => {
+router.delete('/notes/:noteId/files/:fileId', authenticateToken, checkPermission('project:project:edit'), logOperation('项目备注', 'DELETE_FILE'), async (req: AuthRequest, res: Response) => {
   try {
     const fileId = Number(req.params.fileId);
     const file = await prisma.projectNoteFile.findFirst({ where: { id: fileId, deletedAt: null } });

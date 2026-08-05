@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, checkAdmin } from '../middleware/auth'
+import { authenticateToken, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
@@ -8,7 +8,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有菜单
-router.get('/', authenticateToken, checkAdmin, async (req: Request, res: Response) => {
+router.get('/', authenticateToken, checkPermission('system:menu:list'), async (req: Request, res: Response) => {
   try {
     const menus = await prisma.menuItem.findMany({
       include: {
@@ -36,7 +36,7 @@ router.get('/', authenticateToken, checkAdmin, async (req: Request, res: Respons
 })
 
 // 创建菜单
-router.post('/', authenticateToken, checkAdmin, logOperation('菜单管理', 'CREATE'), async (req: Request, res: Response) => {
+router.post('/', authenticateToken, checkPermission('system:menu:add'), logOperation('菜单管理', 'CREATE'), async (req: Request, res: Response) => {
   try {
     const { key, icon, label, parentId, order, isVisible, requiredRoles } = req.body
 
@@ -92,7 +92,7 @@ router.post('/', authenticateToken, checkAdmin, logOperation('菜单管理', 'CR
 })
 
 // 更新菜单
-router.put('/:id', authenticateToken, checkAdmin, logOperation('菜单管理', 'UPDATE'), async (req: Request, res: Response) => {
+router.put('/:id', authenticateToken, checkPermission('system:menu:edit'), logOperation('菜单管理', 'UPDATE'), async (req: Request, res: Response) => {
   try {
     const menuId = parseInt(req.params.id as string)
     const { icon, label, parentId, order, isVisible, requiredRoles } = req.body
@@ -143,7 +143,7 @@ router.put('/:id', authenticateToken, checkAdmin, logOperation('菜单管理', '
 })
 
 // 删除菜单
-router.delete('/:id', authenticateToken, checkAdmin, logOperation('菜单管理', 'DELETE'), async (req: Request, res: Response) => {
+router.delete('/:id', authenticateToken, checkPermission('system:menu:delete'), logOperation('菜单管理', 'DELETE'), async (req: Request, res: Response) => {
   try {
     const menuId = parseInt(req.params.id as string)
 

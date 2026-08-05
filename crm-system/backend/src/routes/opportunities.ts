@@ -39,7 +39,7 @@ router.get('/', authenticateToken, checkAnyPermission(['crm:opportunity:list', '
     if (!(await isAdmin(req.user!.id))) {
       where.OR = [
         { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id } } }
+        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
       ]
     }
 
@@ -106,7 +106,7 @@ router.get('/stats/overview', authenticateToken, checkAnyPermission(['crm:opport
     if (!(await isAdmin(req.user!.id))) {
       where.OR = [
         { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id } } }
+        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
       ]
     }
     // 只统计未转化的商机（project 为 null）
@@ -150,7 +150,7 @@ router.get('/:id', authenticateToken, checkPermission('crm:opportunity:list'), a
     if (!(await isAdmin(req.user!.id))) {
       where.OR = [
         { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id } } }
+        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
       ]
     }
 
@@ -161,11 +161,13 @@ router.get('/:id', authenticateToken, checkPermission('crm:opportunity:list'), a
         contact: { select: { id: true, name: true, title: true, phone: true, email: true } },
         owner: { select: { id: true, name: true } },
         teamMembers: {
+          where: { deletedAt: null },
           include: {
             user: { select: { id: true, name: true, email: true } }
           }
         },
         files: {
+          where: { deletedAt: null },
           orderBy: { uploadedAt: 'desc' }
         },
         project: { select: { id: true, name: true, status: true } }
@@ -357,25 +359,40 @@ router.post('/:id/team', authenticateToken, checkPermission('crm:opportunity:edi
       return res.status(404).json({ error: '商机不存在' })
     }
 
-    // 检查是否已存在该成员
-    const existing = await prisma.opportunityTeamMember.findFirst({
-      where: { opportunityId, userId, deletedAt: null }
+    // 检查是否已存在该成员（包括软删除的记录）
+    const existingAny = await prisma.opportunityTeamMember.findFirst({
+      where: { opportunityId, userId }
     })
 
-    if (existing) {
+    if (existingAny && !existingAny.deletedAt) {
       return res.status(400).json({ error: '该成员已在团队中' })
     }
 
-    const member = await prisma.opportunityTeamMember.create({
-      data: {
-        opportunityId,
-        userId,
-        teamRole: teamRole as any
-      },
-      include: {
-        user: { select: { id: true, name: true, email: true } }
-      }
-    })
+    let member
+    if (existingAny && existingAny.deletedAt) {
+      // 存在软删除的记录 → 恢复并更新
+      member = await prisma.opportunityTeamMember.update({
+        where: { id: existingAny.id },
+        data: {
+          deletedAt: null,
+          teamRole: (teamRole as any) || 'MEMBER'
+        },
+        include: {
+          user: { select: { id: true, name: true, email: true } }
+        }
+      })
+    } else {
+      member = await prisma.opportunityTeamMember.create({
+        data: {
+          opportunityId,
+          userId,
+          teamRole: teamRole as any
+        },
+        include: {
+          user: { select: { id: true, name: true, email: true } }
+        }
+      })
+    }
 
     res.status(201).json(member)
   } catch (error) {
@@ -766,7 +783,7 @@ router.delete('/:id/records/:recordId', authenticateToken, checkPermission('crm:
 })
 
 // 上传商机信息记录附件
-router.post('/:id/records/:recordId/files', authenticateToken, upload.array('files', 10), logOperation('售前管理', 'UPLOAD_RECORD_FILE'), async (req: AuthRequest, res) => {
+router.post('/:id/records/:recordId/files', authenticateToken, checkPermission('crm:opportunity:edit'), upload.array('files', 10), logOperation('售前管理', 'UPLOAD_RECORD_FILE'), async (req: AuthRequest, res) => {
   try {
     const recordId = parseInt(req.params.recordId as string)
     const files = req.files as Express.Multer.File[]
@@ -863,7 +880,7 @@ router.get('/records/files/:fileId/preview', authenticateToken, async (req: Auth
 })
 
 // 删除商机信息记录附件
-router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, logOperation('售前管理', 'DELETE_RECORD_FILE'), async (req: AuthRequest, res) => {
+router.delete('/:id/records/:recordId/files/:fileId', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'DELETE_RECORD_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.opportunityRecordFile.findFirst({
@@ -939,7 +956,7 @@ router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (r
 })
 
 // 导入商机
-router.post('/import', authenticateToken, upload.single('file'), logOperation('售前管理', 'IMPORT'), async (req: AuthRequest, res) => {
+router.post('/import', authenticateToken, checkPermission('crm:opportunity:edit'), upload.single('file'), logOperation('售前管理', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
     const { data, error } = parseImportFile(req.file)

@@ -158,7 +158,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('project:projec
     if (!(await isAdmin(req.user!.id))) {
       where.OR = [
         { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id } } }
+        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
       ]
     }
     const [total, inProgress, completed, cancelled] = await Promise.all([
@@ -243,13 +243,14 @@ router.get('/:id', authenticateToken, checkPermission('project:project:list'), a
           }
         },
         teamMembers: {
+          where: { deletedAt: null },
           include: {
             user: { select: { id: true, name: true, email: true, role: true } }
           },
           orderBy: { joinDate: 'desc' }
         },
         _count: {
-          select: { contracts: true, teamMembers: true }
+          select: { contracts: true, teamMembers: { where: { deletedAt: null } } }
         }
       }
     })
@@ -766,7 +767,7 @@ router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (r
 })
 
 // 导入项目
-router.post('/import', authenticateToken, upload.single('file'), logOperation('项目管理', 'IMPORT'), async (req: AuthRequest, res) => {
+router.post('/import', authenticateToken, checkPermission('project:project:add'), upload.single('file'), logOperation('项目管理', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
     const { data, error } = parseImportFile(req.file)

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
@@ -32,7 +32,7 @@ router.get('/settings', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 更新提醒设置
-router.put('/settings', authenticateToken, logOperation('日报提醒', 'UPDATE_SETTINGS'), async (req: AuthRequest, res) => {
+router.put('/settings', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('日报提醒', 'UPDATE_SETTINGS'), async (req: AuthRequest, res) => {
   try {
     const { reminderTime, isEnabled } = req.body
 
@@ -182,7 +182,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 手动触发提醒（测试用）
-router.post('/test', authenticateToken, async (req: AuthRequest, res) => {
+router.post('/test', authenticateToken, checkPermission('office:dailyreport:add'), async (req: AuthRequest, res) => {
   try {
     // 检查今天是否已提交日报
     const today = new Date()

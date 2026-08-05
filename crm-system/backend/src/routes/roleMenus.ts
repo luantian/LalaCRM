@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express'
-import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
@@ -75,12 +74,8 @@ router.get('/:roleId', authenticateToken, async (req: Request, res: Response) =>
 })
 
 // 为角色分配菜单（全量替换）
-router.post('/:roleId', authenticateToken, logOperation('角色菜单', 'UPDATE'), async (req: AuthRequest, res: Response) => {
+router.post('/:roleId', authenticateToken, checkPermission('system:menu:edit'), logOperation('角色菜单', 'UPDATE'), async (req: AuthRequest, res: Response) => {
   try {
-    if (!(await isAdmin(req.user!.id))) {
-      return res.status(403).json({ error: '只有管理员才能执行此操作' })
-    }
-
     const roleId = parseInt(req.params.roleId as string)
     const { menuIds } = req.body
 

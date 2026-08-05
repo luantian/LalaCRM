@@ -153,7 +153,7 @@ router.get('/:id', authenticateToken, applyDataScope('ownerId'), async (req: Aut
 })
 
 // 创建出差记录（默认为草稿）
-router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), dateValidation('startDate', 'endDate'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('office:trip:add'), logOperation('出差管理', 'CREATE'), dateValidation('startDate', 'endDate'), async (req: AuthRequest, res) => {
   try {
     const {
       title,
@@ -327,7 +327,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('office:trip:appro
 })
 
 // 重新提交（REJECTED → SUBMITTED）
-router.post('/:id/resubmit', authenticateToken, logOperation('出差管理', 'RESUBMIT'), async (req: AuthRequest, res) => {
+router.post('/:id/resubmit', authenticateToken, checkPermission('office:trip:add'), logOperation('出差管理', 'RESUBMIT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -361,7 +361,7 @@ router.post('/:id/resubmit', authenticateToken, logOperation('出差管理', 'RE
 })
 
 // 标记已完成（APPROVED → COMPLETED）
-router.post('/:id/complete', authenticateToken, logOperation('出差管理', 'COMPLETE'), async (req: AuthRequest, res) => {
+router.post('/:id/complete', authenticateToken, checkPermission('office:trip:add'), logOperation('出差管理', 'COMPLETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -399,7 +399,7 @@ router.post('/:id/complete', authenticateToken, logOperation('出差管理', 'CO
 })
 
 // 更新出差记录（仅草稿或被驳回时允许编辑）
-router.put('/:id', authenticateToken, logOperation('出差管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('office:trip:add'), logOperation('出差管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const {
@@ -459,7 +459,7 @@ router.put('/:id', authenticateToken, logOperation('出差管理', 'UPDATE'), as
 })
 
 // 删除出差记录（仅草稿或被驳回时允许删除）
-router.delete('/:id', authenticateToken, logOperation('出差管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('office:trip:add'), logOperation('出差管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -519,7 +519,7 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
   }
 })
 
-router.post('/import', authenticateToken, upload.single('file'), logOperation('出差管理', 'IMPORT'), async (req: AuthRequest, res) => {
+router.post('/import', authenticateToken, checkPermission('office:trip:add'), upload.single('file'), logOperation('出差管理', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
     const { data, error } = parseImportFile(req.file)

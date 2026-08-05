@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
-import { authenticateToken, checkAdmin } from '../middleware/auth'
+import { authenticateToken, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
@@ -16,7 +16,7 @@ const userWithoutPassword = (user: any) => {
 }
 
 // 获取所有用户（仅admin）
-router.get('/', authenticateToken, checkAdmin, async (req: Request, res: Response) => {
+router.get('/', authenticateToken, checkPermission('system:user:list'), async (req: Request, res: Response) => {
   try {
     const users = await prisma.user.findMany({
       include: {
@@ -55,7 +55,7 @@ router.get('/dropdown', authenticateToken, async (req: Request, res: Response) =
 })
 
 // 创建用户（仅admin）
-router.post('/', authenticateToken, checkAdmin, logOperation('用户管理', 'CREATE'), async (req: Request, res: Response) => {
+router.post('/', authenticateToken, checkPermission('system:user:add'), logOperation('用户管理', 'CREATE'), async (req: Request, res: Response) => {
   try {
     const { username, password, email, name, roleId } = req.body
 
@@ -143,7 +143,7 @@ router.post('/', authenticateToken, checkAdmin, logOperation('用户管理', 'CR
 })
 
 // 更新用户（仅admin）
-router.put('/:id', authenticateToken, checkAdmin, logOperation('用户管理', 'UPDATE'), async (req: Request, res: Response) => {
+router.put('/:id', authenticateToken, checkPermission('system:user:edit'), logOperation('用户管理', 'UPDATE'), async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id as string)
     const { email, name, roleId, password } = req.body
@@ -211,7 +211,7 @@ router.put('/:id', authenticateToken, checkAdmin, logOperation('用户管理', '
 })
 
 // 删除用户（仅admin）
-router.delete('/:id', authenticateToken, checkAdmin, logOperation('用户管理', 'DELETE'), async (req: Request, res: Response) => {
+router.delete('/:id', authenticateToken, checkPermission('system:user:delete'), logOperation('用户管理', 'DELETE'), async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id as string)
 

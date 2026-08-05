@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 import dayjs from 'dayjs'
@@ -198,7 +198,7 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 打卡（自动判断上下班，前端不需要传 period）
-router.post('/', authenticateToken, logOperation('打卡管理', 'CHECKIN'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('attendance:checkin:write'), logOperation('打卡管理', 'CHECKIN'), async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id
     const now = dayjs()
@@ -302,7 +302,7 @@ router.post('/', authenticateToken, logOperation('打卡管理', 'CHECKIN'), asy
 })
 
 // 补卡
-router.post('/makeup', authenticateToken, logOperation('打卡管理', 'MAKEUP'), async (req: AuthRequest, res) => {
+router.post('/makeup', authenticateToken, checkPermission('attendance:checkin:write'), logOperation('打卡管理', 'MAKEUP'), async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id
     const { date, notes } = req.body

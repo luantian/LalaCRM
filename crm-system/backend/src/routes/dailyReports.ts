@@ -397,7 +397,7 @@ router.delete('/:id', authenticateToken, checkPermission('office:dailyreport:add
 })
 
 // 提交日报
-router.post('/:id/submit', authenticateToken, logOperation('工作日报', 'SUBMIT'), async (req: AuthRequest, res) => {
+router.post('/:id/submit', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'SUBMIT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -464,7 +464,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('office:dailyrepo
 })
 
 // 拒绝日报
-router.post('/:id/reject', authenticateToken, logOperation('工作日报', 'REJECT'), async (req: AuthRequest, res) => {
+router.post('/:id/reject', authenticateToken, checkPermission('office:dailyreport:approve'), logOperation('工作日报', 'REJECT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { reason } = req.body
@@ -552,7 +552,7 @@ router.get('/:id/comments', authenticateToken, checkPermission('office:dailyrepo
 })
 
 // 添加评论
-router.post('/:id/comments', authenticateToken, logOperation('工作日报', 'COMMENT'), async (req: AuthRequest, res) => {
+router.post('/:id/comments', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'COMMENT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { content, parentId } = req.body
@@ -586,7 +586,7 @@ router.post('/:id/comments', authenticateToken, logOperation('工作日报', 'CO
 })
 
 // 删除评论
-router.delete('/:id/comments/:commentId', authenticateToken, logOperation('工作日报', 'DELETE_COMMENT'), async (req: AuthRequest, res) => {
+router.delete('/:id/comments/:commentId', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'DELETE_COMMENT'), async (req: AuthRequest, res) => {
   try {
     const commentId = parseInt(req.params.commentId as string)
 
@@ -1094,7 +1094,7 @@ router.get('/export/excel', authenticateToken, checkPermission('office:dailyrepo
   }
 })
 
-router.post('/import', authenticateToken, upload.single('file'), logOperation('工作日报', 'IMPORT'), async (req: AuthRequest, res) => {
+router.post('/import', authenticateToken, checkPermission('office:dailyreport:add'), upload.single('file'), logOperation('工作日报', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
     const { data, error } = parseImportFile(req.file)

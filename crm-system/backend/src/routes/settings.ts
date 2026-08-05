@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { isAdmin } from '../utils/permission'
 import logger from '../utils/logger'
 
@@ -31,13 +31,8 @@ router.get('/contact-info-permission', authenticateToken, async (req: AuthReques
 })
 
 // 更新联系方式可见性配置（仅管理员）
-router.put('/contact-info-permission', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.put('/contact-info-permission', authenticateToken, checkPermission('system:settings:edit'), async (req: AuthRequest, res: Response) => {
   try {
-    // 检查管理员权限
-    if (!req.user?.id || !(await isAdmin(req.user.id))) {
-      return res.status(403).json({ error: '仅管理员可配置' })
-    }
-    
     const { roleIds } = req.body
     
     if (!Array.isArray(roleIds)) {
@@ -61,7 +56,7 @@ router.put('/contact-info-permission', authenticateToken, async (req: AuthReques
       create: { key: 'contact_info_viewable_roles', value: JSON.stringify(roleIds) }
     })
     
-    logger.info(`User ${req.user.id} updated contact info permission config:`, roleIds)
+    logger.info(`User ${req.user!.id} updated contact info permission config:`, roleIds)
     
     res.json({ success: true, roleIds })
   } catch (error) {

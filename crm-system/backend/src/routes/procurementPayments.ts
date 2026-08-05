@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
@@ -41,7 +41,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 创建采购付款记录
-router.post('/', authenticateToken, logOperation('采购付款', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购付款', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const { procurementId, amount, paymentDate, paymentMethod, paymentType, status, invoiceNo, remarks } = req.body
 
@@ -82,7 +82,7 @@ router.post('/', authenticateToken, logOperation('采购付款', 'CREATE'), asyn
 })
 
 // 更新采购付款记录
-router.put('/:id', authenticateToken, logOperation('采购付款', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购付款', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { amount, paymentDate, paymentMethod, paymentType, status, invoiceNo, remarks } = req.body
@@ -119,7 +119,7 @@ router.put('/:id', authenticateToken, logOperation('采购付款', 'UPDATE'), as
 })
 
 // 删除采购付款记录
-router.delete('/:id', authenticateToken, logOperation('采购付款', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购付款', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const existing = await prisma.procurementPayment.findFirst({

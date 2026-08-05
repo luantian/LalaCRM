@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import rateLimit from 'express-rate-limit'
-import { authenticateToken, AuthRequest, checkAdmin } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import logger from '../utils/logger'
 
 const router = Router()
@@ -311,7 +311,7 @@ router.get('/menus', async (req, res) => {
 })
 
 // 注册用户（仅管理员）
-router.post('/register', authenticateToken, checkAdmin, async (req: AuthRequest, res) => {
+router.post('/register', authenticateToken, checkPermission('system:user:add'), async (req: AuthRequest, res) => {
   try {
     const { username, password, email, name, role } = req.body
 

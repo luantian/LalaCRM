@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
@@ -35,7 +35,7 @@ router.get('/tree', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 获取所有部门（扁平列表，用于下拉选择）
-router.get('/', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('system:department:list'), async (req: AuthRequest, res) => {
   try {
     const departments = await prisma.department.findMany({
       orderBy: { order: 'asc' }
@@ -74,12 +74,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 创建部门
-router.post('/', authenticateToken, logOperation('部门管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('system:department:add'), logOperation('部门管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    if (!(await isAdmin(req.user!.id))) {
-      return res.status(403).json({ error: '只有管理员才能执行此操作' })
-    }
-
     const { name, parentId, order, leader, phone, email, status } = req.body
 
     if (!name) {
@@ -116,12 +112,8 @@ router.post('/', authenticateToken, logOperation('部门管理', 'CREATE'), asyn
 })
 
 // 更新部门
-router.put('/:id', authenticateToken, logOperation('部门管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('system:department:edit'), logOperation('部门管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
-    if (!(await isAdmin(req.user!.id))) {
-      return res.status(403).json({ error: '只有管理员才能执行此操作' })
-    }
-
     const id = parseInt(req.params.id as string)
     const { name, parentId, order, leader, phone, email, status } = req.body
 
@@ -161,12 +153,8 @@ router.put('/:id', authenticateToken, logOperation('部门管理', 'UPDATE'), as
 })
 
 // 删除部门
-router.delete('/:id', authenticateToken, logOperation('部门管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('system:department:delete'), logOperation('部门管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
-    if (!(await isAdmin(req.user!.id))) {
-      return res.status(403).json({ error: '只有管理员才能执行此操作' })
-    }
-
     const id = parseInt(req.params.id as string)
 
     // 检查部门是否存在

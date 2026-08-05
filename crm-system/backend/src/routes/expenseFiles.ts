@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
@@ -13,7 +13,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 上传报销附件
-router.post('/:id/files', authenticateToken, upload.array('files', 10), logOperation('报销附件', 'UPLOAD'), async (req: AuthRequest, res) => {
+router.post('/:id/files', authenticateToken, checkPermission('finance:expense:add'), upload.array('files', 10), logOperation('报销附件', 'UPLOAD'), async (req: AuthRequest, res) => {
   try {
     const expenseId = parseInt(req.params.id as string)
     const files = req.files as Express.Multer.File[]
@@ -85,7 +85,7 @@ router.get('/:id/files', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 删除报销附件
-router.delete('/:id/files/:fileId', authenticateToken, logOperation('报销附件', 'DELETE_FILE'), async (req: AuthRequest, res) => {
+router.delete('/:id/files/:fileId', authenticateToken, checkPermission('finance:expense:add'), logOperation('报销附件', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
