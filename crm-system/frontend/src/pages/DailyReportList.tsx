@@ -363,7 +363,28 @@ function DailyReportList() {
     try {
       await deleteDailyReportItem(viewingReport.id, itemId)
       message.success('删除成功')
-      fetchItems(viewingReport.id)
+      await fetchItems(viewingReport.id)
+      
+      // 重新计算总工时并更新日报主表
+      setTimeout(async () => {
+        const updatedItems: any[] = (await getDailyReportItems(viewingReport.id)) as any
+        const totalHours = (updatedItems || []).reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0)
+        
+        // 只传递后端需要的字段
+        await updateDailyReport(viewingReport.id, {
+          reportDate: viewingReport.reportDate,
+          type: viewingReport.type,
+          projectId: viewingReport.projectId,
+          content: viewingReport.content,
+          plan: viewingReport.plan,
+          issues: viewingReport.issues,
+          hours: totalHours
+        })
+        
+        // 更新 viewingReport 状态
+        setViewingReport((prev: any) => prev ? { ...prev, hours: totalHours } : prev)
+        fetchReports()
+      }, 100)
     } catch (error: any) {
       message.error(error?.error || '删除失败')
     }
@@ -388,7 +409,28 @@ function DailyReportList() {
         message.success('创建成功')
       }
       setItemFormVisible(false)
-      fetchItems(viewingReport.id)
+      await fetchItems(viewingReport.id)
+      
+      // 重新计算总工时并更新日报主表
+      setTimeout(async () => {
+        const updatedItems: any[] = (await getDailyReportItems(viewingReport.id)) as any
+        const totalHours = (updatedItems || []).reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0)
+        
+        // 只传递后端需要的字段
+        await updateDailyReport(viewingReport.id, {
+          reportDate: viewingReport.reportDate,
+          type: viewingReport.type,
+          projectId: viewingReport.projectId,
+          content: viewingReport.content,
+          plan: viewingReport.plan,
+          issues: viewingReport.issues,
+          hours: totalHours
+        })
+        
+        // 更新 viewingReport 状态
+        setViewingReport((prev: any) => prev ? { ...prev, hours: totalHours } : prev)
+        fetchReports()
+      }, 100)
     } catch (error: any) {
       message.error(error?.error || '操作失败')
     }
@@ -511,8 +553,8 @@ function DailyReportList() {
 
       {/* 搜索与筛选 */}
       <Card size="small" style={{ marginBottom: 16 }}>
-        <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} sm={8}>
+        <Row gutter={16} align="middle">
+          <Col xs={24} sm={6}>
             <Input
               placeholder="搜索工作内容"
               prefix={<SearchOutlined />}
@@ -522,7 +564,7 @@ function DailyReportList() {
               allowClear
             />
           </Col>
-          <Col xs={24} sm={8}>
+          <Col xs={24} sm={6}>
             <RangePicker
               style={{ width: '100%' }}
               value={dateRange}
@@ -530,7 +572,7 @@ function DailyReportList() {
               placeholder={['开始日期', '结束日期']}
             />
           </Col>
-          <Col xs={24} sm={8}>
+          <Col xs={24} sm={6}>
             <Select
               style={{ width: '100%' }}
               placeholder="选择项目"
@@ -547,7 +589,7 @@ function DailyReportList() {
               ))}
             </Select>
           </Col>
-          <Col xs={24} sm={24}>
+          <Col xs={24} sm={6}>
             <Space>
               <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>搜索</Button>
               <Button icon={<ReloadOutlined />} onClick={handleReset}>重置</Button>
@@ -1001,8 +1043,8 @@ function DailyReportList() {
                   任务流转记录
                 </div>
                 <div style={{ padding: '12px 16px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
-                  <Timeline style={{ marginTop: 16 }}>
-                    {viewingItem.task.records.map((record: any) => {
+                  <Timeline style={{ marginTop: 16 }} items={
+                    viewingItem.task.records.map((record: any) => {
                       const typeConfig: Record<string, { color: string; icon: string }> = {
                         'START': { color: '#1890ff', icon: '▶️' },
                         'SUBMIT': { color: '#52c41a', icon: '✅' },
@@ -1015,19 +1057,22 @@ function DailyReportList() {
                         'VISIT': { color: '#8c8c8c', icon: '🏃' },
                       }
                       const config = typeConfig[record.type] || { color: '#8c8c8c', icon: '📌' }
-                      return (
-                        <Timeline.Item key={record.id} color={config.color}>
-                          <div>
-                            <span style={{ marginRight: 8 }}>{config.icon}</span>
-                            <span style={{ fontWeight: 500 }}>{record.content}</span>
-                          </div>
-                          <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
-                            {record.user?.name} · {dayjs(record.createdAt).format('YYYY-MM-DD HH:mm')}
-                          </div>
-                        </Timeline.Item>
-                      )
-                    })}
-                  </Timeline>
+                      return {
+                        color: config.color,
+                        children: (
+                          <>
+                            <div>
+                              <span style={{ marginRight: 8 }}>{config.icon}</span>
+                              <span style={{ fontWeight: 500 }}>{record.content}</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+                              {record.user?.name} · {dayjs(record.createdAt).format('YYYY-MM-DD HH:mm')}
+                            </div>
+                          </>
+                        )
+                      }
+                    })
+                  } />
                 </div>
               </div>
             )}

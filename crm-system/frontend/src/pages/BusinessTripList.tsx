@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Popconfirm, Upload } from 'antd'
+import { Table, Button, Modal, Form, Input, Select, DatePicker, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Popconfirm, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, CheckOutlined, CloseOutlined, MoreOutlined, SendOutlined, UndoOutlined, CheckCircleOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getOrganizations, getProjects, safeJsonParse, exportBusinessTripsCsv, exportBusinessTripsExcel, importBusinessTrips } from '../services/api'
+import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getOrganizationsSimple, getProjects, safeJsonParse, exportBusinessTripsCsv, exportBusinessTripsExcel, importBusinessTrips } from '../services/api'
 import dayjs from 'dayjs'
-import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import { OrgContactSelector } from '../components/OrgContactSelector'
+import { usePermission } from '../hooks/usePermission'
 
 const { RangePicker } = DatePicker
 
 function BusinessTripList() {
   const navigate = useNavigate()
+  const { checkPermission } = usePermission()
   const [trips, setTrips] = useState<any[]>([])
   const [organizations, setOrganizations] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
@@ -67,8 +68,8 @@ function BusinessTripList() {
 
   const fetchOrganizations = async () => {
     try {
-      const response: any = await getOrganizations({ pageSize: 1000 })
-      setOrganizations(response.data || [])
+      const response: any = await getOrganizationsSimple()
+      setOrganizations(response || [])
     } catch (error) {
       console.error('获取组织列表失败:', error)
     }
@@ -200,7 +201,7 @@ function BusinessTripList() {
   }
 
   const user = safeJsonParse(localStorage.getItem('user'), {})
-  const canApprove = ['ADMIN', 'PROJECT_DIRECTOR', 'PROJECT_MANAGER'].includes(user.role) || user.permissions?.includes('approve_business_trips')
+  const canApprove = checkPermission('office:trip:approve')
 
   const handleDelete = async (id: number) => {
     try {
@@ -354,7 +355,7 @@ function BusinessTripList() {
         const isOwner = record.ownerId === user.id
         const workflowItems: any[] = []
 
-        if (record.status === 'DRAFT' && (isOwner || user.role === 'ADMIN')) {
+        if (record.status === 'DRAFT' && (isOwner || checkPermission('office:trip:edit'))) {
           workflowItems.push({ key: 'submit', icon: <SendOutlined />, label: '提交申请', onClick: () => handleSubmitTrip(record.id) })
         }
 
@@ -363,11 +364,11 @@ function BusinessTripList() {
           workflowItems.push({ key: 'reject', icon: <CloseOutlined />, label: '驳回', danger: true, onClick: () => handleOpenApproveModal(record, 'reject') })
         }
 
-        if (record.status === 'REJECTED' && (isOwner || user.role === 'ADMIN')) {
+        if (record.status === 'REJECTED' && (isOwner || checkPermission('office:trip:edit'))) {
           workflowItems.push({ key: 'resubmit', icon: <UndoOutlined />, label: '重新提交', onClick: () => handleResubmit(record.id) })
         }
 
-        if (record.status === 'APPROVED' && (isOwner || user.role === 'ADMIN')) {
+        if (record.status === 'APPROVED' && (isOwner || checkPermission('office:trip:edit'))) {
           workflowItems.push({ key: 'complete', icon: <CheckCircleOutlined />, label: '标记完成', onClick: () => handleComplete(record.id) })
         }
 

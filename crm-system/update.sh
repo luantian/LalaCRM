@@ -1,73 +1,306 @@
 #!/bin/bash
 # ===================================================
-#  群晖端更新脚本（由 deploy.bat 自动调用）
-#  不要手动运行此脚本
+#  LalaCRM 一键更新脚本
+#  使用场景：服务器上已有 CRM 系统，需要更新到新版本
+#  使用方法：
+#    1. 将新的 build/backend.tar 和 build/frontend.tar 上传到 /volume1/docker/crm-system/build/
+#    2. SSH 登录群晖
+#    3. cd /volume1/docker/crm-system
+#    4. ./update.sh
 # ===================================================
 
 set -e
 
-DEPLOY_PATH=$1
-UPDATE_DIR="/tmp/crm-update"
+# 颜色输出
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-if [ -z "$DEPLOY_PATH" ]; then
-    echo "❌ 错误：未指定部署路径"
+# 配置
+DEPLOY_DIR="/volume1/docker/crm-system"
+COMPOSE_FILE="docker-compose.synology.yml"
+BACKUP_DIR="/volume1/docker/backups"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+log_step() { echo -e "${BLUE}[步骤]${NC} $1"; }
+log_info() { echo -e "${GREEN}[✓]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[!]${NC} $1"; }
+log_error() { echo -e "${RED}[✗]${NC} $1"; }
+
+echo ""
+echo "=========================================="
+echo "  LalaCRM 一键更新脚本"
+echo "=========================================="
+echo ""
+
+# -------------------------------------------------
+# 1. 环境检查
+# -------------------------------------------------
+log_step "检查运行环境..."
+
+if ! command -v docker &> /dev/null; then
+    log_error "Docker 未安装"
     exit 1
 fi
 
-echo "========================================"
-echo "  CRM 系统更新脚本"
-echo "========================================"
-echo ""
-
-# 进入部署目录
-cd "$DEPLOY_PATH"
-
-# 停止服务
-echo "[1/5] 停止服务..."
-sudo docker-compose -f docker-compose.synology.yml down || true
-
-# 加载镜像
-echo ""
-echo "[2/5] 加载 Docker 镜像..."
-
-if [ -f "$UPDATE_DIR/frontend.tar" ]; then
-    echo "  加载前端镜像..."
-    sudo docker load -i "$UPDATE_DIR/frontend.tar"
-    rm -f "$UPDATE_DIR/frontend.tar"
+if ! command -v docker-compose &> /dev/null; then
+    log_error "docker-compose 未安装"
+    exit 1
 fi
 
-if [ -f "$UPDATE_DIR/backend.tar" ]; then
-    echo "  加载后端镜像..."
-    sudo docker load -i "$UPDATE_DIR/backend.tar"
-    rm -f "$UPDATE_DIR/backend.tar"
+if [ ! -f "$COMPOSE_FILE" ]; then
+    log_error "找不到 $COMPOSE_FILE，请在 $DEPLOY_DIR 目录下执行"
+    exit 1
 fi
 
-# 启动服务
-echo ""
-echo "[3/5] 启动服务..."
-sudo docker-compose -f docker-compose.synology.yml up -d
-
-# 等待服务启动
-echo "  等待服务启动..."
-sleep 5
-
-# 执行数据库迁移（如果后端有更新）
-if [ -f "$UPDATE_DIR/backend.tar" ] || [ ! -z "$(sudo docker ps -q -f name=crm-backend)" ]; then
-    echo ""
-    echo "[4/5] 检查数据库迁移..."
-    sudo docker exec crm-backend npx prisma migrate deploy 2>/dev/null || echo "  无需迁移或迁移已完成"
+# 检查镜像文件（至少有一个新镜像）
+if [ ! -f "build/backend.tar" ] && [ ! -f "build/frontend.tar" ]; then
+    log_error "未找到新的 Docker 镜像文件"
+    log_warn "请将 build/backend.tar 和 build/frontend.tar 上传到 $DEPLOY_DIR/build/ 目录"
+    exit 1
 fi
 
-# 清理临时文件
-echo ""
-echo "[5/5] 清理临时文件..."
-rm -rf "$UPDATE_DIR"
+HAS_NEW_BACKEND=false
+HAS_NEW_FRONTEND=false
+[ -f "build/backend.tar" ] && HAS_NEW_BACKEND=true
+[ -f "build/frontend.tar" ] && HAS_NEW_FRONTEND=true
 
+log_info "环境检查通过"
+log_info "将更新：$($HAS_NEW_BACKEND && echo -n '后端 ')$($HAS_NEW_FRONTEND && echo -n '前端')"
+
+# -------------------------------------------------
+# 2. 备份数据库
+# -------------------------------------------------
+log_step "备份数据库..."
+
+mkdir -p "$BACKUP_DIR"
+BACKUP_FILE="$BACKUP_DIR/crm_db_$TIMESTAMP.sql"
+
+# 确保数据库正在运行
+if ! docker ps --format '{{.Names}}' | grep -q "crm-postgres"; then
+    log_warn "数据库未运行，尝试启动..."
+    docker-compose -f "$COMPOSE_FILE" up -d postgres
+    sleep 5
+fi
+
+if docker exec crm-postgres pg_isready -U crm_user -d crm_db > /dev/null 2>&1; then
+    if docker exec crm-postgres pg_dump -U crm_user crm_db > "$BACKUP_FILE" 2>/dev/null; then
+        # 压缩备份
+        gzip "$BACKUP_FILE" 2>/dev/null && BACKUP_FILE="$BACKUP_FILE.gz"
+        log_info "数据库已备份到：$BACKUP_FILE"
+    else
+        log_warn "数据库备份失败，但继续更新..."
+    fi
+
+    # 保留最近 5 个备份，删除旧的
+    BACKUP_COUNT=$(ls -1 "$BACKUP_DIR"/crm_db_*.sql* 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$BACKUP_COUNT" -gt 5 ]; then
+        ls -1 "$BACKUP_DIR"/crm_db_*.sql* | head -n -5 | xargs rm -f 2>/dev/null
+        log_info "已清理旧备份，保留最近 5 个"
+    fi
+else
+    log_warn "数据库未就绪，跳过备份"
+fi
+
+# -------------------------------------------------
+# 3. 确认更新
+# -------------------------------------------------
 echo ""
-echo "========================================"
-echo "✅ 更新完成！"
-echo "========================================"
+echo "即将执行以下操作："
+echo "  1. 停止当前服务"
+echo "  2. 加载新镜像"
+echo "  3. 启动服务（使用新镜像）"
+echo "  4. 同步数据库结构"
+echo "  5. 验证服务状态"
+echo ""
+
+read -p "是否继续？(y/N) " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "已取消更新"
+    exit 0
+fi
+echo ""
+
+# -------------------------------------------------
+# 4. 停止服务
+# -------------------------------------------------
+log_step "停止服务..."
+
+docker-compose -f "$COMPOSE_FILE" down --timeout 30 > /dev/null 2>&1 || true
+sleep 3
+
+# 确认容器已停止
+REMAINING=$(docker ps --filter "name=crm-" --format '{{.Names}}' | wc -l | tr -d ' ')
+if [ "$REMAINING" -gt 0 ]; then
+    log_warn "部分容器未正常停止，强制停止..."
+    docker ps --filter "name=crm-" --format '{{.Names}}' | xargs docker stop > /dev/null 2>&1 || true
+    sleep 2
+fi
+
+log_info "服务已停止"
+
+# -------------------------------------------------
+# 5. 加载新镜像
+# -------------------------------------------------
+log_step "加载 Docker 镜像..."
+
+if $HAS_NEW_BACKEND; then
+    if docker load -i build/backend.tar > /dev/null 2>&1; then
+        log_info "后端镜像加载成功"
+    else
+        log_error "后端镜像加载失败"
+        log_warn "请检查 build/backend.tar 文件是否完整"
+        exit 1
+    fi
+fi
+
+if $HAS_NEW_FRONTEND; then
+    if docker load -i build/frontend.tar > /dev/null 2>&1; then
+        log_info "前端镜像加载成功"
+    else
+        log_error "前端镜像加载失败"
+        log_warn "请检查 build/frontend.tar 文件是否完整"
+        exit 1
+    fi
+fi
+
+if [ -f "build/postgres.tar" ]; then
+    if docker load -i build/postgres.tar > /dev/null 2>&1; then
+        log_info "数据库镜像加载成功"
+    else
+        log_warn "数据库镜像加载失败，继续使用现有镜像"
+    fi
+fi
+
+# -------------------------------------------------
+# 6. 启动服务
+# -------------------------------------------------
+log_step "启动服务..."
+
+docker-compose -f "$COMPOSE_FILE" up -d
+
+# 等待数据库就绪
+log_info "等待数据库启动..."
+DB_READY=false
+for i in $(seq 1 60); do
+    if docker exec crm-postgres pg_isready -U crm_user -d crm_db > /dev/null 2>&1; then
+        DB_READY=true
+        break
+    fi
+    sleep 2
+done
+
+if ! $DB_READY; then
+    log_error "数据库启动超时（120秒）"
+    log_warn "请检查数据库日志：docker logs crm-postgres"
+    log_warn "如需恢复，数据库备份位于：$BACKUP_DIR"
+    exit 1
+fi
+log_info "数据库启动成功"
+
+# -------------------------------------------------
+# 7. 同步数据库结构
+# -------------------------------------------------
+log_step "同步数据库结构..."
+
+MIGRATE_LOG="/tmp/crm_migrate_$TIMESTAMP.log"
+if docker exec crm-backend sh -c "cd /app && npx prisma db push" > "$MIGRATE_LOG" 2>&1; then
+    # 检查是否有警告
+    if grep -q -i "warning" "$MIGRATE_LOG" 2>/dev/null; then
+        log_warn "数据库同步完成，但有警告："
+        grep -i "warning" "$MIGRATE_LOG" | sed 's/^/  /'
+    else
+        log_info "数据库结构同步成功"
+    fi
+else
+    log_error "数据库同步失败"
+    log_warn "迁移日志："
+    cat "$MIGRATE_LOG" 2>/dev/null | sed 's/^/  /'
+    log_warn ""
+    log_warn "建议："
+    log_warn "  1. 查看后端日志：docker logs crm-backend"
+    log_warn "  2. 如需回滚数据库，请执行："
+    if [[ "$BACKUP_FILE" == *.gz ]]; then
+        log_warn "     gunzip -c $BACKUP_FILE | docker exec -i crm-postgres psql -U crm_user -d crm_db"
+    else
+        log_warn "     cat $BACKUP_FILE | docker exec -i crm-postgres psql -U crm_user -d crm_db"
+    fi
+    exit 1
+fi
+rm -f "$MIGRATE_LOG"
+
+# -------------------------------------------------
+# 8. 等待服务就绪并验证
+# -------------------------------------------------
+log_step "验证服务状态..."
+
+# 检查所有容器是否运行
+RUNNING_CONTAINERS=$(docker ps --filter "name=crm-" --format '{{.Names}}' | wc -l | tr -d ' ')
+if [ "$RUNNING_CONTAINERS" -lt 3 ]; then
+    log_error "部分容器未启动，当前运行的容器："
+    docker ps --filter "name=crm-"
+    log_warn "请检查容器日志：docker logs crm-backend"
+    exit 1
+fi
+
+# 等待后端 API 就绪
+log_info "等待后端 API 就绪..."
+API_READY=false
+for i in $(seq 1 30); do
+    if wget -q --spider http://localhost:8880/api/health > /dev/null 2>&1; then
+        API_READY=true
+        break
+    fi
+    sleep 2
+done
+
+if $API_READY; then
+    log_info "后端 API 正常响应"
+else
+    log_warn "后端 API 未响应，可能需要更多时间启动"
+    log_warn "请稍后检查：wget -q --spider http://localhost:8880/api/health"
+fi
+
+# 检查异常容器
+UNHEALTHY=$(docker ps --filter "name=crm-" --filter "health=unhealthy" --format '{{.Names}}' | wc -l | tr -d ' ')
+if [ "$UNHEALTHY" -gt 0 ]; then
+    log_warn "以下容器状态异常："
+    docker ps --filter "name=crm-" --filter "health=unhealthy" --format "  {{.Names}}: {{.Status}}"
+fi
+
+# -------------------------------------------------
+# 9. 清理临时文件
+# -------------------------------------------------
+# 清理加载过的旧镜像（可选，释放磁盘空间）
+log_step "清理旧镜像..."
+docker image prune -f > /dev/null 2>&1 || true
+
+# -------------------------------------------------
+# 10. 显示结果
+# -------------------------------------------------
+echo ""
+echo "=========================================="
+if $API_READY; then
+    log_info "更新成功完成！"
+else
+    log_warn "更新已完成，但 API 尚未就绪"
+fi
+echo "=========================================="
 echo ""
 echo "服务状态："
-sudo docker-compose -f docker-compose.synology.yml ps
+docker ps --filter "name=crm-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+echo ""
+echo "数据库备份：$BACKUP_FILE"
+echo ""
+echo "常用命令："
+echo "  查看后端日志：docker logs -f crm-backend"
+echo "  重启服务：docker-compose -f $COMPOSE_FILE restart"
+if [[ "$BACKUP_FILE" == *.gz ]]; then
+    echo "  回滚数据库：gunzip -c $BACKUP_FILE | docker exec -i crm-postgres psql -U crm_user -d crm_db"
+else
+    echo "  回滚数据库：cat $BACKUP_FILE | docker exec -i crm-postgres psql -U crm_user -d crm_db"
+fi
 echo ""

@@ -8,6 +8,7 @@ import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { autoWriteBusinessTripRecord } from '../utils/autoDailyReport'
 import { upload } from '../middleware/upload'
+import { isAdmin } from '../utils/permission'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -200,7 +201,7 @@ router.post('/', authenticateToken, logOperation('出差管理', 'CREATE'), date
 })
 
 // 提交申请（DRAFT → SUBMITTED）
-router.post('/:id/submit', authenticateToken, checkPermission('submit_trips'), logOperation('出差管理', 'SUBMIT'), async (req: AuthRequest, res) => {
+router.post('/:id/submit', authenticateToken, checkPermission('office:trip:add'), logOperation('出差管理', 'SUBMIT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -230,7 +231,7 @@ router.post('/:id/submit', authenticateToken, checkPermission('submit_trips'), l
 })
 
 // 审批通过（SUBMITTED → APPROVED）
-router.post('/:id/approve', authenticateToken, checkPermission('approve_business_trips'), logOperation('出差管理', 'APPROVE'), async (req: AuthRequest, res) => {
+router.post('/:id/approve', authenticateToken, checkPermission('office:trip:approve'), logOperation('出差管理', 'APPROVE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { remark } = req.body
@@ -245,7 +246,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_business
     }
 
     // 防止自审批（管理员除外）
-    if (trip.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+    if (trip.ownerId === req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '不能审批自己提交的申请' })
     }
 
@@ -276,7 +277,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_business
 })
 
 // 驳回（SUBMITTED → REJECTED）
-router.post('/:id/reject', authenticateToken, checkPermission('approve_business_trips'), logOperation('出差管理', 'REJECT'), async (req: AuthRequest, res) => {
+router.post('/:id/reject', authenticateToken, checkPermission('office:trip:approve'), logOperation('出差管理', 'REJECT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { reason } = req.body
@@ -295,7 +296,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_business_
     }
 
     // 防止自驳回
-    if (trip.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+    if (trip.ownerId === req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '不能驳回自己提交的申请' })
     }
 
@@ -339,7 +340,7 @@ router.post('/:id/resubmit', authenticateToken, logOperation('出差管理', 'RE
       return res.status(400).json({ error: '只有被驳回状态可以重新提交' })
     }
 
-    if (trip.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (trip.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能重新提交自己的出差申请' })
     }
 
@@ -373,7 +374,7 @@ router.post('/:id/complete', authenticateToken, logOperation('出差管理', 'CO
       return res.status(400).json({ error: '只有已批准状态可以标记完成' })
     }
 
-    if (trip.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (trip.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能操作自己的出差申请' })
     }
 
@@ -425,7 +426,7 @@ router.put('/:id', authenticateToken, logOperation('出差管理', 'UPDATE'), as
     }
 
     // 只能编辑自己的（ADMIN 除外）
-    if (currentTrip.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (currentTrip.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能编辑自己的出差记录' })
     }
 
@@ -471,7 +472,7 @@ router.delete('/:id', authenticateToken, logOperation('出差管理', 'DELETE'),
       return res.status(400).json({ error: '当前状态不允许删除' })
     }
 
-    if (existing.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能删除自己的出差记录' })
     }
 

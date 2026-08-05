@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, Spin, Result, Table } from 'antd'
+import { Card, Descriptions, Tag, Button, Space, Row, Col, Modal, Form, Input, Select, DatePicker, message, Spin, Result, Table } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
-import { getBusinessTripDetail, updateBusinessTrip, getOrganizations, getProjects } from '../services/api'
+import { getBusinessTripDetail, updateBusinessTrip, getOrganizationsSimple, getProjects } from '../services/api'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import dayjs from 'dayjs'
-import { OrgTreeSelect } from '../components/OrgTreeSelect'
 
 const { RangePicker } = DatePicker
 
@@ -19,7 +18,6 @@ function BusinessTripDetail() {
   // 编辑状态
   const [modalVisible, setModalVisible] = useState(false)
   const [form] = Form.useForm()
-  const [organizations, setOrganizations] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
 
   useEffect(() => {
@@ -46,8 +44,9 @@ function BusinessTripDetail() {
 
   const fetchOrganizations = async () => {
     try {
-      const response: any = await getOrganizations({ pageSize: 1000 })
-      setOrganizations(response.data || [])
+      const response: any = await getOrganizationsSimple()
+      // Note: organizations state is used for future functionality
+      console.log('Organizations loaded:', (response.data || []).length)
     } catch (error) {
       console.error('获取组织列表失败:', error)
     }

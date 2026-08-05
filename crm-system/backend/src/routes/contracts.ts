@@ -1,4 +1,5 @@
 import { Router, Request } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
@@ -16,7 +17,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有合同（支持分页、筛选）
-router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['name', 'amount', 'signDate', 'startDate', 'endDate', 'status', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('project:contract:list'), applyDataScope('ownerId'), sortValidation(['name', 'amount', 'signDate', 'startDate', 'endDate', 'status', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -37,7 +38,7 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['n
     const where: any = { deletedAt: null, ...dataScopeWhere }
 
     // 权限过滤：非管理员只能看自己的合同或不公开的合同
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       where.OR = [
         { isPrivate: false },
         { ownerId: req.user!.id }
@@ -87,7 +88,7 @@ router.get('/', authenticateToken, applyDataScope('ownerId'), sortValidation(['n
 })
 
 // 合同统计
-router.get('/stats/overview', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('project:contract:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     // 使用聚合查询，不加载所有数据到内存
@@ -131,7 +132,7 @@ router.get('/stats/overview', authenticateToken, applyDataScope('ownerId'), asyn
 })
 
 // 下载合同文件
-router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -157,7 +158,7 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
 })
 
 // 预览合同附件（图片/PDF/Word/Excel）
-router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.contractFile.findFirst({ where: { id: fileId, deletedAt: null } })
@@ -177,7 +178,7 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
 })
 
 // 获取合同详情
-router.get('/:id', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('project:contract:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
     const dataScopeWhere = (req as any).dataScopeWhere || {}
@@ -196,7 +197,7 @@ router.get('/:id', authenticateToken, applyDataScope('ownerId'), async (req: Aut
     }
 
     // 权限检查：非管理员不能查看不公开的非本人合同
-    if (contract.isPrivate && contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (contract.isPrivate && contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权查看此合同（该合同已设为不公开）' })
     }
 
@@ -207,7 +208,7 @@ router.get('/:id', authenticateToken, applyDataScope('ownerId'), async (req: Aut
 })
 
 // 创建合同
-router.post('/', authenticateToken, logOperation('合同管理', 'CREATE'), dateValidation('signDate', 'startDate', 'endDate'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('project:contract:add'), logOperation('合同管理', 'CREATE'), dateValidation('signDate', 'startDate', 'endDate'), async (req: AuthRequest, res) => {
   try {
     const { name, organizationId, projectId, opportunityId, contactId, amount, signDate, startDate, endDate, status, content, isPrivate } = req.body
 
@@ -249,7 +250,7 @@ router.post('/', authenticateToken, logOperation('合同管理', 'CREATE'), date
 })
 
 // 审批合同
-router.post('/:id/approve', authenticateToken, checkPermission('approve_contracts'), logOperation('合同管理', 'APPROVE'), async (req: AuthRequest, res) => {
+router.post('/:id/approve', authenticateToken, checkPermission('project:contract:approve'), logOperation('合同管理', 'APPROVE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { status, remark } = req.body
@@ -281,7 +282,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
     }
 
     // 防止自审批：从 PENDING 到 ACTIVE 时，审批人不能是提交者本人（管理员除外）
-    if (contract.status === 'PENDING' && status === 'ACTIVE' && contract.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+    if (contract.status === 'PENDING' && status === 'ACTIVE' && contract.ownerId === req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '不能审批自己提交的合同' })
     }
 
@@ -351,7 +352,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_contract
 })
 
 // 更新合同
-router.put('/:id', authenticateToken, logOperation('合同管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
     const { name, organizationId, projectId, contactId, amount, signDate, startDate, endDate, status, content, isPrivate } = req.body
@@ -362,7 +363,7 @@ router.put('/:id', authenticateToken, logOperation('合同管理', 'UPDATE'), as
       return res.status(404).json({ error: '合同不存在' })
     }
     // 检查所有权（合同负责人或管理员才能编辑）
-    if (currentContract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (currentContract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权编辑此合同' })
     }
     if (status && status !== currentContract.status) {
@@ -398,7 +399,7 @@ router.put('/:id', authenticateToken, logOperation('合同管理', 'UPDATE'), as
 })
 
 // 删除合同
-router.delete('/:id', authenticateToken, logOperation('合同管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('project:contract:delete'), logOperation('合同管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
     const numericId = parseInt(id)
@@ -409,7 +410,7 @@ router.delete('/:id', authenticateToken, logOperation('合同管理', 'DELETE'),
       return res.status(404).json({ error: '合同不存在' })
     }
     // 检查所有权（合同负责人或管理员才能删除）
-    if (existing.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权删除此合同' })
     }
 
@@ -436,7 +437,7 @@ router.delete('/:id', authenticateToken, logOperation('合同管理', 'DELETE'),
 })
 
 // 上传合同文件
-router.post('/:id/files', authenticateToken, upload.array('files', 10), logOperation('合同管理', 'UPLOAD'), async (req: AuthRequest, res) => {
+router.post('/:id/files', authenticateToken, checkPermission('project:contract:edit'), upload.array('files', 10), logOperation('合同管理', 'UPLOAD'), async (req: AuthRequest, res) => {
   try {
     const contractId = parseInt(req.params.id as string)
     const files = req.files as Express.Multer.File[]
@@ -481,7 +482,7 @@ router.post('/:id/files', authenticateToken, upload.array('files', 10), logOpera
 })
 
 // 获取合同文件列表
-router.get('/:id/files', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/:id/files', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
     const contractId = parseInt(req.params.id as string)
 
@@ -498,7 +499,7 @@ router.get('/:id/files', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 删除合同文件
-router.delete('/:id/files/:fileId', authenticateToken, logOperation('合同管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
+router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -533,7 +534,7 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('合同管�
 })
 
 // 导出合同Excel
-router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('project:contract:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.contract.findMany({
@@ -558,7 +559,7 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
 })
 
 // 导入合同数据
-router.post('/import', authenticateToken, upload.single('file'), logOperation('合同管理', 'IMPORT'), async (req: AuthRequest, res) => {
+router.post('/import', authenticateToken, checkPermission('project:contract:add'), upload.single('file'), logOperation('合同管理', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
     const { data, error } = parseImportFile(req.file)

@@ -1,4 +1,5 @@
 import { Router, Request } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
@@ -16,12 +17,13 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有项目（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('view_projects'), sortValidation(['name', 'status', 'budget', 'startDate', 'endDate', 'createdAt', 'updatedAt', 'progress']), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('project:project:list'), sortValidation(['name', 'status', 'budget', 'startDate', 'endDate', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
       pageSize = '10',
       status = '',
+      statusNot = '',
       organizationId = '',
       search = '',
       isArchived = '',
@@ -36,23 +38,27 @@ router.get('/', authenticateToken, checkPermission('view_projects'), sortValidat
     // 获取数据权限条件 - 项目只允许 owner 和团队成员查看，不受部门数据权限影响
     const where: any = { deletedAt: null }
 
-    // 非管理员：只能看到自己是创建者或团队成员的项目
-    if (req.user?.role !== 'ADMIN') {
+    // 非管理员：只能看到自己是创建者或未删除的团队成员的项目
+    if (!(await isAdmin(req.user!.id))) {
       where.OR = [
         { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id } } }
+        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
       ]
     }
 
-    // 默认只查询未归档项目，除非明确指定
+    // 默认只查询未归档项目，除非明确指定（指定status时不加默认归档过滤）
     if (isArchived !== '') {
       where.isArchived = isArchived === 'true'
-    } else {
+    } else if (!status) {
       where.isArchived = false
     }
 
     if (status) {
       where.status = status as string
+    }
+
+    if (statusNot) {
+      where.status = { not: statusNot as string }
     }
 
     if (organizationId) {
@@ -145,11 +151,11 @@ router.get('/', authenticateToken, checkPermission('view_projects'), sortValidat
 })
 
 // 项目统计（放在 /:id 之前，避免被 /:id 拦截）
-router.get('/stats/overview', authenticateToken, checkPermission('view_projects'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('project:project:list'), async (req: AuthRequest, res) => {
   try {
     // 只统计未归档且 owner 和团队成员的项目
     const where: any = { deletedAt: null, isArchived: false }
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       where.OR = [
         { ownerId: req.user!.id },
         { teamMembers: { some: { userId: req.user!.id } } }
@@ -184,16 +190,16 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_projects'
 })
 
 // 获取项目详情
-router.get('/:id', authenticateToken, checkPermission('view_projects'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('project:project:list'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
 
-    // 项目只允许 owner 和团队成员查看，不受部门数据权限影响
+    // 项目只允许 owner 和未删除的团队成员查看，不受部门数据权限影响
     const where: any = { id: parseInt(id), deletedAt: null }
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       where.OR = [
         { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id } } }
+        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
       ]
     }
 
@@ -259,7 +265,7 @@ router.get('/:id', authenticateToken, checkPermission('view_projects'), async (r
 })
 
 // 创建项目
-router.post('/', authenticateToken, checkPermission('create_projects'), logOperation('项目管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('project:project:add'), logOperation('项目管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const { name, projectNo, organizationId, contactId, status, budget, startDate, endDate, description } = req.body
 
@@ -298,10 +304,10 @@ router.post('/', authenticateToken, checkPermission('create_projects'), logOpera
 })
 
 // 更新项目
-router.put('/:id', authenticateToken, checkPermission('edit_projects'), logOperation('项目管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('project:project:edit'), logOperation('项目管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
-    const { name, projectNo, organizationId, contactId, status, budget, startDate, endDate, description, progress } = req.body
+    const { name, projectNo, organizationId, contactId, status, budget, startDate, endDate, description } = req.body
 
     // 项目状态流转规则
     const validTransitions: Record<string, string[]> = {
@@ -340,7 +346,6 @@ router.put('/:id', authenticateToken, checkPermission('edit_projects'), logOpera
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
         description,
-        progress: progress !== undefined ? Number(progress) : undefined,
         // 状态变为"已完成"或"已取消"时自动归档
         isArchived: status === 'COMPLETED' || status === 'CANCELLED' ? true : undefined,
         archivedAt: status === 'COMPLETED' || status === 'CANCELLED' ? new Date() : undefined
@@ -360,7 +365,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_projects'), logOpera
 })
 
 // 归档/取消归档项目
-router.put('/:id/archive', authenticateToken, checkPermission('edit_projects'), logOperation('项目归档', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id/archive', authenticateToken, checkPermission('project:project:edit'), logOperation('项目归档', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { isArchived } = req.body
@@ -381,7 +386,7 @@ router.put('/:id/archive', authenticateToken, checkPermission('edit_projects'), 
 })
 
 // 删除项目
-router.delete('/:id', authenticateToken, checkPermission('edit_projects'), logOperation('项目管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('project:project:edit'), logOperation('项目管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
     const numericId = parseInt(id)
@@ -410,7 +415,7 @@ router.delete('/:id', authenticateToken, checkPermission('edit_projects'), logOp
 })
 
 // 下载项目文件
-router.get('/files/:fileId/download', authenticateToken, checkPermission('view_projects'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateToken, checkPermission('project:project:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -436,7 +441,7 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('view_p
 })
 
 // 预览项目文件（图片/PDF/Word/Excel）
-router.get('/files/:fileId/preview', authenticateToken, checkPermission('view_projects'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateToken, checkPermission('project:project:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -462,7 +467,7 @@ router.get('/files/:fileId/preview', authenticateToken, checkPermission('view_pr
 })
 
 // 上传项目文件
-router.post('/:id/files', authenticateToken, checkPermission('edit_projects'), upload.array('files', 10), logOperation('项目管理', 'UPLOAD'), async (req: AuthRequest, res) => {
+router.post('/:id/files', authenticateToken, checkPermission('project:project:edit'), upload.array('files', 10), logOperation('项目管理', 'UPLOAD'), async (req: AuthRequest, res) => {
   try {
     const projectId = parseInt(req.params.id as string)
     const files = req.files as Express.Multer.File[]
@@ -509,7 +514,7 @@ router.post('/:id/files', authenticateToken, checkPermission('edit_projects'), u
 })
 
 // 获取项目文件列表（支持按阶段筛选）
-router.get('/:id/files', authenticateToken, checkPermission('edit_projects'), async (req: AuthRequest, res) => {
+router.get('/:id/files', authenticateToken, checkPermission('project:project:edit'), async (req: AuthRequest, res) => {
   try {
     const projectId = parseInt(req.params.id as string)
     const phase = req.query.phase as string | undefined
@@ -532,7 +537,7 @@ router.get('/:id/files', authenticateToken, checkPermission('edit_projects'), as
 })
 
 // 删除项目文件
-router.delete('/:id/files/:fileId', authenticateToken, checkPermission('edit_projects'), logOperation('项目管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
+router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:project:edit'), logOperation('项目管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -569,7 +574,7 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('edit_pro
 // ==================== 项目团队成员管理 ====================
 
 // 获取项目团队成员
-router.get('/:id/team', authenticateToken, checkPermission('view_projects'), async (req: AuthRequest, res) => {
+router.get('/:id/team', authenticateToken, checkPermission('project:project:list'), async (req: AuthRequest, res) => {
   try {
     const projectId = parseInt(req.params.id as string)
 
@@ -594,7 +599,7 @@ router.get('/:id/team', authenticateToken, checkPermission('view_projects'), asy
 })
 
 // 添加项目团队成员
-router.post('/:id/team', authenticateToken, checkPermission('edit_projects'), logOperation('项目管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/:id/team', authenticateToken, checkPermission('project:project:edit'), logOperation('项目管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const projectId = parseInt(req.params.id as string)
     const { userId, projectRole, responsibility } = req.body
@@ -615,25 +620,46 @@ router.post('/:id/team', authenticateToken, checkPermission('edit_projects'), lo
       return res.status(404).json({ error: '用户不存在' })
     }
 
-    // 检查是否已在团队中
-    const existing = await prisma.projectTeamMember.findFirst({
+    // 检查是否已在团队中（包括软删除的记录，因为唯一约束不考虑 deletedAt）
+    const existingAny = await prisma.projectTeamMember.findFirst({
       where: { projectId, userId: parseInt(userId) }
     })
-    if (existing) {
+
+    if (existingAny && !existingAny.deletedAt) {
+      // 未删除的记录存在 → 真正重复
       return res.status(400).json({ error: '该成员已在项目团队中' })
     }
 
-    const member = await prisma.projectTeamMember.create({
-      data: {
-        projectId,
-        userId: parseInt(userId),
-        projectRole: (projectRole as any) || 'DEVELOPER',
-        responsibility
-      },
-      include: {
-        user: { select: { id: true, name: true, email: true, role: true } }
-      }
-    })
+    let member
+    if (existingAny && existingAny.deletedAt) {
+      // 存在软删除的记录 → 恢复并更新
+      member = await prisma.projectTeamMember.update({
+        where: { id: existingAny.id },
+        data: {
+          deletedAt: null,
+          projectRole: (projectRole as any) || 'DEVELOPER',
+          responsibility,
+          joinDate: new Date(),
+          leaveDate: null
+        },
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true } }
+        }
+      })
+    } else {
+      // 不存在任何记录 → 新建
+      member = await prisma.projectTeamMember.create({
+        data: {
+          projectId,
+          userId: parseInt(userId),
+          projectRole: (projectRole as any) || 'DEVELOPER',
+          responsibility
+        },
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true } }
+        }
+      })
+    }
 
     res.status(201).json(member)
   } catch (error) {
@@ -643,7 +669,7 @@ router.post('/:id/team', authenticateToken, checkPermission('edit_projects'), lo
 })
 
 // 更新团队成员角色/职责
-router.put('/:id/team/:memberId', authenticateToken, checkPermission('edit_projects'), logOperation('项目管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id/team/:memberId', authenticateToken, checkPermission('project:project:edit'), logOperation('项目管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const memberId = parseInt(req.params.memberId as string)
     const { responsibility, leaveDate } = req.body
@@ -672,7 +698,7 @@ router.put('/:id/team/:memberId', authenticateToken, checkPermission('edit_proje
 })
 
 // 移除项目团队成员
-router.delete('/:id/team/:memberId', authenticateToken, checkPermission('edit_projects'), logOperation('项目管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id/team/:memberId', authenticateToken, checkPermission('project:project:edit'), logOperation('项目管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const memberId = parseInt(req.params.memberId as string)
 
@@ -696,7 +722,6 @@ const projectColumns = [
   { key: 'organization.name', label: '组织' },
   { key: 'status', label: '状态' },
   { key: 'budget', label: '预算' },
-  { key: 'progress', label: '进度(%)' },
   { key: 'startDate', label: '开始日期' },
   { key: 'endDate', label: '结束日期' },
   { key: 'owner.name', label: '负责人' },
@@ -706,7 +731,6 @@ const projectLabelMap: Record<string, string> = {
   '项目名称': 'name',
   '状态': 'status',
   '预算': 'budget',
-  '进度(%)': 'progress',
 }
 
 // 导出项目 Excel
@@ -762,7 +786,6 @@ router.post('/import', authenticateToken, upload.single('file'), logOperation('�
             organizationId: defaultOrganizationId,
             status: mapped.status || 'IN_PROGRESS',
             budget: mapped.budget ? Number(mapped.budget) : null,
-            progress: mapped.progress ? Number(mapped.progress) : 0,
             ownerId: req.user!.id,
           },
         })

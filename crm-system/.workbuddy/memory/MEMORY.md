@@ -25,3 +25,28 @@
 - CRM 端口: 8880
 - 镜像名: crm-backend:arm64, crm-frontend:arm64, postgres:15-alpine-arm64
 - 数据库: crm_db / crm_user / Crm2026!Secure
+
+## 权限系统架构（2026-08-01 若依化改造后）
+
+### 核心结构
+- **权限来源**：RoleMenu → MenuItem.perm（三段式，如 `crm:organization:list`）
+- **权限获取**：`getUserPerms(userId)` 通过 UserRole → RoleMenu → MenuItem.perm 链路聚合
+- **后端权限检查**：`checkPermission('office:dailyreport:list')` 中间件
+- **前端权限控制**：
+  - `HasPermission` / `PermissionButton` 组件控制按钮显示
+  - `routeConfig.ts` + `PermissionRoute` 控制路由访问
+  - 动态路由根据用户菜单数据生成
+
+### 权限标识格式
+- **三段式**：`module:entity:action`
+- 示例：`crm:organization:list`、`project:project:edit`、`office:trip:approve`
+
+### 数据权限
+- `applyDataScope('字段名')` 中间件，参数为所属字段名
+- 支持 ALL/DEPARTMENT/DEPARTMENT_BELOW/SELF/CUSTOM 五种范围
+- 常用字段：`userId`（日报）、`ownerId`（发票/费用）、`assignedTo`（采购）
+
+### 数据库菜单结构
+- 20 个目录/菜单 + 74 个 BUTTON 权限节点
+- RoleMenu 关联表存储角色-菜单/按钮的权限分配
+- 管理员（admin）拥有全部权限（*）

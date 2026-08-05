@@ -13,8 +13,7 @@ import {
   CheckCircleOutlined,
   ExclamationCircleOutlined,
   MailOutlined,
-  LockOutlined,
-  EditOutlined
+  LockOutlined
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useEffect, useState, useCallback } from 'react'
@@ -90,6 +89,8 @@ function Layout() {
       const menuList = response.menus || response || []
       setMenus(menuList)
       localStorage.setItem('menus', JSON.stringify(menuList))
+      // 通知 App.tsx 重新构建路由
+      window.dispatchEvent(new CustomEvent('menus-updated'))
     } catch (error: any) {
       console.error('获取菜单失败:', error)
       const cached = localStorage.getItem('menus')
@@ -237,10 +238,14 @@ function Layout() {
       })
   }
 
-  const menuItems = buildMenuItems(menus.filter(m => m.parentId === null).map(m => ({
-    ...m,
-    children: menus.filter(child => child.parentId === m.id)
-  })))
+  const menuItems = buildMenuItems(menus.filter(m => m.parentId === null).map(m => {
+    const children = menus.filter(c => c.parentId === m.id && c.isVisible && c.menuType !== 'BUTTON')
+    return {
+      ...m,
+      // 只有真正有子菜单时才设置 children，否则不显示展开箭头
+      children: children.length > 0 ? children : undefined
+    }
+  }))
 
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
     navigate(key)
@@ -263,7 +268,7 @@ function Layout() {
   const handleSubmitPassword = async () => {
     try {
       const values = await passwordForm.validateFields()
-      const response = await api.put('/auth/change-password', {
+      await api.put('/auth/change-password', {
         oldPassword: values.oldPassword,
         newPassword: values.newPassword
       })

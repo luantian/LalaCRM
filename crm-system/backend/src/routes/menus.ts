@@ -1,47 +1,34 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken } from '../middleware/auth'
+import { authenticateToken, checkAdmin } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
 const router = Router()
 const prisma = new PrismaClient()
 
-// 中间件：检查是否是admin
-const checkAdmin = async (req: Request, res: Response, next: Function) => {
-  try {
-    const userId = (req as any).user?.id
-    if (!userId) {
-      return res.status(401).json({ error: '未授权访问' })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { role: true }
-    })
-
-    if (!user || user.role !== 'ADMIN') {
-      return res.status(403).json({ error: '只有管理员才能访问此功能' })
-    }
-
-    next()
-  } catch (error) {
-    logger.error('Admin check error:', error)
-    res.status(500).json({ error: '服务器错误' })
-  }
-}
-
 // 获取所有菜单
 router.get('/', authenticateToken, checkAdmin, async (req: Request, res: Response) => {
   try {
     const menus = await prisma.menuItem.findMany({
       include: {
-        children: true
+        children: true,
+        roleMenus: {
+          include: {
+            role: true
+          }
+        }
       },
       orderBy: { order: 'asc' }
     })
 
-    res.json(menus)
+    // 将 roleMenus 转换为角色名称数组，方便前端使用
+    const menusWithRoles = menus.map(menu => ({
+      ...menu,
+      assignedRoles: menu.roleMenus.map(rm => rm.role.name)
+    }))
+
+    res.json(menusWithRoles)
   } catch (error) {
     logger.error('Get menus error:', error)
     res.status(500).json({ error: '获取菜单列表失败' })

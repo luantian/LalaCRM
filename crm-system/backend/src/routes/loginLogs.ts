@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 
@@ -8,7 +9,7 @@ const prisma = new PrismaClient()
 // 登录日志列表（分页 + 筛选）
 router.get('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员才能查看登录日志' })
     }
 
@@ -53,7 +54,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
 // 登录日志统计
 router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员才能查看登录日志' })
     }
 
@@ -83,7 +84,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
 // 清理 90 天前的登录日志
 router.delete('/clean', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ code: 403, message: '无权限' })
     }
 

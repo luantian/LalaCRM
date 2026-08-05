@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
@@ -75,7 +76,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
 // 创建部门
 router.post('/', authenticateToken, logOperation('部门管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员才能执行此操作' })
     }
 
@@ -117,7 +118,7 @@ router.post('/', authenticateToken, logOperation('部门管理', 'CREATE'), asyn
 // 更新部门
 router.put('/:id', authenticateToken, logOperation('部门管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员才能执行此操作' })
     }
 
@@ -162,7 +163,7 @@ router.put('/:id', authenticateToken, logOperation('部门管理', 'UPDATE'), as
 // 删除部门
 router.delete('/:id', authenticateToken, logOperation('部门管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员才能执行此操作' })
     }
 

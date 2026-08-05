@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
@@ -27,7 +28,7 @@ router.get('/types', authenticateToken, async (req: AuthRequest, res) => {
 // 创建字典类型
 router.post('/types', authenticateToken, logOperation('数据字典', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员才能执行此操作' })
     }
 
@@ -65,7 +66,7 @@ router.post('/types', authenticateToken, logOperation('数据字典', 'CREATE'),
 // 更新字典类型
 router.put('/types/:id', authenticateToken, logOperation('数据字典', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员才能执行此操作' })
     }
 
@@ -105,7 +106,7 @@ router.put('/types/:id', authenticateToken, logOperation('数据字典', 'UPDATE
 // 删除字典类型（级联删除数据项）
 router.delete('/types/:id', authenticateToken, logOperation('数据字典', 'DELETE'), async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员才能执行此操作' })
     }
 
@@ -160,7 +161,7 @@ router.get('/types/:id/data', authenticateToken, async (req: AuthRequest, res) =
 // 创建数据项
 router.post('/types/:id/data', authenticateToken, logOperation('数据字典', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员才能执行此操作' })
     }
 
@@ -201,7 +202,7 @@ router.post('/types/:id/data', authenticateToken, logOperation('数据字典', '
 // 更新数据项
 router.put('/data/:itemId', authenticateToken, logOperation('数据字典', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员才能执行此操作' })
     }
 
@@ -230,7 +231,7 @@ router.put('/data/:itemId', authenticateToken, logOperation('数据字典', 'UPD
 // 删除数据项
 router.delete('/data/:itemId', authenticateToken, logOperation('数据字典', 'DELETE'), async (req: AuthRequest, res) => {
   try {
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员才能执行此操作' })
     }
 

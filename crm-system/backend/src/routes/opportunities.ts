@@ -1,6 +1,7 @@
 import { Router, Request } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission, checkAnyPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
 import { applyDataScope } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
@@ -16,7 +17,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有商机（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('view_opportunities'), sortValidation(['name', 'budget', 'status', 'winRate', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkAnyPermission(['crm:opportunity:list', 'project:archive:list']), sortValidation(['name', 'budget', 'status', 'winRate', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -35,7 +36,7 @@ router.get('/', authenticateToken, checkPermission('view_opportunities'), sortVa
     const where: any = { deletedAt: null }
 
     // 非管理员：只能看到自己是创建者或团队成员的商机
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       where.OR = [
         { ownerId: req.user!.id },
         { teamMembers: { some: { userId: req.user!.id } } }
@@ -57,7 +58,11 @@ router.get('/', authenticateToken, checkPermission('view_opportunities'), sortVa
     }
 
     if (search) {
-      where.name = { contains: search as string, mode: 'insensitive' }
+      const searchTerm = search as string
+      where.OR = [
+        { name: { contains: searchTerm, mode: 'insensitive' } },
+        { opportunityNo: { contains: searchTerm, mode: 'insensitive' } }
+      ]
     }
 
     const total = await prisma.opportunity.count({ where })
@@ -94,11 +99,11 @@ router.get('/', authenticateToken, checkPermission('view_opportunities'), sortVa
 })
 
 // 商机统计（放在 /:id 之前，避免被 /:id 拦截）
-router.get('/stats/overview', authenticateToken, checkPermission('view_opportunities'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkAnyPermission(['crm:opportunity:list', 'project:archive:list']), async (req: AuthRequest, res) => {
   try {
     // 只统计 owner 和团队成员的商机
     const where: any = { deletedAt: null }
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       where.OR = [
         { ownerId: req.user!.id },
         { teamMembers: { some: { userId: req.user!.id } } }
@@ -136,13 +141,13 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_opportuni
 })
 
 // 获取商机详情
-router.get('/:id', authenticateToken, checkPermission('view_opportunities'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('crm:opportunity:list'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
 
     // 商机只允许 owner 和团队成员查看
     const where: any = { id: parseInt(id), deletedAt: null }
-    if (req.user?.role !== 'ADMIN') {
+    if (!(await isAdmin(req.user!.id))) {
       where.OR = [
         { ownerId: req.user!.id },
         { teamMembers: { some: { userId: req.user!.id } } }
@@ -178,10 +183,11 @@ router.get('/:id', authenticateToken, checkPermission('view_opportunities'), asy
 })
 
 // 创建商机
-router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'CREATE'), dateValidation('expectedStart', 'expectedEnd'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'CREATE'), dateValidation('expectedStart', 'expectedEnd'), async (req: AuthRequest, res) => {
   try {
     const {
       name,
+      opportunityNo,
       organizationId,
       contactId,
       application,
@@ -204,6 +210,7 @@ router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOp
     const opportunity = await prisma.opportunity.create({
       data: {
         name,
+        opportunityNo,
         organizationId,
         contactId: contactId || null,
         application,
@@ -233,12 +240,13 @@ router.post('/', authenticateToken, checkPermission('edit_opportunities'), logOp
 })
 
 // 更新商机
-router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
     const numericId = parseInt(id)
     const {
       name,
+      opportunityNo,
       organizationId,
       contactId,
       application,
@@ -262,10 +270,11 @@ router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), log
     // 状态流转校验（如果提供了status且与当前不同）
     if (status && status !== existing.status) {
       const validTransitions: Record<string, string[]> = {
-        'OPEN': ['FOLLOWING', 'WON', 'LOST'],
-        'FOLLOWING': ['WON', 'LOST', 'OPEN'],
+        'OPEN': ['FOLLOWING', 'WON', 'LOST', 'CLOSED'],
+        'FOLLOWING': ['WON', 'LOST', 'CLOSED', 'OPEN'],
         'WON': [],
-        'LOST': ['OPEN']
+        'LOST': ['OPEN'],
+        'CLOSED': ['OPEN']
       }
       const allowedNext = validTransitions[existing.status] || []
       if (!allowedNext.includes(status)) {
@@ -280,6 +289,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), log
       where: { id: numericId },
       data: {
         name,
+        opportunityNo: opportunityNo !== undefined ? (opportunityNo || null) : undefined,
         organizationId,
         contactId: contactId !== undefined ? (contactId || null) : undefined,
         application,
@@ -304,7 +314,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_opportunities'), log
 })
 
 // 删除商机
-router.delete('/:id', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
     const numericId = parseInt(id)
@@ -329,7 +339,7 @@ router.delete('/:id', authenticateToken, checkPermission('edit_opportunities'), 
 })
 
 // 添加团队成员
-router.post('/:id/team', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/:id/team', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const opportunityId = parseInt(req.params.id as string)
     const { userId, teamRole } = req.body
@@ -375,7 +385,7 @@ router.post('/:id/team', authenticateToken, checkPermission('edit_opportunities'
 })
 
 // 移除团队成员
-router.delete('/:id/team/:memberId', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id/team/:memberId', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const memberId = parseInt(req.params.memberId as string)
 
@@ -400,7 +410,7 @@ router.delete('/:id/team/:memberId', authenticateToken, checkPermission('edit_op
 })
 
 // 上传商机文件
-router.post('/:id/files', authenticateToken, checkPermission('edit_opportunities'), upload.array('files', 10), logOperation('售前管理', 'UPLOAD'), async (req: AuthRequest, res) => {
+router.post('/:id/files', authenticateToken, checkPermission('crm:opportunity:edit'), upload.array('files', 10), logOperation('售前管理', 'UPLOAD'), async (req: AuthRequest, res) => {
   try {
     const opportunityId = parseInt(req.params.id as string)
     const files = req.files as Express.Multer.File[]
@@ -445,7 +455,7 @@ router.post('/:id/files', authenticateToken, checkPermission('edit_opportunities
 })
 
 // 获取商机文件列表
-router.get('/:id/files', authenticateToken, checkPermission('edit_opportunities'), async (req: AuthRequest, res) => {
+router.get('/:id/files', authenticateToken, checkPermission('crm:opportunity:edit'), async (req: AuthRequest, res) => {
   try {
     const opportunityId = parseInt(req.params.id as string)
 
@@ -462,7 +472,7 @@ router.get('/:id/files', authenticateToken, checkPermission('edit_opportunities'
 })
 
 // 删除商机文件
-router.delete('/:id/files/:fileId', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
+router.delete('/:id/files/:fileId', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -497,7 +507,7 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('edit_opp
 })
 
 // 下载商机文件
-router.get('/files/:fileId/download', authenticateToken, checkPermission('edit_opportunities'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateToken, checkPermission('crm:opportunity:edit'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -523,7 +533,7 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('edit_o
 })
 
 // 商机转项目
-router.post('/:id/convert', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/:id/convert', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
 
@@ -571,7 +581,7 @@ router.post('/:id/convert', authenticateToken, checkPermission('edit_opportuniti
 })
 
 // 关闭商机关联的项目（将项目状态改为已取消）
-router.post('/:id/close-project', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'CLOSE_PROJECT'), async (req: AuthRequest, res) => {
+router.post('/:id/close-project', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'CLOSE_PROJECT'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
 
@@ -613,7 +623,7 @@ router.post('/:id/close-project', authenticateToken, checkPermission('edit_oppor
 // ===== 商机信息记录 =====
 
 // 获取商机信息记录列表
-router.get('/:id/records', authenticateToken, checkPermission('view_opportunities'), async (req: AuthRequest, res) => {
+router.get('/:id/records', authenticateToken, checkPermission('crm:opportunity:list'), async (req: AuthRequest, res) => {
   try {
     const opportunityId = parseInt(req.params.id as string)
 
@@ -634,7 +644,7 @@ router.get('/:id/records', authenticateToken, checkPermission('view_opportunitie
 })
 
 // 创建商机信息记录
-router.post('/:id/records', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'CREATE_RECORD'), async (req: AuthRequest, res) => {
+router.post('/:id/records', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'CREATE_RECORD'), async (req: AuthRequest, res) => {
   try {
     const opportunityId = parseInt(req.params.id as string)
     const { content, nextPlan, nextDate } = req.body
@@ -684,7 +694,7 @@ router.post('/:id/records', authenticateToken, checkPermission('edit_opportuniti
 })
 
 // 更新商机信息记录
-router.put('/:id/records/:recordId', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'UPDATE_RECORD'), async (req: AuthRequest, res) => {
+router.put('/:id/records/:recordId', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'UPDATE_RECORD'), async (req: AuthRequest, res) => {
   try {
     const recordId = parseInt(req.params.recordId as string)
     const { type, content, nextPlan, nextDate } = req.body
@@ -718,7 +728,7 @@ router.put('/:id/records/:recordId', authenticateToken, checkPermission('edit_op
 })
 
 // 删除商机信息记录
-router.delete('/:id/records/:recordId', authenticateToken, checkPermission('edit_opportunities'), logOperation('售前管理', 'DELETE_RECORD'), async (req: AuthRequest, res) => {
+router.delete('/:id/records/:recordId', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'DELETE_RECORD'), async (req: AuthRequest, res) => {
   try {
     const recordId = parseInt(req.params.recordId as string)
 

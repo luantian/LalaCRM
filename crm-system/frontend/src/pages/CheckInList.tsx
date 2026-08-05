@@ -4,10 +4,8 @@ import { CheckCircleOutlined, ClockCircleOutlined, CarOutlined, ExclamationCircl
 import { getCheckIns, getTodayCheckIn, checkIn, makeupCheckIn, getCheckInStats } from '../services/api'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
-import 'dayjs/locale/zh-cn'
 
 dayjs.extend(utc)
-dayjs.locale('zh-cn')
 
 // 安全地把后端返回的时间转为用户本地时间显示
 const formatTime = (t: string | Date) => dayjs.utc(t).local().format('HH:mm')

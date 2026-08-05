@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { TreeSelect } from 'antd'
-import { getOrganizationTree } from '../services/api'
+import { getOrganizationsSimple } from '../services/api'
 
 interface OrgTreeSelectProps {
   value?: number | null
@@ -14,27 +14,11 @@ interface OrgTreeSelectProps {
 interface OrgNode {
   id: number
   name: string
-  type: string
-  children?: OrgNode[]
 }
 
 /**
- * 将组织树数据转换为 TreeSelect 需要的 treeData 格式
- */
-function transformTree(nodes: OrgNode[]): any[] {
-  return nodes.map(node => ({
-    title: node.name,
-    value: node.id,
-    key: node.id,
-    selectable: true,
-    icon: node.type === 'GROUP' ? '🏢' : node.type === 'COMPANY' ? '🏬' : '👤',
-    children: node.children ? transformTree(node.children) : [],
-  }))
-}
-
-/**
- * 组织树形选择器
- * 使用 TreeSelect 展示组织的层级结构（集团/公司/分公司）
+ * 组织选择器
+ * 使用 Select 展示扁平化的组织列表（无需权限）
  */
 export function OrgTreeSelect({
   value,
@@ -48,18 +32,17 @@ export function OrgTreeSelect({
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    let cancelled = false
     setLoading(true)
-    getOrganizationTree()
+    getOrganizationsSimple()
       .then((data: any) => {
-        if (!cancelled) {
-          const tree = data?.tree || data || []
-          setTreeData(transformTree(Array.isArray(tree) ? tree : []))
-        }
+        const orgs = Array.isArray(data) ? data : []
+        setTreeData(orgs.map((org: OrgNode) => ({
+          label: org.name,
+          value: org.id,
+        })))
       })
-      .catch(() => { if (!cancelled) setTreeData([]) })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+      .catch(() => setTreeData([]))
+      .finally(() => setLoading(false))
   }, [])
 
   return (

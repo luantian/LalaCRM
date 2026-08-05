@@ -91,8 +91,27 @@ export async function getDataScopeWhere(
     }
   }
 
-  // CUSTOM：暂不实现，默认只看自己的
-  // 可以后续扩展为用户-部门自定义关联
+  // CUSTOM：自定义部门列表
+  if (dataScopes.includes('CUSTOM')) {
+    // 获取所有角色的 customDeptIds 并集
+    const customDeptIdsSet = new Set<number>()
+    for (const ur of userRoles) {
+      if (ur.role.dataScope === 'CUSTOM' && ur.role.customDeptIds) {
+        ur.role.customDeptIds.forEach(deptId => customDeptIdsSet.add(deptId))
+      }
+    }
+    
+    if (customDeptIdsSet.size > 0) {
+      const customDeptIds = Array.from(customDeptIdsSet)
+      const customDeptUserIds = await prisma.user.findMany({
+        where: { deptId: { in: customDeptIds } },
+        select: { id: true }
+      }).then(users => users.map(u => u.id))
+      if (customDeptUserIds.length > 0) {
+        conditions.push({ [ownerField]: { in: customDeptUserIds } })
+      }
+    }
+  }
 
   // 如果没有匹配的条件，默认只看自己的
   if (conditions.length === 0) {

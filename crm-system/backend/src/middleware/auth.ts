@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
+import { isAdmin, getUserPerms } from '../utils/permission'
 
 interface AuthRequest extends Request {
   user?: {
@@ -36,19 +37,67 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
   }
 }
 
-// 权限检查中间件 - 检查用户是否拥有指定权限
+// 管理员检查中间件
+export const checkAdmin = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (!req.user?.id) {
+    return res.status(401).json({ error: '未登录' })
+  }
+  
+  const adminStatus = await isAdmin(req.user.id)
+  if (adminStatus) {
+    return next()
+  }
+  
+  return res.status(403).json({ error: '只有管理员才能执行此操作' })
+}
+
+// 权限检查中间件 - 检查用户是否拥有指定权限（从数据库动态查询）
 export const checkPermission = (permission: string) => {
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: '未登录' })
+    }
+    
     // 管理员拥有所有权限
-    if (req.user?.role === 'ADMIN') {
+    const adminStatus = await isAdmin(req.user.id)
+    if (adminStatus) {
       return next()
     }
-    // 检查权限列表
-    const permissions = req.user?.permissions || []
-    if (permissions.includes(permission)) {
+    
+    // 从数据库动态查询用户权限
+    const userPerms = await getUserPerms(req.user.id)
+    
+    // 检查是否有通配符权限或指定权限
+    if (userPerms.includes('*') || userPerms.includes(permission)) {
       return next()
     }
+    
     return res.status(403).json({ error: `权限不足，需要: ${permission}` })
+  }
+}
+
+// 多权限检查中间件 - 检查用户是否拥有其中任意一个权限
+export const checkAnyPermission = (permissions: string[]) => {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: '未登录' })
+    }
+    
+    // 管理员拥有所有权限
+    const adminStatus = await isAdmin(req.user.id)
+    if (adminStatus) {
+      return next()
+    }
+    
+    // 从数据库动态查询用户权限
+    const userPerms = await getUserPerms(req.user.id)
+    
+    // 检查是否有通配符权限或任意一个指定权限
+    if (userPerms.includes('*') || permissions.some(perm => userPerms.includes(perm))) {
+      return next()
+    }
+    
+    return res.status(403).json({ error: `权限不足，需要: ${permissions.join(' 或 ')}` })
   }
 }
 

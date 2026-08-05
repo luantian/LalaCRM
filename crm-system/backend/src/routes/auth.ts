@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import rateLimit from 'express-rate-limit'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkAdmin } from '../middleware/auth'
 import logger from '../utils/logger'
 
 const router = Router()
@@ -55,14 +55,6 @@ function cleanIp(req: any): string {
   // 回退到 socket 地址，清理 IPv6 映射前缀
   const raw = req.socket?.remoteAddress || req.ip || ''
   return raw.replace(/^::ffff:/, '')
-}
-
-// Helper: 检查是否是管理员
-const checkAdmin = async (req: AuthRequest, res: any, next: any) => {
-  if (req.user?.role !== 'ADMIN') {
-    return res.status(403).json({ error: '只有管理员才能创建用户' })
-  }
-  next()
 }
 
 // Helper: fetch menus for a given user
@@ -133,30 +125,41 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: '用户名或密码错误' })
     }
 
-    // 获取用户角色权限：从 userRoles 多角色关联表聚合所有权限
+    // 获取用户角色权限：从 RoleMenu → MenuItem.perm 读取三段式权限标识
     const userRolesList = await prisma.userRole.findMany({
       where: { userId: user.id },
-      include: { role: { select: { permissions: true } } }
+      select: { roleId: true }
     })
 
-    const permissionSet = new Set<string>()
-    for (const ur of userRolesList) {
-      if (ur.role?.permissions) {
-        ur.role.permissions.forEach((p: string) => permissionSet.add(p))
-      }
-    }
-
-    // Fallback: 从旧的 roleId 字段获取权限
+    const roleIds = userRolesList.map(ur => ur.roleId)
+    
+    // Fallback: 从旧的 roleId 字段获取
     let resolvedRoleId = user.roleId
     if (!resolvedRoleId && user.role) {
       const roleModel = await prisma.roleModel.findUnique({ where: { name: user.role } })
-      if (roleModel) {
-        resolvedRoleId = roleModel.id
-        roleModel.permissions.forEach((p: string) => permissionSet.add(p))
+      if (roleModel) resolvedRoleId = roleModel.id
+    }
+    if (resolvedRoleId && !roleIds.includes(resolvedRoleId)) {
+      roleIds.push(resolvedRoleId)
+    }
+
+    const permissionSet = new Set<string>()
+    
+    // 如果是管理员，返回通配符权限
+    if (user.role === 'ADMIN') {
+      permissionSet.add('*')
+    } else if (roleIds.length > 0) {
+      // 从 RoleMenu → MenuItem 获取三段式权限标识
+      const roleMenus = await prisma.roleMenu.findMany({
+        where: { roleId: { in: roleIds } },
+        include: { menu: { select: { perm: true } } }
+      })
+      
+      for (const rm of roleMenus) {
+        if (rm.menu?.perm) {
+          permissionSet.add(rm.menu.perm)
+        }
       }
-    } else if (resolvedRoleId) {
-      const roleModel = await prisma.roleModel.findUnique({ where: { id: resolvedRoleId } })
-      if (roleModel) roleModel.permissions.forEach((p: string) => permissionSet.add(p))
     }
 
     const permissions = Array.from(permissionSet)
@@ -182,6 +185,9 @@ router.post('/login', async (req, res) => {
       data: { userId: user.id, username, status: 'SUCCESS', ip, userAgent: ua, os, browser, message: '登录成功' }
     }).catch(() => {})
 
+    // 获取用户部门信息
+    const dept = user.deptId ? await prisma.department.findUnique({ where: { id: user.deptId }, select: { id: true, name: true } }) : null
+
     res.json({
       token,
       user: {
@@ -190,7 +196,9 @@ router.post('/login', async (req, res) => {
         email: user.email,
         name: user.name,
         role: user.role,
-        permissions
+        permissions,
+        deptId: dept?.id || null,
+        deptName: dept?.name || null
       },
       menus
     })
@@ -224,6 +232,40 @@ router.get('/me', async (req, res) => {
       return res.status(404).json({ error: '用户不存在' })
     }
 
+    // 从 RoleMenu → MenuItem.perm 获取三段式权限标识（与登录接口一致）
+    const userRolesList = await prisma.userRole.findMany({
+      where: { userId: user.id },
+      select: { roleId: true }
+    })
+
+    const roleIds = userRolesList.map(ur => ur.roleId)
+    
+    // Fallback: 从旧的 roleId 字段获取
+    if (user.roleId && !roleIds.includes(user.roleId)) {
+      roleIds.push(user.roleId)
+    }
+
+    const permissionSet = new Set<string>()
+    
+    // 如果是管理员，返回通配符权限
+    if (user.role === 'ADMIN') {
+      permissionSet.add('*')
+    } else if (roleIds.length > 0) {
+      // 从 RoleMenu → MenuItem 获取三段式权限标识
+      const roleMenus = await prisma.roleMenu.findMany({
+        where: { roleId: { in: roleIds } },
+        include: { menu: { select: { perm: true } } }
+      })
+      
+      for (const rm of roleMenus) {
+        if (rm.menu?.perm) {
+          permissionSet.add(rm.menu.perm)
+        }
+      }
+    }
+
+    const permissions = Array.from(permissionSet)
+
     const menus = await getUserMenus(user.id, user.roleId, user.role)
 
     res.json({
@@ -232,7 +274,7 @@ router.get('/me', async (req, res) => {
       email: user.email,
       name: user.name,
       role: user.role,
-      permissions: user.roleRef?.permissions || [],
+      permissions,
       menus
     })
   } catch (error) {

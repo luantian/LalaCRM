@@ -2,33 +2,35 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Spin, Result } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, FileTextOutlined, ScheduleOutlined, CheckOutlined, EyeOutlined, CloseOutlined } from '@ant-design/icons'
-import { getOpportunityDetail, updateOpportunity, convertOpportunity, closeOpportunityProject, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getOrganizations, getUserDropdown, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, openFilePreview, isPreviewableFile, safeJsonParse } from '../services/api'
+import { getOpportunityDetail, updateOpportunity, convertOpportunity, closeOpportunityProject, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getOrganizationsSimple, getUserDropdown, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, openFilePreview, isPreviewableFile, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
-import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import { OrgContactSelector } from '../components/OrgContactSelector'
+import { usePermission } from '../hooks/usePermission'
 
 const { TextArea } = Input
 
 function OpportunityDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { checkPermission } = usePermission()
   const [opportunity, setOpportunity] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
   // 当前用户与权限
   const currentUser = safeJsonParse(localStorage.getItem('user'), {})
-  const canEditOpportunity = currentUser.role === 'ADMIN' || currentUser.permissions?.includes('edit_opportunities')
+  const canEditOpportunity = checkPermission('crm:opportunity:edit')
   const defaultTeamRole = useMemo(() => {
     if (canEditOpportunity) return 'BUSINESS'
-    if (currentUser.role === 'PROJECT_MANAGER') return 'TECHNICAL'
+    // 根据用户系统角色判断默认团队角色
+    const userRole = currentUser.role
+    if (userRole === 'PROJECT_MANAGER' || userRole === 'ADMIN') return 'TECHNICAL'
     return 'SALES'
   }, [canEditOpportunity, currentUser.role])
 
   // 编辑状态
   const [modalVisible, setModalVisible] = useState(false)
   const [form] = Form.useForm()
-  const [organizations, setOrganizations] = useState<any[]>([])
 
   // 团队成员状态
   const [users, setUsers] = useState<any[]>([])
@@ -79,8 +81,9 @@ function OpportunityDetail() {
 
   const fetchOrganizations = async () => {
     try {
-      const response: any = await getOrganizations({ pageSize: 1000 })
-      setOrganizations(response.data || [])
+      const response: any = await getOrganizationsSimple()
+      // organizations list kept for potential future use
+      void response.data
     } catch (error) { console.error('获取组织列表失败:', error) }
   }
 
@@ -116,6 +119,7 @@ function OpportunityDetail() {
   const handleEdit = () => {
     form.setFieldsValue({
       name: opportunity.name,
+      opportunityNo: opportunity.opportunityNo || '',
       organizationId: opportunity.organizationId,
       application: opportunity.application || '',
       budget: opportunity.budget ? Number(opportunity.budget) : null,
@@ -588,10 +592,12 @@ function OpportunityDetail() {
           <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
             <Input />
           </Form.Item>
+          <Form.Item name="opportunityNo" label="项目编码">
+            <Input placeholder="可选,如:OPP-2024-001" />
+          </Form.Item>
           <Form.Item name="contactId" label="客户" rules={[{ required: true, message: '请选择客户联系人' }]}>
             <OrgContactSelector
               placeholder="请选择客户联系人"
-              fallbackLabel={opportunity?.contact ? `${opportunity.contact.name}${opportunity.contact.title ? ` (${opportunity.contact.title})` : ''} — ${opportunity.organization?.name || ''}` : undefined}
               onContactSelect={(contactId, orgId) => {
                 form.setFieldValue('contactId', contactId)
                 form.setFieldValue('organizationId', orgId)

@@ -42,6 +42,7 @@ import checkInRoutes from './routes/checkIns'
 import taskRoutes from './routes/tasks'
 import notificationRoutes from './routes/notifications'
 import orgRoutes from './routes/organizations'
+import settingsRoutes from './routes/settings'
 
 dotenv.config()
 
@@ -129,6 +130,7 @@ app.use('/api/check-ins', checkInRoutes)
 app.use('/api/tasks', taskRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/organizations', orgRoutes)
+app.use('/api/settings', settingsRoutes)
 
 // 健康检查
 

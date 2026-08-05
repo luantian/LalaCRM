@@ -2,14 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, List, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined, EyeOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getOrganizations, getProjects, getBusinessTrips, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses, previewExpenseFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
+import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getOrganizationsSimple, getProjects, getBusinessTrips, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses, previewExpenseFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
 import dayjs from 'dayjs'
-import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import { OrgContactSelector } from '../components/OrgContactSelector'
+import { usePermission } from '../hooks/usePermission'
 
 function ExpenseList() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { checkPermission } = usePermission()
   const [expenses, setExpenses] = useState<any[]>([])
   const [organizations, setOrganizations] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
@@ -48,7 +49,7 @@ function ExpenseList() {
   const [importModalVisible, setImportModalVisible] = useState(false)
 
   const user = safeJsonParse(localStorage.getItem('user'), {})
-  const canApprove = ['ADMIN', 'PROJECT_DIRECTOR', 'PROJECT_MANAGER'].includes(user.role) || user.permissions?.includes('approve_expenses')
+  const canApprove = checkPermission('finance:expense:approve')
 
   const expenseCategories = [
     '办公用品', '差旅费', '招待费', '交通费', '通讯费', '培训费', '其他'
@@ -80,8 +81,8 @@ function ExpenseList() {
 
   const fetchOrganizations = async () => {
     try {
-      const response: any = await getOrganizations({ pageSize: 1000 })
-      setOrganizations(response.data || [])
+      const response: any = await getOrganizationsSimple()
+      setOrganizations(response || [])
     } catch (error) {
       console.error('获取组织列表失败:', error)
     }
@@ -231,7 +232,7 @@ function ExpenseList() {
 
   const handleEdit = (expense: any) => {
     const isOwner = expense.ownerId === user.id
-    const canEdit = (expense.status === 'DRAFT' || expense.status === 'REJECTED') && (isOwner || user.role === 'ADMIN')
+    const canEdit = (expense.status === 'DRAFT' || expense.status === 'REJECTED') && (isOwner || checkPermission('finance:expense:edit'))
     if (!canEdit) {
       message.warning('当前状态不允许编辑')
       return
@@ -255,7 +256,7 @@ function ExpenseList() {
   const handleDelete = async (id: number) => {
     const expense = expenses.find(e => e.id === id)
     const isOwner = expense?.ownerId === user.id
-    if (!(isOwner || user.role === 'ADMIN')) {
+    if (!(isOwner || checkPermission('finance:expense:edit'))) {
       message.warning('没有权限删除')
       return
     }
@@ -508,7 +509,7 @@ function ExpenseList() {
         const moreItems: any[] = []
         moreItems.push({ key: 'files', icon: <FileOutlined />, label: '管理发票', onClick: () => handleManageFiles(record) })
 
-        if (record.status === 'DRAFT' && (isOwner || user.role === 'ADMIN')) {
+        if (record.status === 'DRAFT' && (isOwner || checkPermission('finance:expense:edit'))) {
           moreItems.push({ type: 'divider' })
           moreItems.push({ key: 'submit', icon: <SendOutlined />, label: '提交申请', onClick: () => handleSubmitExpense(record.id) })
         }
@@ -519,7 +520,7 @@ function ExpenseList() {
           moreItems.push({ key: 'reject', icon: <CloseOutlined />, label: '驳回', danger: true, onClick: () => handleOpenApproveModal(record, 'reject') })
         }
 
-        if (record.status === 'REJECTED' && (isOwner || user.role === 'ADMIN')) {
+        if (record.status === 'REJECTED' && (isOwner || checkPermission('finance:expense:edit'))) {
           moreItems.push({ type: 'divider' })
           moreItems.push({ key: 'resubmit', icon: <UndoOutlined />, label: '重新提交', onClick: () => handleResubmit(record.id) })
         }
@@ -529,13 +530,20 @@ function ExpenseList() {
           moreItems.push({ key: 'pay', icon: <DollarOutlined />, label: '标记已支付', onClick: () => handlePay(record.id) })
         }
 
+        const canEdit = (record.status === 'DRAFT' || record.status === 'REJECTED') && (isOwner || checkPermission('finance:expense:edit'))
+        const canDelete = (record.status === 'DRAFT' || record.status === 'REJECTED') && (isOwner || checkPermission('finance:expense:edit'))
+
         return (
           <Space size={0}>
             <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/expenses/${record.id}`)}>查看</Button>
-            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-            <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-            </Popconfirm>
+            {canEdit && (
+              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+            )}
+            {canDelete && (
+              <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+                <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+              </Popconfirm>
+            )}
             {moreItems.length > 0 && (
               <Dropdown menu={{ items: moreItems }}>
                 <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
@@ -726,15 +734,15 @@ function ExpenseList() {
             {(fields, { add, remove }, { errors }) => (
               <>
                 {fields.map(({ key, name, ...restField }) => (
-                  <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
+                  <Row gutter={12} key={key} align="middle" style={{ marginBottom: 12 }}>
                     <Col span={5}>
                       <Form.Item
                         {...restField}
                         name={[name, 'category']}
-                        rules={[{ required: true, message: '类别' }]}
+                        rules={[{ required: true, message: '请选择类别' }]}
                         style={{ marginBottom: 0 }}
                       >
-                        <Select placeholder="费用类别">
+                        <Select placeholder="费用类别" style={{ width: '100%' }}>
                           {expenseCategories.map(cat => (
                             <Select.Option key={cat} value={cat}>{cat}</Select.Option>
                           ))}
@@ -745,17 +753,17 @@ function ExpenseList() {
                       <Form.Item
                         {...restField}
                         name={[name, 'amount']}
-                        rules={[{ required: true, message: '金额' }]}
+                        rules={[{ required: true, message: '请输入金额' }]}
                         style={{ marginBottom: 0 }}
                       >
-                        <InputNumber style={{ width: '100%' }} precision={2} placeholder="金额" addonAfter="元" />
+                        <InputNumber style={{ width: '100%' }} precision={2} placeholder="金额（元）" suffix="元" />
                       </Form.Item>
                     </Col>
                     <Col span={5}>
                       <Form.Item
                         {...restField}
                         name={[name, 'expenseDate']}
-                        rules={[{ required: true, message: '日期' }]}
+                        rules={[{ required: true, message: '请选择日期' }]}
                         style={{ marginBottom: 0 }}
                       >
                         <DatePicker style={{ width: '100%' }} placeholder="费用日期" />
@@ -776,6 +784,7 @@ function ExpenseList() {
                         danger
                         icon={<DeleteOutlined />}
                         onClick={() => remove(name)}
+                        style={{ width: '100%' }}
                       />
                     </Col>
                   </Row>

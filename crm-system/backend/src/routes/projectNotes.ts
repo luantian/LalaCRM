@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { logOperation } from '../middleware/logOperation';
@@ -14,8 +15,8 @@ const prisma = new PrismaClient();
 
 // 检查用户是否有权限访问项目
 async function checkProjectAccess(projectId: number, userId: number, role?: string): Promise<boolean> {
-  // 管理员、总监、项目经理可以访问所有项目
-  if (role === 'ADMIN' || role === 'MANAGER' || role === 'PROJECT_MANAGER' || role === 'PROJECT_DIRECTOR') return true;
+  // 管理员可以访问所有项目
+  if (await isAdmin(userId)) return true;
 
   const project = await prisma.project.findFirst({
     where: { id: projectId, deletedAt: null },
@@ -149,7 +150,7 @@ router.put('/notes/:id', authenticateToken, logOperation('项目备注', 'UPDATE
     }
 
     // 只能修改自己的备注（管理员除外）
-    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权修改他人的备注' });
     }
 
@@ -191,7 +192,7 @@ router.delete('/notes/:id', authenticateToken, logOperation('项目备注', 'DEL
     }
 
     // 只能删除自己的备注（管理员除外）
-    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权删除他人的备注' });
     }
 
@@ -304,7 +305,7 @@ router.put('/versions/:id', authenticateToken, logOperation('项目备注', 'UPD
     }
 
     // 只能修改自己的版本记录（管理员除外）
-    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权修改他人的版本记录' });
     }
 
@@ -347,7 +348,7 @@ router.delete('/versions/:id', authenticateToken, logOperation('项目备注', '
     }
 
     // 只能删除自己的版本记录（管理员除外）
-    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权删除他人的版本记录' });
     }
 

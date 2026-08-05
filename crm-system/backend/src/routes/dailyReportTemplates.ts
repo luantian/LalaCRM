@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
@@ -8,7 +9,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取日报模板列表
-router.get('/', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const { type, isPublic } = req.query
 
@@ -43,7 +44,7 @@ router.get('/', authenticateToken, checkPermission('view_reports'), async (req: 
 })
 
 // 获取单个模板
-router.get('/:id', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -59,7 +60,7 @@ router.get('/:id', authenticateToken, checkPermission('view_reports'), async (re
     }
 
     // 检查权限：公开模板或自己的模板
-    if (!template.isPublic && template.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (!template.isPublic && template.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '没有权限查看此模板' })
     }
 
@@ -71,7 +72,7 @@ router.get('/:id', authenticateToken, checkPermission('view_reports'), async (re
 })
 
 // 创建模板
-router.post('/', authenticateToken, checkPermission('create_reports'), logOperation('日报模板', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('日报模板', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const { name, type, content, isPublic = false } = req.body
 
@@ -80,7 +81,7 @@ router.post('/', authenticateToken, checkPermission('create_reports'), logOperat
     }
 
     // 只有管理员可以创建公开模板
-    if (isPublic && req.user?.role !== 'ADMIN') {
+    if (isPublic && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员可以创建公开模板' })
     }
 
@@ -105,7 +106,7 @@ router.post('/', authenticateToken, checkPermission('create_reports'), logOperat
 })
 
 // 更新模板
-router.put('/:id', authenticateToken, checkPermission('create_reports'), logOperation('日报模板', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('日报模板', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { name, type, content, isPublic } = req.body
@@ -116,12 +117,12 @@ router.put('/:id', authenticateToken, checkPermission('create_reports'), logOper
     }
 
     // 只能修改自己的模板（管理员除外）
-    if (template.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (template.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能修改自己的模板' })
     }
 
     // 如果要设为公开，需要管理员权限
-    if (isPublic && !template.isPublic && req.user?.role !== 'ADMIN') {
+    if (isPublic && !template.isPublic && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只有管理员可以创建公开模板' })
     }
 
@@ -146,7 +147,7 @@ router.put('/:id', authenticateToken, checkPermission('create_reports'), logOper
 })
 
 // 删除模板
-router.delete('/:id', authenticateToken, checkPermission('create_reports'), logOperation('日报模板', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('日报模板', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -156,7 +157,7 @@ router.delete('/:id', authenticateToken, checkPermission('create_reports'), logO
     }
 
     // 只能删除自己的模板（管理员除外）
-    if (template.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (template.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能删除自己的模板' })
     }
 
@@ -170,7 +171,7 @@ router.delete('/:id', authenticateToken, checkPermission('create_reports'), logO
 })
 
 // 使用模板（增加使用次数）
-router.post('/:id/use', authenticateToken, checkPermission('create_reports'), async (req: AuthRequest, res) => {
+router.post('/:id/use', authenticateToken, checkPermission('office:dailyreport:add'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -180,7 +181,7 @@ router.post('/:id/use', authenticateToken, checkPermission('create_reports'), as
     }
 
     // 检查权限：公开模板或自己的模板
-    if (!template.isPublic && template.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (!template.isPublic && template.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '没有权限使用此模板' })
     }
 

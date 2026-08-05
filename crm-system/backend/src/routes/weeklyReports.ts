@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { isAdmin, hasAnyRole } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
@@ -9,13 +10,13 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取周报列表
-router.get('/', authenticateToken, checkPermission('view_reports'), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const { userId, year, page = '1', pageSize = '10' } = req.query
 
     const where: any = { deletedAt: null }
     // 非管理员/经理只能查看自己的周报（忽略 userId 参数）
-    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
+    if (!(await hasAnyRole(req.user!.id, ['MANAGER']))) {
       where.userId = req.user!.id
     } else if (userId) {
       where.userId = parseInt(userId as string)
@@ -61,7 +62,7 @@ router.get('/', authenticateToken, checkPermission('view_reports'), clampPaginat
 })
 
 // 获取单个周报
-router.get('/:id', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -77,7 +78,7 @@ router.get('/:id', authenticateToken, checkPermission('view_reports'), async (re
     }
 
     // 检查权限
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
+    if (report.userId !== req.user!.id && !(await hasAnyRole(req.user!.id, ['MANAGER']))) {
       return res.status(403).json({ error: '没有权限查看此周报' })
     }
 
@@ -89,7 +90,7 @@ router.get('/:id', authenticateToken, checkPermission('view_reports'), async (re
 })
 
 // 创建周报（手动）
-router.post('/', authenticateToken, checkPermission('create_reports'), logOperation('周报', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('周报', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const { weekStart, weekEnd, summary, highlights, issues, nextWeekPlan } = req.body
 
@@ -137,7 +138,7 @@ router.post('/', authenticateToken, checkPermission('create_reports'), logOperat
 })
 
 // 更新周报
-router.put('/:id', authenticateToken, checkPermission('create_reports'), logOperation('周报', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('周报', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { summary, highlights, issues, nextWeekPlan, status } = req.body
@@ -147,7 +148,7 @@ router.put('/:id', authenticateToken, checkPermission('create_reports'), logOper
       return res.status(404).json({ error: '周报不存在' })
     }
 
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (report.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能修改自己的周报' })
     }
 
@@ -173,7 +174,7 @@ router.put('/:id', authenticateToken, checkPermission('create_reports'), logOper
 })
 
 // 删除周报
-router.delete('/:id', authenticateToken, checkPermission('create_reports'), logOperation('周报', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('周报', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -182,11 +183,11 @@ router.delete('/:id', authenticateToken, checkPermission('create_reports'), logO
       return res.status(404).json({ error: '周报不存在' })
     }
 
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (report.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能删除自己的周报' })
     }
 
-    if (report.status !== 'DRAFT' && req.user?.role !== 'ADMIN') {
+    if (report.status !== 'DRAFT' && !(await isAdmin(req.user!.id))) {
       return res.status(400).json({ error: '只能删除草稿状态的周报' })
     }
 

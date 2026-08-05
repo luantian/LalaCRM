@@ -13,8 +13,13 @@ interface MenuItem {
   order: number
   isVisible: boolean
   requiredRole: string
+  menuType: string
+  perm: string
+  path: string | null
+  component: string | null
   createdAt: string
   updatedAt: string
+  assignedRoles: number[]
   children?: MenuItem[]
 }
 
@@ -37,6 +42,19 @@ const iconList = [
   'BankOutlined', 'InsuranceOutlined', 'SoundOutlined', 'WifiOutlined',
   'SwapOutlined', 'UploadOutlined', 'DownloadOutlined', 'DesktopOutlined',
 ]
+
+// 角色名称映射
+const roleNames: Record<string, string> = {
+  'SYSTEM_ADMIN': '系统管理员',
+  'SALES_MANAGER': '销售经理',
+  'SALES_REP': '销售专员',
+  'PROJECT_MANAGER': '项目经理',
+  'FINANCE_SPECIALIST': '财务专员',
+  'EMPLOYEE': '普通员工',
+  'TECH_STAFF': '技术人员',
+  'BUSINESS_MANAGER': '商务经理'
+}
+
 
 const IconCell = ({ name, selected, onClick }: { name: string; selected: boolean; onClick: () => void }) => {
   const IconComp = (Icons as any)[name]
@@ -102,24 +120,30 @@ function MenuManagement() {
   const [viewingMenu, setViewingMenu] = useState<MenuItem | null>(null)
   const [form] = Form.useForm()
 
-  // 构建菜单树结构
+  // 构建菜单树结构（过滤掉 BUTTON 类型，只展示目录和菜单）
   const buildMenuTree = (menuList: MenuItem[]): MenuItem[] => {
+    // 只保留 DIRECTORY 和 MENU 类型
+    const menuOnly = menuList.filter(m => m.menuType !== 'BUTTON')
     const menuMap: Record<number, MenuItem> = {}
     const roots: MenuItem[] = []
 
-    // 先将所有菜单放入 map 中
-    menuList.forEach(menu => {
-      menuMap[menu.id] = { ...menu, children: [] }
+    // 将菜单放入 map（不预设 children 字段）
+    menuOnly.forEach(menu => {
+      const { children, ...rest } = menu as any
+      menuMap[menu.id] = { ...rest }
     })
 
     // 构建树结构
-    menuList.forEach(menu => {
+    menuOnly.forEach(menu => {
       if (menu.parentId === null) {
         roots.push(menuMap[menu.id])
       } else {
         const parent = menuMap[menu.parentId]
         if (parent) {
-          parent.children!.push(menuMap[menu.id])
+          if (!parent.children) {
+            parent.children = []
+          }
+          parent.children.push(menuMap[menu.id])
         }
       }
     })
@@ -270,14 +294,14 @@ function MenuManagement() {
     },
     {
       title: '所需角色',
-      dataIndex: 'requiredRoles',
-      key: 'requiredRoles',
+      dataIndex: 'assignedRoles',
+      key: 'assignedRoles',
       width: 150,
       render: (roles: string[]) => {
         if (!roles || roles.length === 0) {
-          return '所有用户'
+          return <span style={{ color: '#999' }}>未分配</span>
         }
-        return roles.join(', ')
+        return roles.map(r => roleNames[r] || r).join(', ')
       }
     },
     {
@@ -322,12 +346,15 @@ function MenuManagement() {
           pagination={false}
           expandable={{
             defaultExpandAllRows: true,
+            rowExpandable: (record) => {
+              // 只有真正有子菜单（非空数组）时才显示展开图标
+              return !!(record.children && record.children.length > 0)
+            },
             expandIcon: ({ expanded, onExpand, record }) => {
-              // 如果没有子菜单，不显示展开图标
+              // 双重保险：再次检查 children
               if (!record.children || record.children.length === 0) {
                 return null
               }
-              // 否则显示正常的展开/折叠图标
               return (
                 <span
                   onClick={e => onExpand(record, e)}
@@ -444,7 +471,11 @@ function MenuManagement() {
             <Descriptions.Item label="图标">{viewingMenu.icon || '-'}</Descriptions.Item>
             <Descriptions.Item label="排序">{viewingMenu.order}</Descriptions.Item>
             <Descriptions.Item label="是否显示">{viewingMenu.isVisible ? '是' : '否'}</Descriptions.Item>
-            <Descriptions.Item label="所需角色">{viewingMenu.requiredRole || '所有用户'}</Descriptions.Item>
+            <Descriptions.Item label="所需角色">
+              {viewingMenu.assignedRoles && viewingMenu.assignedRoles.length > 0 
+                ? viewingMenu.assignedRoles.map(r => roleNames[r] || r).join(', ') 
+                : <span style={{ color: '#999' }}>未分配</span>}
+            </Descriptions.Item>
           </Descriptions>
         )}
       </Modal>

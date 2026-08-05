@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, App as AntApp, Upload, Typography, Divider, Progress, Dropdown, Pagination, Timeline } from 'antd'
+import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, App as AntApp, Upload, Typography, Divider, Dropdown, Pagination, Timeline } from 'antd'
 import {
   CheckCircleOutlined, ClockCircleOutlined,
   DashboardOutlined, PlusOutlined, CheckOutlined, PlayCircleOutlined,
@@ -11,11 +11,8 @@ import {
   ProjectOutlined, TeamOutlined, CheckSquareOutlined,
   EllipsisOutlined, UserOutlined
 } from '@ant-design/icons'
-import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse, getTaskRecords, createTaskRecord, updateTaskRecord, deleteTaskRecord, uploadTaskFiles, uploadTaskRecordFiles, deleteTaskRecordFile, downloadTaskRecordFileUrl, downloadTaskFileUrl, previewTaskFileUrl, previewTaskRecordFileUrl, openFilePreview, isPreviewableFile, getPreviewUrl, getProjects, getMyInProgressProjects } from '../services/api'
+import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse, getTaskRecords, createTaskRecord, updateTaskRecord, uploadTaskFiles, uploadTaskRecordFiles, downloadTaskRecordFileUrl, downloadTaskFileUrl, previewTaskFileUrl, previewTaskRecordFileUrl, openFilePreview, isPreviewableFile, getPreviewUrl, getProjects, getMyInProgressProjects } from '../services/api'
 import dayjs from 'dayjs'
-import 'dayjs/locale/zh-cn'
-
-dayjs.locale('zh-cn')
 
 const { TextArea } = Input
 const { Text } = Typography
@@ -47,8 +44,6 @@ function Dashboard() {
   const [recordModalVisible, setRecordModalVisible] = useState(false)
   const [editingRecord, setEditingRecord] = useState<any>(null)
   const [recordForm] = Form.useForm()
-  const [recordUploading, setRecordUploading] = useState(false)
-  const [recordsFileList, setRecordsFileList] = useState<any[]>([])
   const [recordModalFiles, setRecordModalFiles] = useState<File[]>([])
 
   // 驳回弹窗相关状态
@@ -113,7 +108,13 @@ function Dashboard() {
   const fetchUsers = async () => {
     try {
       const data = await getUserDropdown() as any
-      setUsers(Array.isArray(data) ? data : [])
+      // 按 id 去重，防止下拉列表出现重复选项
+      const uniqueUsers = Array.isArray(data) 
+        ? data.filter((u: any, index: number, self: any[]) => 
+            index === self.findIndex((t: any) => t.id === u.id)
+          )
+        : []
+      setUsers(uniqueUsers)
     } catch (e) { /* ignore */ }
   }
 
@@ -352,55 +353,6 @@ function Dashboard() {
     }
   }
 
-  // 编辑记录
-  const openEditRecord = (record: any) => {
-    setEditingRecord(record)
-    recordForm.setFieldsValue({
-      type: record.type || 'NOTE',
-      content: record.content,
-    })
-    setRecordModalFiles([])
-    setRecordModalVisible(true)
-  }
-
-  // 删除记录
-  const handleDeleteRecord = async (recordId: number) => {
-    if (!selectedTask) return
-    try {
-      await deleteTaskRecord(selectedTask.id, recordId)
-      message.success('记录已删除')
-      await fetchTaskRecords(selectedTask.id)
-    } catch (error: any) {
-      message.error(error?.error || '删除失败')
-    }
-  }
-
-  // 上传记录附件
-  const handleUploadRecordFiles = async (recordId: number, files: FileList) => {
-    if (!selectedTask) return
-    setRecordUploading(true)
-    try {
-      await uploadTaskRecordFiles(selectedTask.id, recordId, files)
-      message.success('文件上传成功')
-      await fetchTaskRecords(selectedTask.id)
-    } catch (error: any) {
-      message.error(error?.error || '上传失败')
-    } finally {
-      setRecordUploading(false)
-    }
-  }
-
-  // 删除记录附件
-  const handleDeleteRecordFile = async (recordId: number, fileId: number) => {
-    if (!selectedTask) return
-    try {
-      await deleteTaskRecordFile(selectedTask.id, recordId, fileId)
-      message.success('文件已删除')
-      await fetchTaskRecords(selectedTask.id)
-    } catch (error: any) {
-      message.error(error?.error || '删除失败')
-    }
-  }
 
 
   useEffect(() => {
@@ -1090,17 +1042,8 @@ function Dashboard() {
                         <div>👤 {project.owner?.name || '-'}</div>
                       </div>
 
-                      {/* 进度环 + 统计 */}
+                      {/* 统计信息 */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 'auto' }}>
-                        <Progress
-                          type="circle"
-                          percent={project.progress || 0}
-                          size={48}
-                          strokeWidth={8}
-                          strokeColor="#4f46e5"
-                          trailColor="#e2e8f0"
-                          format={(p) => <span style={{ fontSize: 11, fontWeight: 700, color: '#4f46e5' }}>{p}</span>}
-                        />
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: '#6b7280' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             <TeamOutlined style={{ color: '#7c3aed', fontSize: 12 }} />
@@ -1189,13 +1132,17 @@ function Dashboard() {
             <Input placeholder="请输入任务标题" style={{ borderRadius: 8 }} />
           </Form.Item>
           <Form.Item name="assigneeIds" label="指派给" rules={[{ required: true, message: '请选择指派人' }]}>
-            <Select mode="multiple" showSearch optionFilterProp="label" placeholder="选择成员（可多选）" style={{ borderRadius: 8 }}>
-              {users.map((u: any) => (
-                <Select.Option key={u.id} value={u.id} label={u.name}>
-                  {u.name} ({u.username})
-                </Select.Option>
-              ))}
-            </Select>
+            <Select
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              placeholder="选择成员（可多选）"
+              style={{ borderRadius: 8 }}
+              options={users.map((u: any) => ({
+                value: u.id,
+                label: `${u.name} (${u.username})`
+              }))}
+            />
           </Form.Item>
           <Form.Item name="description" label="任务描述">
             <Input.TextArea rows={3} placeholder="描述任务内容（可选）" style={{ borderRadius: 8 }} />

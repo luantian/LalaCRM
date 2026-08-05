@@ -1,35 +1,11 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticateToken } from '../middleware/auth'
+import { authenticateToken, checkAdmin } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
 const router = Router()
 const prisma = new PrismaClient()
-
-// 中间件：检查是否是admin
-const checkAdmin = async (req: Request, res: Response, next: Function) => {
-  try {
-    const userId = (req as any).user?.id
-    if (!userId) {
-      return res.status(401).json({ error: '未授权访问' })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { role: true }
-    })
-
-    if (!user || user.role !== 'ADMIN') {
-      return res.status(403).json({ error: '只有管理员才能访问此功能' })
-    }
-
-    next()
-  } catch (error) {
-    logger.error('Admin check error:', error)
-    res.status(500).json({ error: '服务器错误' })
-  }
-}
 
 // 获取所有角色
 router.get('/', authenticateToken, async (req: Request, res: Response) => {
@@ -73,6 +49,7 @@ router.post('/', authenticateToken, checkAdmin, logOperation('角色管理', 'CR
       data: {
         name,
         displayName,
+        roleKey: name, // 使用角色名称作为 roleKey
         description,
         permissions: permissions || []
       }

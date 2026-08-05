@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
@@ -56,7 +57,7 @@ router.post('/', authenticateToken, logOperation('采购付款', 'CREATE'), asyn
     if (!procurement) {
       return res.status(404).json({ error: '采购单不存在' })
     }
-    if (procurement.project?.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (procurement.project?.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此采购单的付款记录' })
     }
 
@@ -93,7 +94,7 @@ router.put('/:id', authenticateToken, logOperation('采购付款', 'UPDATE'), as
     if (!existing) {
       return res.status(404).json({ error: '付款记录不存在' })
     }
-    if (existing.procurement.project?.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.procurement.project?.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此付款记录' })
     }
 
@@ -128,7 +129,7 @@ router.delete('/:id', authenticateToken, logOperation('采购付款', 'DELETE'),
     if (!existing) {
       return res.status(404).json({ error: '付款记录不存在' })
     }
-    if (existing.procurement.project?.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.procurement.project?.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此付款记录' })
     }
     await prisma.procurementPayment.update({ where: { id }, data: { deletedAt: new Date() } })

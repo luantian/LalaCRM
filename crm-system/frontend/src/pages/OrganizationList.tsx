@@ -1,13 +1,11 @@
 import { useEffect, useState, useMemo } from 'react'
 import {
   Card, Tree, Button, Modal, Form, Input, Select, message, Space,
-  Tag, Table, Descriptions, Empty, Popconfirm, Row, Col, Dropdown
+  Tag, Table, Descriptions, Empty, Popconfirm, Row, Col
 } from 'antd'
-import type { MenuProps } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, BankOutlined,
-  ExpandAltOutlined, ShrinkOutlined, UserOutlined, HomeOutlined,
-  MoreOutlined
+  ExpandAltOutlined, ShrinkOutlined, UserOutlined, HomeOutlined
 } from '@ant-design/icons'
 import {
   getOrganizationTree, getOrganizationContacts,
@@ -329,39 +327,6 @@ function OrganizationList() {
     }
   }
 
-  // ───── 树节点右键菜单 ─────
-
-  const getNodeMenuItems = (org: Organization): MenuProps['items'] => [
-    {
-      key: 'addChild',
-      label: '新增子客户',
-      icon: <PlusOutlined />,
-      onClick: () => handleAddOrg(org.id),
-    },
-    {
-      key: 'edit',
-      label: '编辑',
-      icon: <EditOutlined />,
-      onClick: () => handleEditOrg(org),
-    },
-    { type: 'divider' },
-    {
-      key: 'delete',
-      label: '删除',
-      icon: <DeleteOutlined />,
-      danger: true,
-      onClick: () => {
-        Modal.confirm({
-          title: '确认删除',
-          content: `确定要删除"${org.name}"吗？其下级客户也会被一并删除。`,
-          okText: '确定',
-          cancelText: '取消',
-          onOk: () => handleDeleteOrg(org.id),
-        })
-      },
-    },
-  ]
-
   // ───── 联系人表格列 ─────
 
   const contactColumns = [
@@ -547,7 +512,6 @@ function OrganizationList() {
                 className="org-tree"
                 showLine={false}
                 blockNode
-                indent={20}
                 expandedKeys={expandedKeys}
                 autoExpandParent={autoExpandParent}
                 onExpand={(keys) => {

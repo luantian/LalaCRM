@@ -376,13 +376,16 @@ export const previewQuotationFileUrl = (fileId: number) => `${api.defaults.baseU
 
 // ==================== 客户管理 ====================
 export const getOrganizations = (params?: any) => api.get('/organizations', { params })
+export const getOrganizationsSimple = () => api.get('/organizations/simple') // 精简版，用于下拉选择
 export const getOrganizationTree = () => api.get('/organizations/tree')
 export const getOrganizationDetail = (id: number) => api.get(`/organizations/${id}`)
 export const createOrganization = (data: any) => api.post('/organizations', data)
 export const updateOrganization = (id: number, data: any) => api.put(`/organizations/${id}`, data)
 export const deleteOrganization = (id: number) => api.delete(`/organizations/${id}`)
 export const getOrganizationContacts = (id: number) => api.get(`/organizations/${id}/contacts`)
+export const getOrganizationContactsSimple = (orgId: number) => api.get(`/organizations/contacts/simple?orgId=${orgId}`) // 精简版，用于下拉选择
 export const getAllContacts = () => api.get('/organizations/contacts')
+export const getAllContactsSimple = () => api.get('/organizations/contacts/simple') // 精简版，用于下拉选择
 export const getContactDetail = (id: number) => api.get(`/organizations/contacts/${id}`)
 export const createOrganizationContact = (orgId: number, data: any) => api.post(`/organizations/${orgId}/contacts`, data)
 export const updateOrganizationContact = (orgId: number, contactId: number, data: any) => api.put(`/organizations/${orgId}/contacts/${contactId}`, data)

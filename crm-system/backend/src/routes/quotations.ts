@@ -1,4 +1,5 @@
 import { Router, Request } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
@@ -16,7 +17,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取报价单列表（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('view_quotations'), applyDataScope('ownerId'), sortValidation(['name', 'version', 'totalAmount', 'status', 'validUntil', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope('ownerId'), sortValidation(['name', 'version', 'totalAmount', 'status', 'validUntil', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -78,7 +79,7 @@ router.get('/', authenticateToken, checkPermission('view_quotations'), applyData
 })
 
 // 报价单统计
-router.get('/stats/overview', authenticateToken, checkPermission('view_quotations'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const [total, draft, submitted, approved, rejected, won, lost] = await Promise.all([
@@ -105,7 +106,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_quotation
 })
 
 // 获取某商机的所有报价版本（用于版本对比）
-router.get('/opportunity/:oppId/versions', authenticateToken, checkPermission('view_quotations'), async (req: AuthRequest, res) => {
+router.get('/opportunity/:oppId/versions', authenticateToken, checkPermission('crm:quotation:list'), async (req: AuthRequest, res) => {
   try {
     const oppId = parseInt(req.params.oppId as string)
 
@@ -126,7 +127,7 @@ router.get('/opportunity/:oppId/versions', authenticateToken, checkPermission('v
 })
 
 // 获取报价单详情
-router.get('/:id', authenticateToken, checkPermission('view_quotations'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const dataScopeWhere = (req as any).dataScopeWhere || {}
@@ -154,7 +155,7 @@ router.get('/:id', authenticateToken, checkPermission('view_quotations'), applyD
 })
 
 // 创建报价单
-router.post('/', authenticateToken, checkPermission('edit_quotations'), logOperation('报价管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('crm:quotation:edit'), logOperation('报价管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const { name, opportunityId, organizationId, contactId, validUntil, notes, items } = req.body
 
@@ -228,7 +229,7 @@ router.post('/', authenticateToken, checkPermission('edit_quotations'), logOpera
 })
 
 // 更新报价单（仅 DRAFT 状态可编辑）
-router.put('/:id', authenticateToken, checkPermission('edit_quotations'), logOperation('报价管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('crm:quotation:edit'), logOperation('报价管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { name, validUntil, notes, items } = req.body
@@ -293,7 +294,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_quotations'), logOpe
 })
 
 // 删除报价单（仅 DRAFT 状态）
-router.delete('/:id', authenticateToken, checkPermission('edit_quotations'), logOperation('报价管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('crm:quotation:edit'), logOperation('报价管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -316,7 +317,7 @@ router.delete('/:id', authenticateToken, checkPermission('edit_quotations'), log
 })
 
 // 提交报价单
-router.post('/:id/submit', authenticateToken, checkPermission('edit_quotations'), logOperation('报价管理', 'SUBMIT'), async (req: AuthRequest, res) => {
+router.post('/:id/submit', authenticateToken, checkPermission('crm:quotation:edit'), logOperation('报价管理', 'SUBMIT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const existing = await prisma.quotation.findFirst({ where: { id, deletedAt: null } })
@@ -337,7 +338,7 @@ router.post('/:id/submit', authenticateToken, checkPermission('edit_quotations')
 })
 
 // 批准报价单
-router.post('/:id/approve', authenticateToken, checkPermission('approve_quotations'), logOperation('报价管理', 'APPROVE'), async (req: AuthRequest, res) => {
+router.post('/:id/approve', authenticateToken, checkPermission('crm:quotation:approve'), logOperation('报价管理', 'APPROVE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const existing = await prisma.quotation.findFirst({ where: { id, deletedAt: null } })
@@ -347,7 +348,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_quotatio
     }
 
     // 防止自审批（管理员除外）
-    if (existing.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.ownerId === req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '不能审批自己提交的报价单' })
     }
 
@@ -366,7 +367,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_quotatio
 })
 
 // 拒绝报价单
-router.post('/:id/reject', authenticateToken, checkPermission('approve_quotations'), logOperation('报价管理', 'REJECT'), async (req: AuthRequest, res) => {
+router.post('/:id/reject', authenticateToken, checkPermission('crm:quotation:approve'), logOperation('报价管理', 'REJECT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const existing = await prisma.quotation.findFirst({ where: { id, deletedAt: null } })
@@ -390,7 +391,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_quotation
 })
 
 // 上传报价单附件
-router.post('/:id/files', authenticateToken, checkPermission('edit_quotations'), upload.array('files', 10), logOperation('报价管理', 'UPLOAD'), async (req: AuthRequest, res) => {
+router.post('/:id/files', authenticateToken, checkPermission('crm:quotation:edit'), upload.array('files', 10), logOperation('报价管理', 'UPLOAD'), async (req: AuthRequest, res) => {
   try {
     const quotationId = parseInt(req.params.id as string)
     const files = req.files as Express.Multer.File[]
@@ -440,7 +441,7 @@ router.get('/:id/files', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 删除报价单附件
-router.delete('/:id/files/:fileId', authenticateToken, checkPermission('edit_quotations'), logOperation('报价管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
+router.delete('/:id/files/:fileId', authenticateToken, checkPermission('crm:quotation:edit'), logOperation('报价管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.quotationFile.findFirst({ where: { id: fileId, deletedAt: null } })

@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { isAdmin, getUserPerms, hasAnyRole } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
@@ -8,14 +9,23 @@ import logger from '../utils/logger'
 const router = Router()
 const prisma = new PrismaClient()
 
+// 辅助函数：检查用户是否有经理权限
+async function hasManagerPermission(userId: number): Promise<boolean> {
+  if (await isAdmin(userId)) return true
+  const perms = await getUserPerms(userId)
+  // 经理权限：可以查看所有用户的报表
+  return perms.includes('view_all_reports') || perms.includes('manage_reports')
+}
+
 // 获取月报列表
-router.get('/', authenticateToken, checkPermission('view_reports'), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const { userId, year, page = '1', pageSize = '10' } = req.query
 
     const where: any = { deletedAt: null }
-    // 非管理员/经理只能查看自己的月报（忽略 userId 参数）
-    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
+    // 非管理员/经理只能查看自己的月报
+    const isManager = await hasManagerPermission(req.user!.id)
+    if (!isManager) {
       where.userId = req.user!.id
     } else if (userId) {
       where.userId = parseInt(userId as string)
@@ -57,7 +67,7 @@ router.get('/', authenticateToken, checkPermission('view_reports'), clampPaginat
 })
 
 // 获取单个月报
-router.get('/:id', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -72,7 +82,7 @@ router.get('/:id', authenticateToken, checkPermission('view_reports'), async (re
       return res.status(404).json({ error: '月报不存在' })
     }
 
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER') {
+    if (report.userId !== req.user!.id && !(await hasAnyRole(req.user!.id, ['MANAGER']))) {
       return res.status(403).json({ error: '没有权限查看此月报' })
     }
 
@@ -84,7 +94,7 @@ router.get('/:id', authenticateToken, checkPermission('view_reports'), async (re
 })
 
 // 创建月报（手动）
-router.post('/', authenticateToken, checkPermission('create_reports'), logOperation('月报', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('月报', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const { year, month, summary, achievements, issues, nextMonthPlan } = req.body
 
@@ -142,7 +152,7 @@ router.post('/', authenticateToken, checkPermission('create_reports'), logOperat
 })
 
 // 更新月报
-router.put('/:id', authenticateToken, checkPermission('create_reports'), logOperation('月报', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('月报', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { summary, achievements, issues, nextMonthPlan, status } = req.body
@@ -152,7 +162,7 @@ router.put('/:id', authenticateToken, checkPermission('create_reports'), logOper
       return res.status(404).json({ error: '月报不存在' })
     }
 
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (report.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能修改自己的月报' })
     }
 
@@ -178,7 +188,7 @@ router.put('/:id', authenticateToken, checkPermission('create_reports'), logOper
 })
 
 // 删除月报
-router.delete('/:id', authenticateToken, checkPermission('create_reports'), logOperation('月报', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('月报', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -187,11 +197,11 @@ router.delete('/:id', authenticateToken, checkPermission('create_reports'), logO
       return res.status(404).json({ error: '月报不存在' })
     }
 
-    if (report.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (report.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能删除自己的月报' })
     }
 
-    if (report.status !== 'DRAFT' && req.user?.role !== 'ADMIN') {
+    if (report.status !== 'DRAFT' && !(await isAdmin(req.user!.id))) {
       return res.status(400).json({ error: '只能删除草稿状态的月报' })
     }
 

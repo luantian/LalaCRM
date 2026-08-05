@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { isAdmin, hasAnyRole } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
@@ -12,7 +13,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取工作日报列表（分页，支持筛选）—— 所有人可查看
-router.get('/', authenticateToken, checkPermission('view_reports'), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope('userId'), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -106,7 +107,7 @@ router.get('/', authenticateToken, checkPermission('view_reports'), clampPaginat
 })
 
 // 日报统计概览（本月报告数、总工时、按类型统计）—— 所有人可查看
-router.get('/stats/overview', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -147,7 +148,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_reports')
 })
 
 // 导出日报 CSV —— 所有人可导出
-router.get('/export/csv', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const {
       userId = '',
@@ -240,7 +241,7 @@ router.get('/export/csv', authenticateToken, checkPermission('view_reports'), as
 })
 
 // 获取单个日报详情
-router.get('/:id', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const report = await prisma.dailyReport.findFirst({
@@ -262,7 +263,7 @@ router.get('/:id', authenticateToken, checkPermission('view_reports'), async (re
 })
 
 // 创建工作日报
-router.post('/', authenticateToken, checkPermission('create_reports'), logOperation('工作日报', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const {
       reportDate,
@@ -301,7 +302,7 @@ router.post('/', authenticateToken, checkPermission('create_reports'), logOperat
 })
 
 // 更新工作日报
-router.put('/:id', authenticateToken, checkPermission('create_reports'), logOperation('工作日报', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const {
@@ -320,7 +321,7 @@ router.put('/:id', authenticateToken, checkPermission('create_reports'), logOper
     }
 
     // 只能更新自己的日报（管理员除外）
-    if (existing.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能修改自己的日报' })
     }
 
@@ -349,7 +350,7 @@ router.put('/:id', authenticateToken, checkPermission('create_reports'), logOper
 })
 
 // 删除工作日报
-router.delete('/:id', authenticateToken, checkPermission('create_reports'), logOperation('工作日报', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -359,7 +360,7 @@ router.delete('/:id', authenticateToken, checkPermission('create_reports'), logO
     }
 
     // 管理员可以删除任何日报
-    if (req.user?.role === 'ADMIN') {
+    if (await isAdmin(req.user!.id)) {
       // 管理员直接通过权限检查
     } else {
       // 普通用户只能删除自己的草稿状态日报
@@ -430,7 +431,7 @@ router.post('/:id/submit', authenticateToken, logOperation('工作日报', 'SUBM
 })
 
 // 审批日报（批准）
-router.post('/:id/approve', authenticateToken, logOperation('工作日报', 'APPROVE'), async (req: AuthRequest, res) => {
+router.post('/:id/approve', authenticateToken, checkPermission('office:dailyreport:approve'), logOperation('工作日报', 'APPROVE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -440,11 +441,6 @@ router.post('/:id/approve', authenticateToken, logOperation('工作日报', 'APP
     })
     if (!report) {
       return res.status(404).json({ error: '工作日报不存在' })
-    }
-
-    // 只有管理员或上级可以审批
-    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER' && req.user?.role !== 'PROJECT_MANAGER') {
-      return res.status(403).json({ error: '没有审批权限' })
     }
 
     if (report.status !== 'SUBMITTED') {
@@ -478,10 +474,6 @@ router.post('/:id/reject', authenticateToken, logOperation('工作日报', 'REJE
       return res.status(404).json({ error: '工作日报不存在' })
     }
 
-    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER' && req.user?.role !== 'PROJECT_MANAGER') {
-      return res.status(403).json({ error: '没有审批权限' })
-    }
-
     if (report.status !== 'SUBMITTED') {
       return res.status(400).json({ error: '只能拒绝已提交的日报' })
     }
@@ -503,7 +495,7 @@ router.post('/:id/reject', authenticateToken, logOperation('工作日报', 'REJE
 })
 
 // 评分日报
-router.post('/:id/rate', authenticateToken, logOperation('工作日报', 'RATE'), async (req: AuthRequest, res) => {
+router.post('/:id/rate', authenticateToken, checkPermission('office:dailyreport:approve'), logOperation('工作日报', 'RATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { rating } = req.body
@@ -515,10 +507,6 @@ router.post('/:id/rate', authenticateToken, logOperation('工作日报', 'RATE')
     const report = await prisma.dailyReport.findFirst({ where: { id, deletedAt: null } })
     if (!report) {
       return res.status(404).json({ error: '工作日报不存在' })
-    }
-
-    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'MANAGER' && req.user?.role !== 'PROJECT_MANAGER') {
-      return res.status(403).json({ error: '没有评分权限' })
     }
 
     const updated = await prisma.dailyReport.update({
@@ -538,7 +526,7 @@ router.post('/:id/rate', authenticateToken, logOperation('工作日报', 'RATE')
 })
 
 // 获取日报评论列表
-router.get('/:id/comments', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/:id/comments', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -607,7 +595,7 @@ router.delete('/:id/comments/:commentId', authenticateToken, logOperation('工�
       return res.status(404).json({ error: '评论不存在' })
     }
 
-    if (comment.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (comment.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能删除自己的评论' })
     }
 
@@ -621,7 +609,7 @@ router.delete('/:id/comments/:commentId', authenticateToken, logOperation('工�
 })
 
 // 获取日报提交率统计 —— 所有人可查看
-router.get('/stats/submission-rate', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/stats/submission-rate', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
@@ -661,7 +649,7 @@ router.get('/stats/submission-rate', authenticateToken, checkPermission('view_re
 })
 
 // 获取日报质量统计 —— 所有人可查看
-router.get('/stats/quality', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/stats/quality', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
@@ -711,7 +699,7 @@ router.get('/stats/quality', authenticateToken, checkPermission('view_reports'),
 // ==================== 日报工作条目管理 ====================
 
 // 获取日报工作条目列表
-router.get('/:id/items', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/:id/items', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const reportId = parseInt(req.params.id as string)
 
@@ -754,7 +742,7 @@ router.get('/:id/items', authenticateToken, checkPermission('view_reports'), asy
 })
 
 // 创建日报工作条目
-router.post('/:id/items', authenticateToken, checkPermission('create_reports'), logOperation('工作日报', 'CREATE_ITEM'), async (req: AuthRequest, res) => {
+router.post('/:id/items', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'CREATE_ITEM'), async (req: AuthRequest, res) => {
   try {
     const reportId = parseInt(req.params.id as string)
     const { projectId, title, content, hours, priority, status, result, startTime, endTime, timeType } = req.body
@@ -799,7 +787,7 @@ router.post('/:id/items', authenticateToken, checkPermission('create_reports'), 
 })
 
 // 更新日报工作条目
-router.put('/:id/items/:itemId', authenticateToken, checkPermission('create_reports'), logOperation('工作日报', 'UPDATE_ITEM'), async (req: AuthRequest, res) => {
+router.put('/:id/items/:itemId', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'UPDATE_ITEM'), async (req: AuthRequest, res) => {
   try {
     const reportId = parseInt(req.params.id as string)
     const itemId = parseInt(req.params.itemId as string)
@@ -846,7 +834,7 @@ router.put('/:id/items/:itemId', authenticateToken, checkPermission('create_repo
 })
 
 // 删除日报工作条目
-router.delete('/:id/items/:itemId', authenticateToken, checkPermission('create_reports'), logOperation('工作日报', 'DELETE_ITEM'), async (req: AuthRequest, res) => {
+router.delete('/:id/items/:itemId', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'DELETE_ITEM'), async (req: AuthRequest, res) => {
   try {
     const reportId = parseInt(req.params.id as string)
     const itemId = parseInt(req.params.itemId as string)
@@ -877,7 +865,7 @@ router.delete('/:id/items/:itemId', authenticateToken, checkPermission('create_r
 // ==================== 日报工时条目管理 ====================
 
 // 获取日报工时条目列表
-router.get('/:id/time-entries', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/:id/time-entries', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const reportId = parseInt(req.params.id as string)
 
@@ -905,7 +893,7 @@ router.get('/:id/time-entries', authenticateToken, checkPermission('view_reports
 })
 
 // 创建日报工时条目
-router.post('/:id/time-entries', authenticateToken, checkPermission('create_reports'), logOperation('工作日报', 'CREATE_TIME_ENTRY'), async (req: AuthRequest, res) => {
+router.post('/:id/time-entries', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'CREATE_TIME_ENTRY'), async (req: AuthRequest, res) => {
   try {
     const reportId = parseInt(req.params.id as string)
     const { projectId, description, hours, startTime, endTime, type } = req.body
@@ -946,7 +934,7 @@ router.post('/:id/time-entries', authenticateToken, checkPermission('create_repo
 })
 
 // 更新日报工时条目
-router.put('/:id/time-entries/:entryId', authenticateToken, checkPermission('create_reports'), logOperation('工作日报', 'UPDATE_TIME_ENTRY'), async (req: AuthRequest, res) => {
+router.put('/:id/time-entries/:entryId', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'UPDATE_TIME_ENTRY'), async (req: AuthRequest, res) => {
   try {
     const reportId = parseInt(req.params.id as string)
     const entryId = parseInt(req.params.entryId as string)
@@ -989,7 +977,7 @@ router.put('/:id/time-entries/:entryId', authenticateToken, checkPermission('cre
 })
 
 // 删除日报工时条目
-router.delete('/:id/time-entries/:entryId', authenticateToken, checkPermission('create_reports'), logOperation('工作日报', 'DELETE_TIME_ENTRY'), async (req: AuthRequest, res) => {
+router.delete('/:id/time-entries/:entryId', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'DELETE_TIME_ENTRY'), async (req: AuthRequest, res) => {
   try {
     const reportId = parseInt(req.params.id as string)
     const entryId = parseInt(req.params.entryId as string)
@@ -1018,7 +1006,7 @@ router.delete('/:id/time-entries/:entryId', authenticateToken, checkPermission('
 })
 
 // 获取工时统计（按项目、按类型）—— 所有人可查看
-router.get('/stats/hours-analysis', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/stats/hours-analysis', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
@@ -1092,7 +1080,7 @@ const labelMap: Record<string, string> = {
   '工时': 'hours'
 }
 
-router.get('/export/excel', authenticateToken, checkPermission('view_reports'), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const data = await prisma.dailyReport.findMany({
       where: { deletedAt: null },

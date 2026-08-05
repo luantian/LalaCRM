@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
@@ -13,7 +14,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有费用报销记录
-router.get('/', authenticateToken, checkPermission('view_expenses'), applyDataScope('ownerId'), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const { page = '1', pageSize = '10', status = '', category = '', search = '', tripId = '' } = req.query
 
@@ -101,7 +102,7 @@ router.get('/', authenticateToken, checkPermission('view_expenses'), applyDataSc
 })
 
 // 费用统计
-router.get('/stats/overview', authenticateToken, checkPermission('view_expenses'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const expenses = await prisma.expense.findMany({ where: { deletedAt: null, ...dataScopeWhere } })
@@ -146,7 +147,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_expenses'
 })
 
 // 获取单个费用报销记录
-router.get('/:id', authenticateToken, checkPermission('view_expenses'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const dataScopeWhere = (req as any).dataScopeWhere || {}
@@ -173,7 +174,7 @@ router.get('/:id', authenticateToken, checkPermission('view_expenses'), applyDat
 })
 
 // 创建费用报销记录（默认为草稿）
-router.post('/', authenticateToken, checkPermission('submit_expenses'), logOperation('费用报销', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('finance:expense:add'), logOperation('费用报销', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const {
       title,
@@ -232,7 +233,7 @@ router.post('/', authenticateToken, checkPermission('submit_expenses'), logOpera
 })
 
 // 更新费用报销记录（仅草稿或被驳回时允许编辑）
-router.put('/:id', authenticateToken, checkPermission('submit_expenses'), logOperation('费用报销', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('finance:expense:add'), logOperation('费用报销', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const {
@@ -251,7 +252,7 @@ router.put('/:id', authenticateToken, checkPermission('submit_expenses'), logOpe
     }
 
     // 所有权检查：只能编辑自己的报销（管理员除外）
-    if (existing.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权编辑此报销记录' })
     }
 
@@ -313,7 +314,7 @@ router.put('/:id', authenticateToken, checkPermission('submit_expenses'), logOpe
 })
 
 // 删除费用报销记录（仅草稿或被驳回时允许删除）
-router.delete('/:id', authenticateToken, checkPermission('submit_expenses'), logOperation('费用报销', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('finance:expense:add'), logOperation('费用报销', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -323,7 +324,7 @@ router.delete('/:id', authenticateToken, checkPermission('submit_expenses'), log
     }
 
     // 所有权检查：只能删除自己的报销（管理员除外）
-    if (existing.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权删除此报销记录' })
     }
 
@@ -342,7 +343,7 @@ router.delete('/:id', authenticateToken, checkPermission('submit_expenses'), log
 })
 
 // 提交申请（DRAFT → SUBMITTED）
-router.post('/:id/submit', authenticateToken, checkPermission('submit_expenses'), logOperation('费用报销', 'SUBMIT'), async (req: AuthRequest, res) => {
+router.post('/:id/submit', authenticateToken, checkPermission('finance:expense:add'), logOperation('费用报销', 'SUBMIT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -373,7 +374,7 @@ router.post('/:id/submit', authenticateToken, checkPermission('submit_expenses')
 })
 
 // 审批通过（SUBMITTED → APPROVED）
-router.post('/:id/approve', authenticateToken, checkPermission('approve_expenses'), logOperation('费用报销', 'APPROVE'), async (req: AuthRequest, res) => {
+router.post('/:id/approve', authenticateToken, checkPermission('finance:expense:approve'), logOperation('费用报销', 'APPROVE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { remark } = req.body
@@ -388,7 +389,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_expenses
     }
 
     // 防止自审批（管理员除外）
-    if (expense.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+    if (expense.ownerId === req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '不能审批自己提交的申请' })
     }
 
@@ -424,7 +425,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_expenses
 })
 
 // 驳回（SUBMITTED → REJECTED）
-router.post('/:id/reject', authenticateToken, checkPermission('approve_expenses'), logOperation('费用报销', 'REJECT'), async (req: AuthRequest, res) => {
+router.post('/:id/reject', authenticateToken, checkPermission('finance:expense:approve'), logOperation('费用报销', 'REJECT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { reason } = req.body
@@ -443,7 +444,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_expenses'
     }
 
     // 防止自驳回
-    if (expense.ownerId === req.user!.id && req.user?.role !== 'ADMIN') {
+    if (expense.ownerId === req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '不能驳回自己提交的申请' })
     }
 
@@ -478,7 +479,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('approve_expenses'
 })
 
 // 重新提交（REJECTED → SUBMITTED）
-router.post('/:id/resubmit', authenticateToken, checkPermission('submit_expenses'), logOperation('费用报销', 'RESUBMIT'), async (req: AuthRequest, res) => {
+router.post('/:id/resubmit', authenticateToken, checkPermission('finance:expense:add'), logOperation('费用报销', 'RESUBMIT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -492,7 +493,7 @@ router.post('/:id/resubmit', authenticateToken, checkPermission('submit_expenses
     }
 
     // 只能重新提交自己的
-    if (expense.ownerId !== req.user!.id && req.user!.role !== 'ADMIN') {
+    if (expense.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '只能重新提交自己的报销申请' })
     }
 
@@ -518,7 +519,7 @@ router.post('/:id/resubmit', authenticateToken, checkPermission('submit_expenses
 })
 
 // 标记已支付（APPROVED → PAID）
-router.post('/:id/pay', authenticateToken, checkPermission('approve_expenses'), logOperation('费用报销', 'PAY'), async (req: AuthRequest, res) => {
+router.post('/:id/pay', authenticateToken, checkPermission('finance:expense:approve'), logOperation('费用报销', 'PAY'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -569,7 +570,7 @@ const labelMap: Record<string, string> = {
   '状态': 'status'
 }
 
-router.get('/export/excel', authenticateToken, checkPermission('view_expenses'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.expense.findMany({

@@ -44,6 +44,11 @@ function RoleManagement() {
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([])
   const [viewingRole, setViewingRole] = useState<Role | null>(null)
 
+  // 联系方式权限配置弹窗状态
+  const [contactInfoModalVisible, setContactInfoModalVisible] = useState(false)
+  const [contactInfoRoleIds, setContactInfoRoleIds] = useState<number[]>([])
+  const [contactInfoLoading, setContactInfoLoading] = useState(false)
+
   // 权限定义（对照表用）
   const permissionDefs = [
     // 系统
@@ -130,12 +135,14 @@ function RoleManagement() {
     setMenuModalVisible(true)
     try {
       const response: any = await getRoleMenus(role.id)
-      // 提取所有菜单ID（包括子菜单）
+      // 提取所有菜单ID（包括子菜单，过滤掉 BUTTON 类型）
       const extractIds = (menus: any[]): number[] => {
         const ids: number[] = []
         menus.forEach((m: any) => {
-          ids.push(m.id)
-          if (m.children?.length) ids.push(...extractIds(m.children))
+          if (m.menuType !== 'BUTTON') {
+            ids.push(m.id)
+            if (m.children?.length) ids.push(...extractIds(m.children))
+          }
         })
         return ids
       }
@@ -235,6 +242,35 @@ function RoleManagement() {
     }
   }
 
+  // ===== 联系方式权限配置 =====
+  const fetchContactInfoConfig = async () => {
+    setContactInfoLoading(true)
+    try {
+      const response = await api.get('/settings/contact-info-permission') as any
+      setContactInfoRoleIds(response.roleIds || [])
+    } catch (error: any) {
+      message.error(error?.error || '获取配置失败')
+      setContactInfoRoleIds([])
+    } finally {
+      setContactInfoLoading(false)
+    }
+  }
+
+  const handleOpenContactInfoModal = () => {
+    setContactInfoModalVisible(true)
+    fetchContactInfoConfig()
+  }
+
+  const handleSaveContactInfoConfig = async () => {
+    try {
+      await api.put('/settings/contact-info-permission', { roleIds: contactInfoRoleIds })
+      message.success('配置保存成功')
+      setContactInfoModalVisible(false)
+    } catch (error: any) {
+      message.error(error?.error || '保存失败')
+    }
+  }
+
   // ===== 对照表 =====
   const sortedRoles = [...roles].sort((a, b) => (b.permissions?.length || 0) - (a.permissions?.length || 0))
 
@@ -307,7 +343,10 @@ function RoleManagement() {
 
       <div style={{ marginTop: 24, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1e293b', margin: 0 }}>角色说明</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateRole}>新建角色</Button>
+        <Space>
+          <Button icon={<SettingOutlined />} onClick={handleOpenContactInfoModal}>联系方式权限配置</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateRole}>新建角色</Button>
+        </Space>
       </div>
       <Card
         style={{ borderRadius: 12, border: 'none', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
@@ -459,6 +498,54 @@ function RoleManagement() {
             <Descriptions.Item label="权限数">{viewingRole.permissions?.length || 0}</Descriptions.Item>
           </Descriptions>
         )}
+      </Modal>
+
+      {/* 联系方式权限配置弹窗 */}
+      <Modal
+        title="联系方式权限配置"
+        open={contactInfoModalVisible}
+        onOk={handleSaveContactInfoConfig}
+        onCancel={() => setContactInfoModalVisible(false)}
+        confirmLoading={contactInfoLoading}
+        width={500}
+      >
+        <div style={{ marginBottom: 16, color: '#666' }}>
+          选择可以查看客户完整联系方式（电话、邮箱、微信）的角色。
+          <br />
+          <span style={{ fontSize: 12, color: '#999' }}>未选中的角色只能看到脱敏后的信息</span>
+        </div>
+        <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+          {roles.map(role => (
+            <div
+              key={role.id}
+              style={{
+                padding: '8px 12px',
+                marginBottom: 8,
+                border: '1px solid #d9d9d9',
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: contactInfoRoleIds.includes(role.id) ? '#f0f5ff' : '#fff'
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 500 }}>{role.displayName}</div>
+                <div style={{ fontSize: 12, color: '#999' }}>{role.description}</div>
+              </div>
+              <Checkbox
+                checked={contactInfoRoleIds.includes(role.id)}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setContactInfoRoleIds([...contactInfoRoleIds, role.id])
+                  } else {
+                    setContactInfoRoleIds(contactInfoRoleIds.filter(id => id !== role.id))
+                  }
+                }}
+              />
+            </div>
+          ))}
+        </div>
       </Modal>
     </div>
   )

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { body, param, query } from 'express-validator'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { validate } from '../middleware/validation'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
@@ -115,27 +115,39 @@ function buildTree(orgs: any[], parentId: number | null = null): OrgTreeNode[] {
     }))
 }
 
-// 判断当前用户是否有权查看联系人电话（仅管理员、总经理、销售经理可见）
-async function canViewContactPhone(req: AuthRequest): Promise<boolean> {
-  if (req.user?.role === 'ADMIN') return true
-  if (!req.user?.id) return false
+// 获取用户的所有角色 ID
+async function getUserRoleIds(userId: number): Promise<number[]> {
   const user = await prisma.user.findUnique({
-    where: { id: req.user.id },
+    where: { id: userId },
     include: {
-      userRoles: { include: { role: { select: { name: true, displayName: true } } } },
-      roleRef: { select: { name: true, displayName: true } }
+      userRoles: { select: { roleId: true } },
+      roleRef: { select: { id: true } }
     }
   })
-  if (!user) return false
-  const roleNames: string[] = []
-  if (user.roleRef) {
-    roleNames.push(user.roleRef.name, user.roleRef.displayName)
-  }
+  if (!user) return []
+  const ids: number[] = []
+  if (user.roleRef?.id) ids.push(user.roleRef.id)
   user.userRoles?.forEach(ur => {
-    roleNames.push(ur.role.name, ur.role.displayName)
+    if (ur.roleId) ids.push(ur.roleId)
   })
-  return roleNames.includes('GENERAL_MANAGER') || roleNames.includes('SALES_MANAGER') ||
-         roleNames.includes('总经理') || roleNames.includes('销售经理')
+  return [...new Set(ids)]
+}
+
+// 判断当前用户是否有权查看联系方式（完全依赖 SystemConfig 配置）
+async function canViewContactInfo(req: AuthRequest): Promise<boolean> {
+  if (!req.user?.id) return false
+
+  // 从 SystemConfig 读取允许查看联系方式的角色 ID
+  const config = await prisma.systemConfig.findUnique({
+    where: { key: 'contact_info_viewable_roles' }
+  })
+  if (!config) return false
+
+  const allowedRoleIds: number[] = JSON.parse(config.value)
+  if (allowedRoleIds.length === 0) return false
+
+  const userRoleIds = await getUserRoleIds(req.user.id)
+  return userRoleIds.some(id => allowedRoleIds.includes(id))
 }
 
 // 脱敏电话号码：只显示后4位，其余用 * 代替
@@ -145,15 +157,71 @@ function maskPhone(phone: string | null): string | null {
   return '***' + phone.slice(-4)
 }
 
+// 脱敏邮箱：保留首字母和域名，其余用 * 代替
+function maskEmail(email: string | null): string | null {
+  if (!email) return null
+  const atIdx = email.indexOf('@')
+  if (atIdx < 0) return email
+  const name = email.substring(0, atIdx)
+  const domain = email.substring(atIdx)
+  if (name.length <= 1) return name + domain
+  return name[0] + '***' + domain
+}
+
+// 脱敏微信：保留首尾字符，中间用 * 代替
+function maskWechat(wechat: string | null): string | null {
+  if (!wechat) return null
+  if (wechat.length <= 2) return wechat
+  return wechat[0] + '*'.repeat(wechat.length - 2) + wechat[wechat.length - 1]
+}
+
+// 脱敏组织联系方式
+function maskOrgContact(org: any): any {
+  return {
+    ...org,
+    phone: maskPhone(org.phone),
+    email: maskEmail(org.email),
+    contacts: org.contacts
+      ? org.contacts.map((c: any) => ({
+          ...c,
+          phone: maskPhone(c.phone),
+          email: maskEmail(c.email),
+          wechat: maskWechat(c.wechat)
+        }))
+      : org.contacts
+  }
+}
+
 // ─── Routes ──────────────────────────────────────────────────────────────────
+
+// 0. GET /simple - 精简客户列表（用于下拉选择，无需客户管理权限）
+router.get(
+  '/simple',
+  authenticateToken,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const organizations = await prisma.organization.findMany({
+        where: { deletedAt: null },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' }
+      })
+      res.json(organizations)
+    } catch (error) {
+      logger.error('Get simple organizations error:', error)
+      res.status(500).json({ error: '获取客户列表失败' })
+    }
+  }
+)
 
 // 1. GET / - List organizations (flat list with tree support)
 router.get(
   '/',
   authenticateToken,
+  checkPermission('crm:organization:list'),
   applyDataScope('ownerId'),
   async (req: AuthRequest, res: Response) => {
     try {
+      const canView = await canViewContactInfo(req)
       const { parentId, type, search } = req.query
       const dataScopeWhere = (req as any).dataScopeWhere || {}
 
@@ -197,7 +265,14 @@ router.get(
         prisma.organization.count({ where })
       ])
 
-      res.json({ data, total })
+      // 对组织列表的联系方式进行脱敏处理
+      const maskedData = canView ? data : data.map(org => ({
+        ...org,
+        phone: maskPhone(org.phone),
+        email: maskEmail(org.email)
+      }))
+
+      res.json({ data: maskedData, total })
     } catch (error) {
       logger.error('Get organizations error:', error)
       res.status(500).json({ error: '获取组织列表失败' })
@@ -209,14 +284,24 @@ router.get(
 router.get(
   '/tree',
   authenticateToken,
+  checkPermission('crm:organization:list'),
   async (req: AuthRequest, res: Response) => {
     try {
+      const canView = await canViewContactInfo(req)
+
       const orgs = await prisma.organization.findMany({
         where: { deletedAt: null },
         orderBy: { createdAt: 'asc' }
       })
 
-      const tree = buildTree(orgs, null)
+      // 对组织节点进行脱敏
+      const maskedOrgs = canView ? orgs : orgs.map(org => ({
+        ...org,
+        phone: maskPhone(org.phone),
+        email: maskEmail(org.email)
+      }))
+
+      const tree = buildTree(maskedOrgs, null)
       res.json({ tree })
     } catch (error) {
       logger.error('Get organization tree error:', error)
@@ -225,13 +310,54 @@ router.get(
   }
 )
 
+// 2b-0. GET /contacts/simple - 精简联系人列表（用于下拉选择，无需联系人管理权限）
+router.get(
+  '/contacts/simple',
+  authenticateToken,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { orgId } = req.query
+      const where: any = { deletedAt: null }
+      if (orgId && typeof orgId === 'string') {
+        where.organizationId = Number(orgId)
+      }
+
+      const contacts = await prisma.orgContact.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          title: true,
+          organizationId: true,
+          organization: { select: { id: true, name: true } }
+        },
+        orderBy: { name: 'asc' }
+      })
+
+      const result = contacts.map(c => ({
+        id: c.id,
+        name: c.name,
+        title: c.title,
+        organizationId: c.organizationId,
+        organizationName: c.organization?.name || ''
+      }))
+
+      res.json(result)
+    } catch (error) {
+      logger.error('Get simple contacts error:', error)
+      res.status(500).json({ error: '获取联系人列表失败' })
+    }
+  }
+)
+
 // 2b. GET /contacts - Get all contacts across organizations (for client selector)
 router.get(
   '/contacts',
   authenticateToken,
+  checkPermission('crm:organization:contact:list'),
   async (req: AuthRequest, res: Response) => {
     try {
-      const canViewPhone = await canViewContactPhone(req)
+      const canView = await canViewContactInfo(req)
       
       const contacts = await prisma.orgContact.findMany({
         where: { deletedAt: null },
@@ -245,8 +371,9 @@ router.get(
         id: c.id,
         name: c.name,
         title: c.title,
-        phone: canViewPhone ? c.phone : maskPhone(c.phone),
-        email: c.email,
+        phone: canView ? c.phone : maskPhone(c.phone),
+        email: canView ? c.email : maskEmail(c.email),
+        wechat: canView ? c.wechat : maskWechat(c.wechat),
         organizationId: c.organizationId,
         organizationName: c.organization?.name || ''
       }))
@@ -266,7 +393,7 @@ router.get(
   async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id as string)
-      const canViewPhone = await canViewContactPhone(req)
+      const canView = await canViewContactInfo(req)
       
       const contact = await prisma.orgContact.findFirst({
         where: { id, deletedAt: null },
@@ -279,8 +406,9 @@ router.get(
         id: contact.id,
         name: contact.name,
         title: contact.title,
-        phone: canViewPhone ? contact.phone : maskPhone(contact.phone),
-        email: contact.email,
+        phone: canView ? contact.phone : maskPhone(contact.phone),
+        email: canView ? contact.email : maskEmail(contact.email),
+        wechat: canView ? contact.wechat : maskWechat(contact.wechat),
         organizationId: contact.organizationId,
         organizationName: contact.organization?.name || ''
       })
@@ -300,7 +428,7 @@ router.get(
   async (req: AuthRequest, res: Response) => {
     try {
       const id = Number(req.params.id)
-      const canViewPhone = await canViewContactPhone(req)
+      const canView = await canViewContactInfo(req)
 
       const org = await prisma.organization.findFirst({
         where: { id, deletedAt: null },
@@ -321,13 +449,21 @@ router.get(
         return res.status(404).json({ error: '组织不存在' })
       }
 
-      // 对联系人电话进行脱敏处理
+      // 对联系方式进行脱敏处理
       const orgData = { ...org }
-      if (!canViewPhone && orgData.contacts) {
-        orgData.contacts = orgData.contacts.map(c => ({
-          ...c,
-          phone: maskPhone(c.phone)
-        }))
+      if (!canView) {
+        // 组织本身的 phone/email 脱敏
+        orgData.phone = maskPhone(orgData.phone)
+        orgData.email = maskEmail(orgData.email)
+        // 联系人的 phone/email/wechat 脱敏
+        if (orgData.contacts) {
+          orgData.contacts = orgData.contacts.map(c => ({
+            ...c,
+            phone: maskPhone(c.phone),
+            email: maskEmail(c.email),
+            wechat: maskWechat(c.wechat)
+          }))
+        }
       }
 
       res.json(orgData)
@@ -547,7 +683,16 @@ router.post(
       })
 
       logger.info(`Contact added to organization ${orgId} by user ${req.user?.username}`)
-      res.status(201).json(contact)
+      
+      // 根据配置脱敏返回数据
+      const canView = await canViewContactInfo(req)
+      const result = canView ? contact : {
+        ...contact,
+        phone: maskPhone(contact.phone),
+        email: maskEmail(contact.email),
+        wechat: maskWechat(contact.wechat)
+      }
+      res.status(201).json(result)
     } catch (error) {
       logger.error('Add contact error:', error)
       res.status(500).json({ error: '添加联系人失败' })
@@ -564,6 +709,7 @@ router.get(
   async (req: AuthRequest, res: Response) => {
     try {
       const orgId = Number(req.params.id)
+      const canView = await canViewContactInfo(req)
 
       const org = await prisma.organization.findFirst({
         where: { id: orgId, deletedAt: null }
@@ -577,7 +723,15 @@ router.get(
         orderBy: [{ isPrimary: 'desc' }, { createdAt: 'desc' }]
       })
 
-      res.json(contacts)
+      // 对联系方式进行脱敏处理
+      const result = canView ? contacts : contacts.map(c => ({
+        ...c,
+        phone: maskPhone(c.phone),
+        email: maskEmail(c.email),
+        wechat: maskWechat(c.wechat)
+      }))
+
+      res.json(result)
     } catch (error) {
       logger.error('Get organization contacts error:', error)
       res.status(500).json({ error: '获取联系人列表失败' })
@@ -629,7 +783,15 @@ router.put(
       })
 
       logger.info(`Contact ${contactId} updated in organization ${orgId} by user ${req.user?.username}`)
-      res.json(contact)
+      // 返回数据时进行脱敏处理
+      const canView = await canViewContactInfo(req)
+      const result = canView ? contact : {
+        ...contact,
+        phone: maskPhone(contact.phone),
+        email: maskEmail(contact.email),
+        wechat: maskWechat(contact.wechat)
+      }
+      res.json(result)
     } catch (error) {
       logger.error('Update contact error:', error)
       res.status(500).json({ error: '更新联系人失败' })

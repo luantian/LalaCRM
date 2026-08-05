@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
@@ -59,7 +60,7 @@ router.post('/', authenticateToken, logOperation('合同付款', 'CREATE'), asyn
     if (!contract) {
       return res.status(404).json({ error: '合同不存在' })
     }
-    if (contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此合同的付款记录' })
     }
 
@@ -96,7 +97,7 @@ router.put('/:id', authenticateToken, logOperation('合同付款', 'UPDATE'), as
     if (!existing) {
       return res.status(404).json({ error: '付款记录不存在' })
     }
-    if (existing.contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此付款记录' })
     }
 
@@ -243,7 +244,7 @@ router.delete('/:id', authenticateToken, logOperation('合同付款', 'DELETE'),
     if (!existing) {
       return res.status(404).json({ error: '付款记录不存在' })
     }
-    if (existing.contract.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (existing.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此付款记录' })
     }
     await prisma.contractPayment.update({ where: { id }, data: { deletedAt: new Date() } })

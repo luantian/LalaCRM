@@ -3,9 +3,8 @@ import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicke
 import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import { OrgContactSelector } from '../components/OrgContactSelector'
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getOrganizations, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations } from '../services/api'
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getOrganizationsSimple, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations } from '../services/api'
 
 const { Option } = Select
 
@@ -29,7 +28,7 @@ const QuotationList: React.FC = () => {
   const [filters, setFilters] = useState<any>({})
   const [stats, setStats] = useState<any>({})
   const [opportunities, setOpportunities] = useState<any[]>([])
-  const [organizations, setOrganizations] = useState<any[]>([])
+  const [, setOrganizations] = useState<any[]>([])
   const [items, setItems] = useState<any[]>([])
   const [importModalVisible, setImportModalVisible] = useState(false)
 
@@ -56,8 +55,8 @@ const QuotationList: React.FC = () => {
 
   const fetchOrganizations = async () => {
     try {
-      const res: any = await getOrganizations({ pageSize: 1000 })
-      setOrganizations(res.data || [])
+      const res: any = await getOrganizationsSimple()
+      setOrganizations(res || [])
     } catch (e) { console.error(e) }
   }
 

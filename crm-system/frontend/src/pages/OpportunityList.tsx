@@ -2,9 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Empty, Popconfirm, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, MoreOutlined, ThunderboltOutlined, DownloadOutlined, ImportOutlined, InboxOutlined, StopOutlined, CloseCircleOutlined } from '@ant-design/icons'
-import { getOpportunities, createOpportunity, updateOpportunity, deleteOpportunity, getOpportunityStats, getOrganizations, convertOpportunity, exportOpportunitiesCsv, exportOpportunitiesExcel, importOpportunities } from '../services/api'
+import { getOpportunities, createOpportunity, updateOpportunity, deleteOpportunity, getOpportunityStats, getOrganizationsSimple, convertOpportunity, exportOpportunitiesCsv, exportOpportunitiesExcel, importOpportunities } from '../services/api'
 import { OrgContactSelector } from '../components/OrgContactSelector'
-import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import dayjs from 'dayjs'
 
 function OpportunityList() {
@@ -51,8 +50,8 @@ function OpportunityList() {
 
   const fetchOrganizations = async () => {
     try {
-      const response: any = await getOrganizations({ pageSize: 1000 })
-      setOrganizations(response.data || [])
+      const response: any = await getOrganizationsSimple()
+      setOrganizations(response || [])
     } catch (error) {
       console.error('获取组织列表失败:', error)
     }
@@ -179,7 +178,7 @@ function OpportunityList() {
 
   const handleClose = async (id: number) => {
     try {
-      await updateOpportunity(id, { status: 'LOST' })
+      await updateOpportunity(id, { status: 'CLOSED' })
       message.success('已关闭')
       fetchOpportunities(pagination.current, pagination.pageSize)
       fetchStats()
@@ -197,6 +196,36 @@ function OpportunityList() {
     } catch (error: any) {
       message.error(error?.error || '操作失败')
     }
+  }
+
+  const confirmConvert = (record: any) => {
+    Modal.confirm({
+      title: '确认转化',
+      content: `确定将「${record.name}」转化为项目吗？`,
+      okText: '确定',
+      cancelText: '取消',
+      onOk: () => handleConvert(record.id)
+    })
+  }
+
+  const confirmClose = (record: any) => {
+    Modal.confirm({
+      title: '确认关闭',
+      content: `确定关闭「${record.name}」吗？`,
+      okText: '确定',
+      cancelText: '取消',
+      onOk: () => handleClose(record.id)
+    })
+  }
+
+  const confirmLost = (record: any) => {
+    Modal.confirm({
+      title: '确认丢单',
+      content: `确定将「${record.name}」标记为丢单吗？`,
+      okText: '确定',
+      cancelText: '取消',
+      onOk: () => handleLost(record.id)
+    })
   }
 
   const handleSubmit = async () => {
@@ -229,6 +258,13 @@ function OpportunityList() {
 
   const columns = [
     {
+      title: '项目编码',
+      dataIndex: 'opportunityNo',
+      key: 'opportunityNo',
+      width: 120,
+      render: (text: string) => text || '-'
+    },
+    {
       title: '项目名称',
       dataIndex: 'name',
       key: 'name',
@@ -259,7 +295,8 @@ function OpportunityList() {
           OPEN: { text: '开放', color: 'default' },
           FOLLOWING: { text: '跟进中', color: 'blue' },
           WON: { text: '已赢单', color: 'green' },
-          LOST: { text: '已丢单', color: 'red' }
+          LOST: { text: '已丢单', color: 'red' },
+          CLOSED: { text: '已关闭', color: 'orange' }
         }
         const s = statusMap[status] || { text: status, color: 'default' }
         return <Tag color={s.color}>{s.text}</Tag>
@@ -283,17 +320,17 @@ function OpportunityList() {
           <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
-          <Dropdown menu={{
-            items: [
-              ...(!['WON', 'LOST'].includes(record.status) ? [
-                { key: 'convert', icon: <ThunderboltOutlined />, label: '转化为项目', onClick: () => handleConvert(record.id) },
-                { key: 'close', icon: <StopOutlined />, label: '关闭', onClick: () => handleClose(record.id) },
-                { key: 'lost', icon: <CloseCircleOutlined />, label: '标记丢单', onClick: () => handleLost(record.id) },
-              ] : []),
-            ]
-          }}>
-            <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
-          </Dropdown>
+          {!['WON', 'LOST', 'CLOSED'].includes(record.status) && (
+            <Dropdown menu={{
+              items: [
+                { key: 'convert', icon: <ThunderboltOutlined />, label: '转化为项目', onClick: () => confirmConvert(record) },
+                { key: 'close', icon: <StopOutlined />, label: '关闭', onClick: () => confirmClose(record) },
+                { key: 'lost', icon: <CloseCircleOutlined />, label: '标记丢单', onClick: () => confirmLost(record) },
+              ]
+            }}>
+              <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
+            </Dropdown>
+          )}
         </Space>
       )
     }
@@ -405,6 +442,9 @@ function OpportunityList() {
           <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
             <Input />
           </Form.Item>
+          <Form.Item name="opportunityNo" label="项目编码">
+            <Input placeholder="可选，如：OPP-2024-001" />
+          </Form.Item>
           <Form.Item
             name="contactId"
             label="客户"
@@ -452,6 +492,7 @@ function OpportunityList() {
               <Select.Option value="FOLLOWING">跟进中</Select.Option>
               <Select.Option value="WON">已赢单</Select.Option>
               <Select.Option value="LOST">已丢单</Select.Option>
+              <Select.Option value="CLOSED">已关闭</Select.Option>
             </Select>
           </Form.Item>
           <Form.Item name="notes" label="备注">

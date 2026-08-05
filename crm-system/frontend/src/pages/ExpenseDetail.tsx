@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, Table, Divider, message } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, MinusCircleOutlined } from '@ant-design/icons'
-import { getExpenseDetail, updateExpense, getOrganizations, getProjects, getBusinessTrips } from '../services/api'
+import { getExpenseDetail, updateExpense, getOrganizationsSimple, getProjects, getBusinessTrips } from '../services/api'
 import dayjs from 'dayjs'
-import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 
 function ExpenseDetail() {
@@ -16,7 +15,7 @@ function ExpenseDetail() {
   // 编辑状态
   const [modalVisible, setModalVisible] = useState(false)
   const [form] = Form.useForm()
-  const [organizations, setOrganizations] = useState<any[]>([])
+  const [, setOrganizations] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
   const [trips, setTrips] = useState<any[]>([])
 
@@ -48,8 +47,8 @@ function ExpenseDetail() {
 
   const fetchOrganizations = async () => {
     try {
-      const response: any = await getOrganizations({ pageSize: 1000 })
-      setOrganizations(response.data || [])
+      const response: any = await getOrganizationsSimple()
+      setOrganizations(response || [])
     } catch (error) {
       console.error('获取组织列表失败:', error)
     }
@@ -157,13 +156,15 @@ function ExpenseDetail() {
           </Col>
           <Col flex="none">
             <Space>
-              <Button
-                type="primary"
-                icon={<EditOutlined />}
-                onClick={handleEdit}
-              >
-                编辑
-              </Button>
+              {(expense.status === 'DRAFT' || expense.status === 'REJECTED') && (
+                <Button
+                  type="primary"
+                  icon={<EditOutlined />}
+                  onClick={handleEdit}
+                >
+                  编辑
+                </Button>
+              )}
             </Space>
           </Col>
         </Row>
@@ -310,40 +311,60 @@ function ExpenseDetail() {
             {(fields, { add, remove }) => (
               <>
                 {fields.map(({ key, name, ...restField }) => (
-                  <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'category']}
-                      rules={[{ required: true, message: '请选择类别' }]}
-                    >
-                      <Select placeholder="费用类别" style={{ width: 120 }}>
-                        {expenseCategories.map(cat => (
-                          <Select.Option key={cat} value={cat}>{cat}</Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'amount']}
-                      rules={[{ required: true, message: '请输入金额' }]}
-                    >
-                      <InputNumber placeholder="金额" precision={2} addonAfter="元" />
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'expenseDate']}
-                      rules={[{ required: true, message: '请选择日期' }]}
-                    >
-                      <DatePicker placeholder="费用日期" />
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'description']}
-                    >
-                      <Input placeholder="描述" style={{ width: 150 }} />
-                    </Form.Item>
-                    <MinusCircleOutlined onClick={() => remove(name)} />
-                  </Space>
+                  <Row gutter={12} key={key} align="middle" style={{ marginBottom: 12 }}>
+                    <Col span={5}>
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'category']}
+                        rules={[{ required: true, message: '请选择类别' }]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Select placeholder="费用类别" style={{ width: '100%' }}>
+                          {expenseCategories.map(cat => (
+                            <Select.Option key={cat} value={cat}>{cat}</Select.Option>
+                          ))}
+                        </Select>
+                      </Form.Item>
+                    </Col>
+                    <Col span={5}>
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'amount']}
+                        rules={[{ required: true, message: '请输入金额' }]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <InputNumber style={{ width: '100%' }} precision={2} placeholder="金额（元）" suffix="元" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={5}>
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'expenseDate']}
+                        rules={[{ required: true, message: '请选择日期' }]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <DatePicker style={{ width: '100%' }} placeholder="费用日期" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={7}>
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'description']}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Input placeholder="费用说明（可选）" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={2}>
+                      <Button
+                        type="text"
+                        danger
+                        icon={<MinusCircleOutlined />}
+                        onClick={() => remove(name)}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+                  </Row>
                 ))}
                 <Form.Item>
                   <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>

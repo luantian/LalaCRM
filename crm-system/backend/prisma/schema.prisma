@@ -55,11 +55,15 @@ model User {
 // 角色表
 model RoleModel {
   id          Int      @id @default(autoincrement())
-  name        String   @unique  // 角色名称（如：PROJECT_MANAGER）
-  displayName String             // 显示名称（如：项目经理）
-  description String             // 角色描述
+  name        String   @unique  // 角色名称（如：admin）
+  displayName String             // 显示名称（如：系统管理员）
+  roleKey     String   @unique  // 角色标识（若依规范，如：admin、sales_manager）
+  description String?            // 角色描述
   permissions String[]           // 权限列表 - 兼容旧逻辑
   dataScope   DataScope @default(ALL) // 数据权限范围
+  customDeptIds Int[]            // 自定义部门ID列表（dataScope=CUSTOM时使用）
+  status      Int      @default(1) // 状态（0停用 1正常）
+  orderNum    Int      @default(0) // 排序
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   users       User[]
@@ -200,7 +204,6 @@ model Project {
   contact         OrgContact?   @relation(fields: [contactId], references: [id])
   status          ProjectStatus @default(IN_PROGRESS)
   budget          Decimal? @db.Decimal(12, 2) // 预算
-  progress        Int      @default(0) // 当前进度百分比 0-100
   startDate       DateTime?
   endDate         DateTime?
   acceptanceDate  DateTime? // 调试验收时间
@@ -486,6 +489,7 @@ model ExpenseFile {
 model Opportunity {
   id               Int           @id @default(autoincrement())
   name             String        // 商机名称
+  opportunityNo    String?       // 项目编号
   organizationId   Int?          // 暂时设为可选，用于数据迁移
   organization     Organization? @relation(fields: [organizationId], references: [id])
   contactId        Int?          // 联系人（替代纯文本decisionMaker）
@@ -1213,6 +1217,7 @@ enum OpportunityStatus {
   FOLLOWING    // 跟进中
   WON          // 赢单
   LOST         // 丢单
+  CLOSED       // 已关闭（主动放弃）
 }
 
 enum TeamRole {
@@ -1699,4 +1704,15 @@ enum TaskType {
   MEETING         // 会议任务
   TRAINING        // 培训任务
   OTHER           // 其他任务
+}
+
+// ==================== 系统配置 ====================
+
+model SystemConfig {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique // 配置键
+  value     String   // 配置值（JSON 字符串）
+  updatedAt DateTime @updatedAt
+  
+  @@index([key])
 }

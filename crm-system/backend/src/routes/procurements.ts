@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
@@ -14,7 +15,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // GET /stats/overview - Stats (before /:id)
-router.get('/stats/overview', authenticateToken, checkPermission('view_procurements'), applyDataScope('assignedTo'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('project:procurement:list'), applyDataScope('assignedTo'), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const [total, byStatus, amountResult] = await Promise.all([
@@ -32,7 +33,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_procureme
 })
 
 // GET / - List procurements
-router.get('/', authenticateToken, checkPermission('view_procurements'), applyDataScope('assignedTo'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('project:procurement:list'), applyDataScope('assignedTo'), async (req: AuthRequest, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 10
@@ -76,7 +77,7 @@ router.get('/', authenticateToken, checkPermission('view_procurements'), applyDa
 })
 
 // GET /:id - Detail
-router.get('/:id', authenticateToken, checkPermission('view_procurements'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const procurement = await prisma.procurement.findFirst({
@@ -90,7 +91,7 @@ router.get('/:id', authenticateToken, checkPermission('view_procurements'), asyn
       where: { id: procurement.projectId, deletedAt: null },
       select: { ownerId: true, teamMembers: { select: { userId: true } } }
     })
-    if (project?.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (project?.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       const isTeamMember = project?.teamMembers.some(tm => tm.userId === req.user!.id)
       if (!isTeamMember) {
         return res.status(403).json({ error: '无权访问此采购单' })
@@ -105,7 +106,7 @@ router.get('/:id', authenticateToken, checkPermission('view_procurements'), asyn
 })
 
 // POST / - Create procurement
-router.post('/', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const { title, vendor, totalAmount, expectedDate, status, projectId, assignedTo, remarks,
       purchaseContractNo, purchaseContractDate, paymentTerms, deliveryTerms, warrantyTerms } = req.body
@@ -137,7 +138,7 @@ router.post('/', authenticateToken, checkPermission('edit_procurements'), logOpe
 })
 
 // 审批采购单
-router.post('/:id/approve', authenticateToken, checkPermission('approve_procurements'), logOperation('采购管理', 'APPROVE'), async (req: AuthRequest, res) => {
+router.post('/:id/approve', authenticateToken, checkPermission('project:procurement:approve'), logOperation('采购管理', 'APPROVE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { status, remark } = req.body
@@ -166,7 +167,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_procurem
     // 防止自审批：项目负责人/采购负责人不能审批自己的采购单（管理员除外）
     const isAssigned = procurement.assignedTo === req.user!.id
     const isProjectOwner = procurement.project?.ownerId === req.user!.id
-    if ((isAssigned || isProjectOwner) && req.user?.role !== 'ADMIN') {
+    if ((isAssigned || isProjectOwner) && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '不能审批自己负责的采购单' })
     }
 
@@ -197,7 +198,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('approve_procurem
 })
 
 // PUT /:id - Update procurement
-router.put('/:id', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { title, vendor, totalAmount, expectedDate, status, assignedTo, remarks,
@@ -239,7 +240,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_procurements'), logO
 })
 
 // DELETE /:id - Delete procurement
-router.delete('/:id', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
 
@@ -265,7 +266,7 @@ router.delete('/:id', authenticateToken, checkPermission('edit_procurements'), l
 })
 
 // GET /:id/items - List procurement items
-router.get('/:id/items', authenticateToken, checkPermission('edit_procurements'), async (req: AuthRequest, res) => {
+router.get('/:id/items', authenticateToken, checkPermission('project:procurement:edit'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const items = await prisma.procurementItem.findMany({
@@ -281,7 +282,7 @@ router.get('/:id/items', authenticateToken, checkPermission('edit_procurements')
 })
 
 // POST /:id/items - Create procurement item
-router.post('/:id/items', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/:id/items', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const { name, spec, quantity, unit, unitPrice, remarks } = req.body
@@ -298,7 +299,7 @@ router.post('/:id/items', authenticateToken, checkPermission('edit_procurements'
 })
 
 // PUT /items/:itemId - Update procurement item
-router.put('/items/:itemId', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/items/:itemId', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const itemId = parseInt(req.params.itemId as string)
     const { name, spec, quantity, unit, unitPrice, remarks } = req.body
@@ -320,7 +321,7 @@ router.put('/items/:itemId', authenticateToken, checkPermission('edit_procuremen
 })
 
 // DELETE /items/:itemId - Delete procurement item
-router.delete('/items/:itemId', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/items/:itemId', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const itemId = parseInt(req.params.itemId as string)
     await prisma.procurementItem.update({ where: { id: itemId }, data: { deletedAt: new Date() } })
@@ -334,7 +335,7 @@ router.delete('/items/:itemId', authenticateToken, checkPermission('edit_procure
 // ==================== 采购附件管理 ====================
 
 // 上传采购附件
-router.post('/:id/files', authenticateToken, checkPermission('edit_procurements'), upload.array('files', 10), logOperation('采购管理', 'UPLOAD'), async (req: AuthRequest, res) => {
+router.post('/:id/files', authenticateToken, checkPermission('project:procurement:edit'), upload.array('files', 10), logOperation('采购管理', 'UPLOAD'), async (req: AuthRequest, res) => {
   try {
     const procurementId = parseInt(req.params.id as string)
     const files = req.files as Express.Multer.File[]
@@ -374,7 +375,7 @@ router.post('/:id/files', authenticateToken, checkPermission('edit_procurements'
 })
 
 // 获取采购附件列表
-router.get('/:id/files', authenticateToken, checkPermission('view_procurements'), async (req: AuthRequest, res) => {
+router.get('/:id/files', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const procurementId = parseInt(req.params.id as string)
     const files = await prisma.procurementFile.findMany({
@@ -389,7 +390,7 @@ router.get('/:id/files', authenticateToken, checkPermission('view_procurements')
 })
 
 // 下载采购附件
-router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementFile.findFirst({ where: { id: fileId, deletedAt: null } })
@@ -411,7 +412,7 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
 })
 
 // 预览采购附件（图片/PDF/Word/Excel）
-router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementFile.findFirst({ where: { id: fileId, deletedAt: null } })
@@ -431,7 +432,7 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
 })
 
 // 删除采购附件
-router.delete('/files/:fileId', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
+router.delete('/files/:fileId', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     await prisma.procurementFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
@@ -446,7 +447,7 @@ router.delete('/files/:fileId', authenticateToken, checkPermission('edit_procure
 // ==================== 采购明细附件管理 ====================
 
 // 上传采购明细附件
-router.post('/items/:itemId/files', authenticateToken, checkPermission('edit_procurements'), upload.array('files', 10), logOperation('采购管理', 'UPLOAD_ITEM_FILE'), async (req: AuthRequest, res) => {
+router.post('/items/:itemId/files', authenticateToken, checkPermission('project:procurement:edit'), upload.array('files', 10), logOperation('采购管理', 'UPLOAD_ITEM_FILE'), async (req: AuthRequest, res) => {
   try {
     const itemId = parseInt(req.params.itemId as string)
     const files = req.files as Express.Multer.File[]
@@ -486,7 +487,7 @@ router.post('/items/:itemId/files', authenticateToken, checkPermission('edit_pro
 })
 
 // 获取采购明细附件列表
-router.get('/items/:itemId/files', authenticateToken, checkPermission('view_procurements'), async (req: AuthRequest, res) => {
+router.get('/items/:itemId/files', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const itemId = parseInt(req.params.itemId as string)
     const files = await prisma.procurementItemFile.findMany({
@@ -501,7 +502,7 @@ router.get('/items/:itemId/files', authenticateToken, checkPermission('view_proc
 })
 
 // 下载采购明细附件
-router.get('/item-files/:fileId/download', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/item-files/:fileId/download', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementItemFile.findFirst({ where: { id: fileId, deletedAt: null } })
@@ -523,7 +524,7 @@ router.get('/item-files/:fileId/download', authenticateToken, async (req: AuthRe
 })
 
 // 预览采购明细附件（图片/PDF/Word/Excel）
-router.get('/item-files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/item-files/:fileId/preview', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementItemFile.findFirst({ where: { id: fileId, deletedAt: null } })
@@ -543,7 +544,7 @@ router.get('/item-files/:fileId/preview', authenticateToken, async (req: AuthReq
 })
 
 // 删除采购明细附件
-router.delete('/item-files/:fileId', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'DELETE_ITEM_FILE'), async (req: AuthRequest, res) => {
+router.delete('/item-files/:fileId', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'DELETE_ITEM_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     await prisma.procurementItemFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
@@ -558,7 +559,7 @@ router.delete('/item-files/:fileId', authenticateToken, checkPermission('edit_pr
 // ==================== 采购付款记录附件管理 ====================
 
 // 上传采购付款记录附件
-router.post('/payments/:paymentId/files', authenticateToken, checkPermission('edit_procurements'), upload.array('files', 10), logOperation('采购管理', 'UPLOAD_PAYMENT_FILE'), async (req: AuthRequest, res) => {
+router.post('/payments/:paymentId/files', authenticateToken, checkPermission('project:procurement:edit'), upload.array('files', 10), logOperation('采购管理', 'UPLOAD_PAYMENT_FILE'), async (req: AuthRequest, res) => {
   try {
     const paymentId = parseInt(req.params.paymentId as string)
     const files = req.files as Express.Multer.File[]
@@ -598,7 +599,7 @@ router.post('/payments/:paymentId/files', authenticateToken, checkPermission('ed
 })
 
 // 获取采购付款记录附件列表
-router.get('/payments/:paymentId/files', authenticateToken, checkPermission('view_procurements'), async (req: AuthRequest, res) => {
+router.get('/payments/:paymentId/files', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const paymentId = parseInt(req.params.paymentId as string)
     const files = await prisma.procurementPaymentFile.findMany({
@@ -655,7 +656,7 @@ router.get('/payment-files/:fileId/preview', authenticateToken, async (req: Auth
 })
 
 // 删除采购付款记录附件
-router.delete('/payment-files/:fileId', authenticateToken, checkPermission('edit_procurements'), logOperation('采购管理', 'DELETE_PAYMENT_FILE'), async (req: AuthRequest, res) => {
+router.delete('/payment-files/:fileId', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'DELETE_PAYMENT_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     await prisma.procurementPaymentFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })

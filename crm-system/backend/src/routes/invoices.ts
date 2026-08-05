@@ -14,7 +14,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取发票列表（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('view_invoices'), applyDataScope('ownerId'), sortValidation(['invoiceNo', 'amount', 'totalAmount', 'invoiceDate', 'status', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), sortValidation(['invoiceNo', 'amount', 'totalAmount', 'invoiceDate', 'status', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -90,7 +90,7 @@ router.get('/', authenticateToken, checkPermission('view_invoices'), applyDataSc
 })
 
 // 发票统计
-router.get('/stats/overview', authenticateToken, checkPermission('view_invoices'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const [total, incomeCount, expenseCount, pendingCount, issuedCount, confirmedCount] = await Promise.all([
@@ -139,7 +139,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('view_invoices'
 })
 
 // 对账统计（按项目维度汇总进销项）
-router.get('/stats/reconciliation', authenticateToken, checkPermission('view_invoices'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/reconciliation', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const { projectId = '' } = req.query
 
@@ -211,7 +211,7 @@ router.get('/stats/reconciliation', authenticateToken, checkPermission('view_inv
 })
 
 // 获取发票详情
-router.get('/:id', authenticateToken, checkPermission('view_invoices'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const dataScopeWhere = (req as any).dataScopeWhere || {}
@@ -239,7 +239,7 @@ router.get('/:id', authenticateToken, checkPermission('view_invoices'), applyDat
 })
 
 // 创建发票
-router.post('/', authenticateToken, checkPermission('edit_invoices'), logOperation('发票管理', 'CREATE'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('finance:expense:edit'), logOperation('发票管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const {
       invoiceNo, invoiceType, category, amount, taxRate,
@@ -292,7 +292,7 @@ router.post('/', authenticateToken, checkPermission('edit_invoices'), logOperati
 })
 
 // 更新发票
-router.put('/:id', authenticateToken, checkPermission('edit_invoices'), logOperation('发票管理', 'UPDATE'), async (req: AuthRequest, res) => {
+router.put('/:id', authenticateToken, checkPermission('finance:expense:edit'), logOperation('发票管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const {
@@ -345,7 +345,7 @@ router.put('/:id', authenticateToken, checkPermission('edit_invoices'), logOpera
 })
 
 // 删除发票
-router.delete('/:id', authenticateToken, checkPermission('edit_invoices'), logOperation('发票管理', 'DELETE'), async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateToken, checkPermission('finance:expense:edit'), logOperation('发票管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const existing = await prisma.invoice.findFirst({ where: { id, deletedAt: null } })
@@ -362,7 +362,7 @@ router.delete('/:id', authenticateToken, checkPermission('edit_invoices'), logOp
 })
 
 // 上传发票附件（扫描件等）
-router.post('/:id/files', authenticateToken, checkPermission('edit_invoices'), upload.array('files', 10), logOperation('发票管理', 'UPLOAD'), async (req: AuthRequest, res) => {
+router.post('/:id/files', authenticateToken, checkPermission('finance:expense:edit'), upload.array('files', 10), logOperation('发票管理', 'UPLOAD'), async (req: AuthRequest, res) => {
   try {
     const invoiceId = parseInt(req.params.id as string)
     const files = req.files as Express.Multer.File[]
@@ -417,7 +417,7 @@ router.get('/:id/files', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 删除发票附件
-router.delete('/:id/files/:fileId', authenticateToken, checkPermission('edit_invoices'), logOperation('发票管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
+router.delete('/:id/files/:fileId', authenticateToken, checkPermission('finance:expense:edit'), logOperation('发票管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.invoiceFile.findFirst({ where: { id: fileId, deletedAt: null } })

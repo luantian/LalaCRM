@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Empty, Popconfirm, Dropdown, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getOrganizations, exportProjectsCsv, exportProjectsExcel, importProjects } from '../services/api'
+import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getOrganizationsSimple, exportProjectsCsv, exportProjectsExcel, importProjects } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import { OrgContactSelector } from '../components/OrgContactSelector'
@@ -24,7 +24,7 @@ function ProjectList() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [searchText, setSearchText] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('')
-  const [filterOrgId, setFilterOrgId] = useState<string>('')
+  const [filterOrgId, setFilterOrgId] = useState<number | null>(null)
   const [filterArchived, setFilterArchived] = useState<string>('false')
   const [filterFullyPaid, setFilterFullyPaid] = useState<string>('')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
@@ -46,12 +46,21 @@ function ProjectList() {
   const fetchProjects = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
     try {
-      const params: any = { page, pageSize, sortBy: 'createdAt', sortOrder: 'desc' }
+      const params: any = { 
+        page, 
+        pageSize, 
+        sortBy: 'createdAt', 
+        sortOrder: 'desc',
+        statusNot: 'COMPLETED' // 默认排除已完成的项目，已完成的在项目归档中显示
+      }
       if (searchTextRef.current.trim()) {
         params.search = searchTextRef.current.trim()
       }
-      if (filterStatusRef.current) params.status = filterStatusRef.current
-      if (filterOrgIdRef.current) params.organizationId = filterOrgIdRef.current
+      if (filterStatusRef.current) {
+        params.status = filterStatusRef.current
+        delete params.statusNot // 用户手动选择了状态，取消默认排除
+      }
+      if (filterOrgIdRef.current) params.organizationId = String(filterOrgIdRef.current)
       if (filterArchivedRef.current) params.isArchived = filterArchivedRef.current
       if (filterFullyPaidRef.current) params.fullyPaid = filterFullyPaidRef.current
       const response: any = await getProjects(params)
@@ -70,8 +79,8 @@ function ProjectList() {
 
   const fetchOrganizations = async () => {
     try {
-      const response: any = await getOrganizations({ pageSize: 1000 })
-      setOrganizations(response.data || [])
+      const response: any = await getOrganizationsSimple()
+      setOrganizations(response || [])
     } catch (error) {
       console.error('获取组织列表失败:', error)
     }
@@ -110,7 +119,7 @@ function ProjectList() {
   const handleReset = () => {
     setSearchText('')
     setFilterStatus('')
-    setFilterOrgId('')
+    setFilterOrgId(null)
     setFilterArchived('false')
     setFilterFullyPaid('')
     setRefreshTrigger(prev => prev + 1)
@@ -328,8 +337,8 @@ function ProjectList() {
           <Col xs={12} sm={4}>
             <OrgTreeSelect
               placeholder="客户"
-              value={filterOrgId || undefined}
-              onChange={(v) => setFilterOrgId(v ? String(v) : '')}
+              value={filterOrgId}
+              onChange={(v) => setFilterOrgId(v)}
               style={{ width: '100%' }}
             />
           </Col>

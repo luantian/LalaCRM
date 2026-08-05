@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 import { upload } from '../middleware/upload'
@@ -27,7 +28,7 @@ router.post('/:id/files', authenticateToken, upload.array('files', 10), logOpera
     }
 
     // 只能为自己的报销上传附件（管理员除外）
-    if (expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (expense.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此报销记录' })
     }
 
@@ -67,7 +68,7 @@ router.get('/:id/files', authenticateToken, async (req: AuthRequest, res) => {
       return res.status(404).json({ error: '报销记录不存在' })
     }
 
-    if (expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (expense.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权访问此报销记录' })
     }
 
@@ -97,7 +98,7 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('报销附�
     }
 
     // 只能删除自己报销的附件（管理员除外）
-    if (file.expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (file.expense.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权删除此文件' })
     }
 
@@ -131,7 +132,7 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
     }
 
     // 只能下载自己报销的附件（管理员除外）
-    if (file.expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (file.expense.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权下载此文件' })
     }
 
@@ -160,7 +161,7 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
     }
 
     // 只能预览自己报销的附件（管理员除外）
-    if (file.expense.ownerId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (file.expense.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权预览此文件' })
     }
 

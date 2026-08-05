@@ -1,4 +1,5 @@
 import { Router, Response } from 'express'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 import logger from '../utils/logger'
@@ -43,7 +44,7 @@ router.put('/:id/read', authenticateToken, async (req: AuthRequest, res: Respons
       return res.status(404).json({ error: '通知不存在' })
     }
 
-    if (notification.userId !== req.user!.id && req.user?.role !== 'ADMIN') {
+    if (notification.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此通知' })
     }
 

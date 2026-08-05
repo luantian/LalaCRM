@@ -165,11 +165,6 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
     const projectStatusMap: Record<string, number> = {}
     projectStats.forEach(s => { projectStatusMap[s.status] = s._count.id })
 
-    const avgProgress = await prisma.project.aggregate({
-      _avg: { progress: true },
-      where: { deletedAt: null, status: 'IN_PROGRESS', ...dataScopeWhere }
-    })
-
     // 8. 最新数据
     const [recentOrganizations, recentSales, recentOpportunities] = await Promise.all([
       prisma.organization.findMany({
@@ -227,8 +222,7 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
         inProgress: projectStatusMap['IN_PROGRESS'] || 0,
         completed: projectStatusMap['COMPLETED'] || 0,
         onHold: projectStatusMap['ON_HOLD'] || 0,
-        cancelled: projectStatusMap['CANCELLED'] || 0,
-        avgProgress: Math.round(Number(avgProgress._avg.progress || 0))
+        cancelled: projectStatusMap['CANCELLED'] || 0
       },
       todos: {
         pendingTrips,

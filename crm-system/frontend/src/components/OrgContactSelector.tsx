@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { Select, Spin } from 'antd'
-import { getOrganizationContacts, getAllContacts, getContactDetail } from '../services/api'
+import { getOrganizationContactsSimple, getAllContactsSimple, getContactDetail } from '../services/api'
 
 interface OrgContactSelectorProps {
   organizationId?: number | null
@@ -16,7 +16,6 @@ interface Contact {
   id: number
   name: string
   title?: string
-  phone?: string
   organizationId?: number
   organizationName?: string
 }
@@ -47,7 +46,7 @@ export function OrgContactSelector({
 
     if (organizationId) {
       setLoading(true)
-      getOrganizationContacts(organizationId)
+      getOrganizationContactsSimple(organizationId)
         .then((data: any) => {
           if (!cancelled) {
             const list = Array.isArray(data) ? data : (data?.data || [])
@@ -58,7 +57,7 @@ export function OrgContactSelector({
         .finally(() => { if (!cancelled) setLoading(false) })
     } else {
       setLoading(true)
-      getAllContacts()
+      getAllContactsSimple()
         .then((data: any) => {
           if (!cancelled) {
             const list = Array.isArray(data) ? data : (data?.data || [])
@@ -104,7 +103,7 @@ export function OrgContactSelector({
   const options = contacts.map(c => ({
     value: c.id,
     label: organizationId
-      ? `${c.name}${c.title ? ` (${c.title})` : ''}${c.phone ? ` ${c.phone}` : ''}`
+      ? `${c.name}${c.title ? ` (${c.title})` : ''}`
       : `${c.name}${c.title ? ` (${c.title})` : ''} — ${c.organizationName || ''}`,
   }))
 

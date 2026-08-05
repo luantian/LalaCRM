@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Slider, Avatar, Empty, Spin, Result, Upload } from 'antd'
+import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Avatar, Empty, Spin, Result, Switch } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, EyeOutlined } from '@ant-design/icons'
-import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizations, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, uploadPaymentFiles, deletePaymentFile, downloadPaymentFileUrl, previewPaymentFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, previewProjectFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
+import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizationsSimple, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, uploadPaymentFiles, deletePaymentFile, downloadPaymentFileUrl, previewPaymentFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
-import { OrgTreeSelect } from '../components/OrgTreeSelect'
+import { checkPermission } from '../utils/permission'
 
 const { TextArea } = Input
 const { RangePicker } = DatePicker
@@ -93,7 +93,6 @@ function ProjectDetail() {
   // 项目编辑状态
   const [projectModalVisible, setProjectModalVisible] = useState(false)
   const [projectForm] = Form.useForm()
-  const [organizations, setOrganizations] = useState<any[]>([])
 
   // 项目备注状态 (removed - notes/versions UI removed)
 
@@ -136,9 +135,15 @@ function ProjectDetail() {
       try {
         const data = await getProjectDetail(parseInt(id!))
         setProject(data)
-      } catch (error) {
+      } catch (error: any) {
         console.error('获取项目详情失败:', error)
-        setError(true)
+        if (error?.response?.status === 404) {
+          setError(true)
+        } else if (error?.response?.status === 403) {
+          setError(true)
+        } else {
+          setError(true)
+        }
       } finally {
         setLoading(false)
       }
@@ -148,8 +153,9 @@ function ProjectDetail() {
 
   const fetchOrganizations = async () => {
     try {
-      const response: any = await getOrganizations({ pageSize: 1000 })
-      setOrganizations(response.data || [])
+      const response: any = await getOrganizationsSimple()
+      // organizations list kept for potential future use
+      void response.data
     } catch (error) { console.error('获取组织列表失败:', error) }
   }
 
@@ -185,7 +191,6 @@ function ProjectDetail() {
     projectForm.setFieldsValue({
       ...project,
       budget: project.budget ? Number(project.budget) : null,
-      progress: project.progress || 0,
       dateRange: (project.startDate && project.endDate) ? [dayjs(project.startDate), dayjs(project.endDate)] : undefined,
       acceptanceDate: project.acceptanceDate ? dayjs(project.acceptanceDate) : null
     })
@@ -618,16 +623,11 @@ function ProjectDetail() {
     } catch {}
   }
   const handleRemoveMember = async (memberId: number) => {
-    Modal.confirm({
-      title: '确认移除', content: '确定将该成员从项目团队中移除？',
-      onOk: async () => {
-        try {
-          await removeProjectTeamMember(parseInt(id!), memberId)
-          message.success('已移除')
-          fetchTeamMembers()
-        } catch (e: any) { message.error(e?.error || '移除失败') }
-      }
-    })
+    try {
+      await removeProjectTeamMember(parseInt(id!), memberId)
+      message.success('已移除')
+      fetchTeamMembers()
+    } catch (e: any) { message.error(e?.error || '移除失败') }
   }
 
   const handleAddProcurement = () => {
@@ -1357,6 +1357,13 @@ function ProjectDetail() {
     )}
   ]
 
+  // 根据权限过滤 Tab
+  const filteredTabItems = tabItems.filter(tab => {
+    if (tab.key === 'contracts' && !checkPermission('project:contract:list')) return false
+    if (tab.key === 'procurements' && !checkPermission('project:procurement:list')) return false
+    return true
+  })
+
   return (
     <div>
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/projects')} style={{ marginBottom: 16 }}>返回列表</Button>
@@ -1370,7 +1377,6 @@ function ProjectDetail() {
               <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>预算: <strong style={{ color: '#059669' }}>{project.budget ? `${Number(project.budget)}元` : '-'}</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>合同总额: <strong style={{ color: '#2563eb' }}>{totalContractAmount}元</strong></span>
-              <span style={{ color: '#6b7280', fontSize: 13 }}>进度: <strong style={{ color: '#7c3aed' }}>{project.progress || 0}%</strong></span>
             </div>
             <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{(() => { const org = project.organization?.name || '暂无客户'; const contact = project.contact ? `${project.contact.name}${project.contact.title ? ` (${project.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()} · 合同 {contractCount} 份</div>
           </Col>
@@ -1382,7 +1388,9 @@ function ProjectDetail() {
         </Row>
       </Card>
 
-      <Card><Tabs items={tabItems} /></Card>
+      <Card><Tabs items={filteredTabItems} onChange={(key) => {
+        if (key === 'team') fetchTeamMembers()
+      }} /></Card>
 
       {/* 项目编辑 Modal */}
       <Modal title="编辑项目" open={projectModalVisible} onOk={handleProjectSubmit} onCancel={() => setProjectModalVisible(false)} width={600}>
@@ -1391,7 +1399,6 @@ function ProjectDetail() {
           <Form.Item name="contactId" label="客户" rules={[{ required: true }]}>
             <OrgContactSelector
               placeholder="请选择客户联系人"
-              fallbackLabel={project?.contact ? `${project.contact.name}${project.contact.title ? ` (${project.contact.title})` : ''} — ${project.organization?.name || ''}` : undefined}
               onContactSelect={(contactId, orgId) => {
                 projectForm.setFieldValue('contactId', contactId)
                 projectForm.setFieldValue('organizationId', orgId)
@@ -1403,7 +1410,6 @@ function ProjectDetail() {
           <Form.Item name="budget" label="预算"><InputNumber style={{ width: '100%' }} precision={2} /></Form.Item>
           <Form.Item name="dateRange" label="项目周期"><RangePicker style={{ width: '100%' }} /></Form.Item>
           <Form.Item name="acceptanceDate" label="调试验收时间"><DatePicker style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="progress" label="当前进度"><Slider marks={{ 0: '0%', 25: '25%', 50: '50%', 75: '75%', 100: '100%' }} /></Form.Item>
           <Form.Item name="description" label="描述"><TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
@@ -1424,6 +1430,9 @@ function ProjectDetail() {
             <Col span={12}><Form.Item name="dateRange" label="合同周期"><RangePicker style={{ width: '100%' }} /></Form.Item></Col>
           </Row>
           <Form.Item name="content" label="合同内容"><TextArea rows={4} /></Form.Item>
+          <Form.Item name="isPrivate" label=" " valuePropName="checked" initialValue={false}>
+            <Switch checkedChildren="仅自己可见" unCheckedChildren="所有人可见" />
+          </Form.Item>
         </Form>
       </Modal>
 
