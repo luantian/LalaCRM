@@ -8,11 +8,17 @@ const prisma = new PrismaClient()
 /**
  * 获取用户的数据权限范围
  * 返回 where 条件对象，用于 Prisma 查询
+ * 
+ * @param userId 用户ID
+ * @param userRole 用户角色（ADMIN等）
+ * @param ownerField 所有者字段名（默认 'ownerId'）
+ * @param teamMemberField 团队成员关系字段名（如 'teamMembers'），用于 TEAM 数据范围
  */
 export async function getDataScopeWhere(
   userId: number,
   userRole?: string,
-  ownerField: string = 'ownerId'
+  ownerField: string = 'ownerId',
+  teamMemberField?: string
 ): Promise<any> {
   // 管理员可以看到所有数据
   if (userRole === 'ADMIN') {
@@ -113,6 +119,29 @@ export async function getDataScopeWhere(
     }
   }
 
+  // TEAM：团队成员数据（基于 ProjectTeamMember 等关联表）
+  // 这种模式下，用户可以看到自己参与的项目/任务等
+  // 注意：这是一个标记，具体的团队查询逻辑需要在路由层实现
+  // 因为不同的模型需要查询不同的团队成员表
+  const hasTeamScope = dataScopes.includes('TEAM')
+
+  // 如果设置了 teamMemberField 且有 TEAM 权限，添加团队成员查询条件
+  if (hasTeamScope && teamMemberField) {
+    // 添加团队成员条件：查询 teamMembers 表中包含当前用户且未被软删除的记录
+    conditions.push({
+      [teamMemberField]: {
+        some: {
+          userId: userId,
+          deletedAt: null
+        }
+      }
+    })
+  } else if (hasTeamScope && !teamMemberField) {
+    // 如果没有提供 teamMemberField，降级为只看自己的
+    logger.warn('TEAM data scope enabled but teamMemberField not provided, falling back to SELF')
+    conditions.push({ [ownerField]: userId })
+  }
+
   // 如果没有匹配的条件，默认只看自己的
   if (conditions.length === 0) {
     return { [ownerField]: userId }
@@ -149,8 +178,11 @@ async function getSubDepartmentIds(deptId: number, depth: number = 0): Promise<n
 /**
  * 数据权限中间件
  * 将数据范围条件附加到 req 上，供路由使用
+ * 
+ * @param ownerField 所有者字段名（默认 'ownerId'）
+ * @param teamMemberField 团队成员关系字段名（如 'teamMembers'），用于 TEAM 数据范围
  */
-export function applyDataScope(ownerField: string = 'ownerId') {
+export function applyDataScope(ownerField: string = 'ownerId', teamMemberField?: string) {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) {
@@ -160,7 +192,8 @@ export function applyDataScope(ownerField: string = 'ownerId') {
       const scopeWhere = await getDataScopeWhere(
         req.user.id,
         req.user.role,
-        ownerField
+        ownerField,
+        teamMemberField
       )
 
       // 将数据权限条件附加到请求对象

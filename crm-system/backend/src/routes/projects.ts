@@ -1,10 +1,10 @@
 import { Router, Request } from 'express'
-import { isAdmin } from '../utils/permission'
+import { isAdmin, getUserDataScope } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
 import { logOperation } from '../middleware/logOperation'
-import { applyDataScope } from '../middleware/dataScope'
+import { applyDataScope, getDataScopeWhere } from '../middleware/dataScope'
 import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { autoWriteProjectRecord } from '../utils/autoDailyReport'
@@ -15,6 +15,39 @@ import path from 'path'
 
 const router = Router()
 const prisma = new PrismaClient()
+
+/**
+ * 获取项目的数据权限条件
+ * 根据角色的 dataScope 配置返回对应的查询条件
+ * - ALL: 所有项目
+ * - TEAM: 自己创建的 + 自己是团队成员的
+ * - DEPARTMENT/DEPARTMENT_BELOW: 基于部门的项目
+ * - SELF: 只有自己创建的
+ * - CUSTOM: 自定义部门列表
+ */
+async function getProjectScopeWhere(userId: number, userRole: string): Promise<any> {
+  // 管理员可以看到所有数据
+  if (userRole === 'ADMIN' || await isAdmin(userId)) {
+    return {}
+  }
+
+  // 获取用户的数据权限范围
+  const dataScope = await getUserDataScope(userId)
+
+  // 如果没有配置数据权限，默认使用 TEAM 模式
+  if (!dataScope || dataScope === 'TEAM') {
+    return {
+      OR: [
+        { ownerId: userId },
+        { teamMembers: { some: { userId, deletedAt: null } } }
+      ]
+    }
+  }
+
+  // 使用通用的数据权限中间件
+  const scopeWhere = await getDataScopeWhere(userId, userRole, 'ownerId', 'teamMembers')
+  return scopeWhere
+}
 
 // 获取所有项目（支持分页、筛选）
 router.get('/', authenticateToken, checkPermission('project:project:list'), sortValidation(['name', 'status', 'budget', 'startDate', 'endDate', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
@@ -35,16 +68,10 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), sort
     const skip = (parseInt(page as string) - 1) * parseInt(pageSize as string)
     const take = parseInt(pageSize as string)
 
-    // 获取数据权限条件 - 项目只允许 owner 和团队成员查看，不受部门数据权限影响
+    // 获取数据权限条件 - 使用统一的项目权限逻辑
     const where: any = { deletedAt: null }
-
-    // 非管理员：只能看到自己是创建者或未删除的团队成员的项目
-    if (!(await isAdmin(req.user!.id))) {
-      where.OR = [
-        { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
-      ]
-    }
+    const scopeWhere = await getProjectScopeWhere(req.user!.id, req.user!.role)
+    Object.assign(where, scopeWhere)
 
     // 默认只查询未归档项目，除非明确指定（指定status时不加默认归档过滤）
     if (isArchived !== '') {
@@ -162,14 +189,10 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), sort
 // 项目统计（放在 /:id 之前，避免被 /:id 拦截）
 router.get('/stats/overview', authenticateToken, checkPermission('project:project:list'), async (req: AuthRequest, res) => {
   try {
-    // 只统计未归档且 owner 和团队成员的项目
+    // 使用统一的项目权限逻辑
     const where: any = { deletedAt: null, isArchived: false }
-    if (!(await isAdmin(req.user!.id))) {
-      where.OR = [
-        { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
-      ]
-    }
+    const scopeWhere = await getProjectScopeWhere(req.user!.id, req.user!.role)
+    Object.assign(where, scopeWhere)
     const [total, inProgress, completed, cancelled] = await Promise.all([
       prisma.project.count({ where }),
       prisma.project.count({ where: { ...where, status: 'IN_PROGRESS' } }),
@@ -203,14 +226,10 @@ router.get('/:id', authenticateToken, checkPermission('project:project:list'), a
   try {
     const id = req.params.id as string
 
-    // 项目只允许 owner 和未删除的团队成员查看，不受部门数据权限影响
+    // 使用统一的项目权限逻辑
     const where: any = { id: parseInt(id), deletedAt: null }
-    if (!(await isAdmin(req.user!.id))) {
-      where.OR = [
-        { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
-      ]
-    }
+    const scopeWhere = await getProjectScopeWhere(req.user!.id, req.user!.role)
+    Object.assign(where, scopeWhere)
 
     const project = await prisma.project.findFirst({
       where,
@@ -824,11 +843,11 @@ const projectLabelMap: Record<string, string> = {
 }
 
 // 导出项目 Excel
-router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const scopeWhere = await getProjectScopeWhere(req.user!.id, req.user!.role)
     const data = await prisma.project.findMany({
-      where: { deletedAt: null, ...dataScopeWhere },
+      where: { deletedAt: null, ...scopeWhere },
       include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
@@ -840,11 +859,11 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
 })
 
 // 导出项目 CSV
-router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/export/csv', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const scopeWhere = await getProjectScopeWhere(req.user!.id, req.user!.role)
     const data = await prisma.project.findMany({
-      where: { deletedAt: null, ...dataScopeWhere },
+      where: { deletedAt: null, ...scopeWhere },
       include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })

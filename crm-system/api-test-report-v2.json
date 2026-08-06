@@ -1,0 +1,218 @@
+{
+  "summary": {
+    "total": 23,
+    "passed": 0,
+    "failed": 23,
+    "passRate": "0.00%",
+    "timestamp": "2026-08-05T18:00:27.631Z"
+  },
+  "results": [
+    {
+      "module": "认证模块",
+      "api": "/users",
+      "method": "GET",
+      "user": "未登录",
+      "expected": 401,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "认证模块",
+      "api": "/users",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "用户管理",
+      "api": "/users",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "用户管理",
+      "api": "/users",
+      "method": "GET",
+      "user": "销售",
+      "expected": 403,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "用户管理",
+      "api": "/users",
+      "method": "POST",
+      "user": "管理员",
+      "expected": 201,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "角色管理",
+      "api": "/roles",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "角色管理",
+      "api": "/roles",
+      "method": "POST",
+      "user": "管理员",
+      "expected": 201,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "客户管理",
+      "api": "/organizations",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "客户管理",
+      "api": "/organizations",
+      "method": "POST",
+      "user": "管理员",
+      "expected": 201,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "项目管理",
+      "api": "/projects",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "项目管理",
+      "api": "/projects?search",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "商机管理",
+      "api": "/opportunities",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "商机管理",
+      "api": "/opportunities?search",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "合同管理",
+      "api": "/contracts",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "日报管理",
+      "api": "/daily-reports",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "日报管理",
+      "api": "/daily-reports",
+      "method": "POST",
+      "user": "管理员",
+      "expected": 201,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "日报管理",
+      "api": "/daily-reports/export/csv",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "费用报销",
+      "api": "/expenses",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "费用报销",
+      "api": "/expenses",
+      "method": "POST",
+      "user": "管理员",
+      "expected": 201,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "采购管理",
+      "api": "/procurements",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "采购管理",
+      "api": "/procurements",
+      "method": "POST",
+      "user": "管理员",
+      "expected": 201,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "权限控制",
+      "api": "/operation-logs",
+      "method": "GET",
+      "user": "销售",
+      "expected": 403,
+      "actual": 0,
+      "passed": false
+    },
+    {
+      "module": "权限控制",
+      "api": "/operation-logs",
+      "method": "GET",
+      "user": "管理员",
+      "expected": 200,
+      "actual": 0,
+      "passed": false
+    }
+  ]
+}

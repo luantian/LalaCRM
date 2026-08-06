@@ -181,12 +181,13 @@ export async function getUserDataScope(userId: number): Promise<string> {
       return 'SELF'
     }
     
-    // 数据范围优先级：ALL > CUSTOM > DEPARTMENT_BELOW > DEPARTMENT > SELF
+    // 数据范围优先级：ALL > CUSTOM > DEPARTMENT_BELOW > DEPARTMENT > TEAM > SELF
     const scopePriority: Record<string, number> = {
-      'ALL': 5,
-      'CUSTOM': 4,
-      'DEPARTMENT_BELOW': 3,
-      'DEPARTMENT': 2,
+      'ALL': 6,
+      'CUSTOM': 5,
+      'DEPARTMENT_BELOW': 4,
+      'DEPARTMENT': 3,
+      'TEAM': 2,
       'SELF': 1
     }
     

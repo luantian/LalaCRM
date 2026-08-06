@@ -99,7 +99,7 @@ function RoleManagement() {
   const scopeMap: Record<string, string> = {
     ADMIN: '全部数据', PROJECT_DIRECTOR: '全部数据',
     PROJECT_MANAGER: '自己负责的项目', USER: '自己参与的项目',
-    VIEWER: '自己相关的数据'
+    VIEWER: '自己相关的数据', TEAM: '团队成员数据'
   }
 
   const fetchRoles = async () => {

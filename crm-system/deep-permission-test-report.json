@@ -1,0 +1,64 @@
+{
+  "timestamp": "2026-08-05T19:13:51.522Z",
+  "summary": {
+    "total": 69,
+    "passed": 57,
+    "failed": 12
+  },
+  "modules": [
+    {
+      "name": "数据权限隔离",
+      "pass": 8,
+      "fail": 3,
+      "total": 11
+    },
+    {
+      "name": "软删除",
+      "pass": 7,
+      "fail": 0,
+      "total": 7
+    },
+    {
+      "name": "审批流程",
+      "pass": 6,
+      "fail": 1,
+      "total": 7
+    },
+    {
+      "name": "边界条件",
+      "pass": 13,
+      "fail": 1,
+      "total": 14
+    },
+    {
+      "name": "并发安全",
+      "pass": 3,
+      "fail": 2,
+      "total": 5
+    },
+    {
+      "name": "搜索过滤权限",
+      "pass": 1,
+      "fail": 1,
+      "total": 2
+    },
+    {
+      "name": "Token安全",
+      "pass": 6,
+      "fail": 0,
+      "total": 6
+    },
+    {
+      "name": "API路由安全",
+      "pass": 4,
+      "fail": 2,
+      "total": 6
+    },
+    {
+      "name": "角色菜单完整性",
+      "pass": 9,
+      "fail": 2,
+      "total": 11
+    }
+  ]
+}
