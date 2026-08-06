@@ -1,6 +1,7 @@
 import { Router, Request } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
+import { isAdmin } from '../utils/permission'
 import { upload } from '../middleware/upload'
 import { applyDataScope } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
@@ -307,6 +308,11 @@ router.put('/:id', authenticateToken, checkPermission('finance:expense:edit'), l
       return res.status(404).json({ error: '发票不存在' })
     }
 
+    // 所有权校验：只能修改自己的发票（管理员除外）
+    if (existing.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '无权修改此发票' })
+    }
+
     // 使用现有值作为 fallback，防止部分更新时金额被清零
     const amountNum = amount !== undefined ? parseFloat(amount) : Number(existing.amount)
     const taxRateNum = taxRate !== undefined ? parseFloat(taxRate) : Number(existing.taxRate)
@@ -351,6 +357,10 @@ router.delete('/:id', authenticateToken, checkPermission('finance:expense:edit')
     const existing = await prisma.invoice.findFirst({ where: { id, deletedAt: null } })
     if (!existing) {
       return res.status(404).json({ error: '发票不存在' })
+    }
+    // 所有权校验：只能删除自己的发票（管理员除外）
+    if (existing.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '无权删除此发票' })
     }
     await prisma.invoiceFile.updateMany({ where: { invoiceId: id }, data: { deletedAt: new Date() } })
     await prisma.invoice.update({ where: { id }, data: { deletedAt: new Date() } })
@@ -441,13 +451,25 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('finance:
 })
 
 // 下载发票附件
-router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateToken, checkPermission('finance:expense:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.invoiceFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.invoiceFile.findFirst({ 
+      where: { id: fileId, deletedAt: null },
+      include: { invoice: { select: { ownerId: true } } }
+    })
 
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 权限校验：管理员或发票所有者可以下载
+    const userId = req.user!.id
+    const isAdmin = req.user!.role === 'ADMIN'
+    const isOwner = file.invoice?.ownerId === userId
+    
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ error: '没有权限下载此文件' })
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)
@@ -463,13 +485,26 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
 })
 
 // 预览发票附件（图片/PDF/Word/Excel）
-router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateToken, checkPermission('finance:expense:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.invoiceFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.invoiceFile.findFirst({ 
+      where: { id: fileId, deletedAt: null },
+      include: { invoice: { select: { ownerId: true } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
+
+    // 权限校验：管理员或发票所有者可以预览
+    const userId = req.user!.id
+    const isAdmin = req.user!.role === 'ADMIN'
+    const isOwner = file.invoice?.ownerId === userId
+    
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ error: '没有权限预览此文件' })
+    }
+
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })

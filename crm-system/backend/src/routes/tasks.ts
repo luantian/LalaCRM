@@ -381,6 +381,14 @@ router.delete('/:id', authenticateToken, checkPermission('project:task:edit'), l
       return res.status(403).json({ error: '只有任务发起人才能删除任务' })
     }
 
+    // 级联软删除子实体
+    await prisma.taskFile.updateMany({ where: { taskId: id }, data: { deletedAt: new Date() } })
+    const records = await prisma.taskRecord.findMany({ where: { taskId: id }, select: { id: true } })
+    const recordIds = records.map(r => r.id)
+    if (recordIds.length > 0) {
+      await prisma.taskRecordFile.updateMany({ where: { recordId: { in: recordIds } }, data: { deletedAt: new Date() } })
+    }
+    await prisma.taskRecord.updateMany({ where: { taskId: id }, data: { deletedAt: new Date() } })
     await prisma.task.update({ where: { id }, data: { deletedAt: new Date() } })
     res.json({ message: '删除成功' })
   } catch (error) {

@@ -106,13 +106,26 @@ router.delete('/:id', authenticateToken, checkPermission('system:role:delete'), 
       return res.status(404).json({ error: '角色不存在' })
     }
 
-    // 检查是否有用户使用此角色
+    // 检查是否有用户通过 UserRole 关联表使用此角色
+    const userRoleCount = await prisma.userRole.count({
+      where: { roleId }
+    })
+    if (userRoleCount > 0) {
+      return res.status(400).json({ error: `有 ${userRoleCount} 个用户正在使用此角色，无法删除` })
+    }
+
+    // 检查是否有用户通过旧的 roleId 字段使用此角色
     const userCount = await prisma.user.count({
       where: { roleId }
     })
     if (userCount > 0) {
       return res.status(400).json({ error: `有 ${userCount} 个用户正在使用此角色，无法删除` })
     }
+
+    // 先删除角色-菜单关联（避免外键约束错误）
+    await prisma.roleMenu.deleteMany({
+      where: { roleId }
+    })
 
     // 删除角色
     await prisma.roleModel.delete({

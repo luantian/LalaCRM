@@ -65,12 +65,20 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), sort
       where.organizationId = parseInt(organizationId as string)
     }
 
+    // 搜索条件：用 AND 合并，避免覆盖上面的权限 OR 条件
+    const conditions: any[] = []
     if (search) {
       const searchTerm = search as string
-      where.OR = [
-        { name: { contains: searchTerm, mode: 'insensitive' } },
-        { projectNo: { contains: searchTerm, mode: 'insensitive' } }
-      ]
+      conditions.push({
+        OR: [
+          { name: { contains: searchTerm, mode: 'insensitive' } },
+          { projectNo: { contains: searchTerm, mode: 'insensitive' } }
+        ]
+      })
+    }
+
+    if (conditions.length > 0) {
+      where.AND = conditions
     }
 
     // 付款完结过滤：需要查出后计算
@@ -82,12 +90,13 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), sort
           contact: { select: { id: true, name: true, title: true, phone: true } },
           owner: { select: { id: true, name: true } },
           contracts: {
+            where: { deletedAt: null },
             select: {
               amount: true,
-              payments: { select: { amount: true, status: true } }
+              payments: { where: { deletedAt: null }, select: { amount: true, status: true } }
             }
           },
-          _count: { select: { contracts: true } }
+          _count: { select: { contracts: { where: { deletedAt: null } } } }
         },
         orderBy: { [sortBy as string]: sortOrder as string },
       })
@@ -210,6 +219,7 @@ router.get('/:id', authenticateToken, checkPermission('project:project:list'), a
         contact: { select: { id: true, name: true, title: true, phone: true, email: true } },
         owner: { select: { id: true, name: true } },
         contracts: {
+          where: { deletedAt: null },
           orderBy: { createdAt: 'desc' },
           include: {
             files: {
@@ -217,6 +227,7 @@ router.get('/:id', authenticateToken, checkPermission('project:project:list'), a
               select: { id: true }
             },
             orderItems: {
+              where: { deletedAt: null },
               include: {
                 files: {
                   where: { deletedAt: null },
@@ -225,6 +236,7 @@ router.get('/:id', authenticateToken, checkPermission('project:project:list'), a
               }
             },
             payments: {
+              where: { deletedAt: null },
               include: {
                 files: {
                   where: { deletedAt: null },
@@ -233,6 +245,7 @@ router.get('/:id', authenticateToken, checkPermission('project:project:list'), a
               }
             },
             shipments: {
+              where: { deletedAt: null },
               include: {
                 files: {
                   where: { deletedAt: null },
@@ -250,7 +263,7 @@ router.get('/:id', authenticateToken, checkPermission('project:project:list'), a
           orderBy: { joinDate: 'desc' }
         },
         _count: {
-          select: { contracts: true, teamMembers: { where: { deletedAt: null } } }
+          select: { contracts: { where: { deletedAt: null } }, teamMembers: { where: { deletedAt: null } } }
         }
       }
     })
@@ -371,7 +384,27 @@ router.put('/:id/archive', authenticateToken, checkPermission('project:project:e
     const id = parseInt(req.params.id as string)
     const { isArchived } = req.body
 
-    const project = await prisma.project.update({
+    // 验证项目是否存在
+    const project = await prisma.project.findFirst({
+      where: { id, deletedAt: null }
+    })
+
+    if (!project) {
+      return res.status(404).json({ error: '项目不存在' })
+    }
+
+    // 所有权校验：只有项目负责人、团队成员或管理员可以归档
+    if (!(await isAdmin(req.user!.id))) {
+      const isOwner = project.ownerId === req.user!.id
+      const isTeamMember = await prisma.projectTeamMember.findFirst({
+        where: { projectId: id, userId: req.user!.id, deletedAt: null }
+      })
+      if (!isOwner && !isTeamMember) {
+        return res.status(403).json({ error: '只有项目负责人或团队成员才能归档' })
+      }
+    }
+
+    const updatedProject = await prisma.project.update({
       where: { id },
       data: {
         isArchived: !!isArchived,
@@ -379,7 +412,7 @@ router.put('/:id/archive', authenticateToken, checkPermission('project:project:e
       }
     })
 
-    res.json(project)
+    res.json(updatedProject)
   } catch (error) {
     logger.error('Archive project error:', error)
     res.status(500).json({ error: '归档操作失败' })
@@ -391,7 +424,28 @@ router.delete('/:id', authenticateToken, checkPermission('project:project:edit')
   try {
     const id = req.params.id as string
     const numericId = parseInt(id)
-    // 软删除项目
+    
+    // 验证项目是否存在
+    const project = await prisma.project.findFirst({
+      where: { id: numericId, deletedAt: null }
+    })
+
+    if (!project) {
+      return res.status(404).json({ error: '项目不存在' })
+    }
+
+    // 所有权校验：只有项目负责人、团队成员或管理员可以删除
+    if (!(await isAdmin(req.user!.id))) {
+      const isOwner = project.ownerId === req.user!.id
+      const isTeamMember = await prisma.projectTeamMember.findFirst({
+        where: { projectId: numericId, userId: req.user!.id, deletedAt: null }
+      })
+      if (!isOwner && !isTeamMember) {
+        return res.status(403).json({ error: '只有项目负责人或团队成员才能删除' })
+      }
+    }
+
+    // 软删除项目及所有关联业务实体
     await prisma.project.update({
       where: { id: numericId },
       data: { deletedAt: new Date() }
@@ -407,6 +461,17 @@ router.delete('/:id', authenticateToken, checkPermission('project:project:edit')
     if (noteIds.length > 0) {
       await prisma.projectNoteFile.updateMany({ where: { noteId: { in: noteIds } }, data: { deletedAt: new Date() } })
     }
+    // 级联软删除关联业务实体
+    await prisma.contract.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
+    await prisma.procurement.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
+    await prisma.businessTrip.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
+    await prisma.expense.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
+    await prisma.task.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
+    await prisma.invoice.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
+    await prisma.dailyReport.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
+    await prisma.dailyReportItem.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
+    await prisma.dailyReportTimeEntry.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
+    await prisma.sale.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
 
     res.json({ message: '删除成功' })
   } catch (error) {
@@ -421,11 +486,23 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('projec
     const fileId = parseInt(req.params.fileId as string)
 
     const file = await prisma.projectFile.findFirst({
-      where: { id: fileId, deletedAt: null }
+      where: { id: fileId, deletedAt: null },
+      include: { project: { select: { ownerId: true } } }
     })
 
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 权限校验：只有项目负责人、团队成员或管理员可以下载
+    if (!(await isAdmin(req.user!.id))) {
+      const isOwner = file.project?.ownerId === req.user!.id
+      const isTeamMember = await prisma.projectTeamMember.findFirst({
+        where: { projectId: file.projectId, userId: req.user!.id, deletedAt: null }
+      })
+      if (!isOwner && !isTeamMember) {
+        return res.status(403).json({ error: '没有权限下载此文件' })
+      }
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)
@@ -447,11 +524,23 @@ router.get('/files/:fileId/preview', authenticateToken, checkPermission('project
     const fileId = parseInt(req.params.fileId as string)
 
     const file = await prisma.projectFile.findFirst({
-      where: { id: fileId, deletedAt: null }
+      where: { id: fileId, deletedAt: null },
+      include: { project: { select: { ownerId: true } } }
     })
 
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 权限校验：只有项目负责人、团队成员或管理员可以预览
+    if (!(await isAdmin(req.user!.id))) {
+      const isOwner = file.project?.ownerId === req.user!.id
+      const isTeamMember = await prisma.projectTeamMember.findFirst({
+        where: { projectId: file.projectId, userId: req.user!.id, deletedAt: null }
+      })
+      if (!isOwner && !isTeamMember) {
+        return res.status(403).json({ error: '没有权限预览此文件' })
+      }
     }
 
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))

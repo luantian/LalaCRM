@@ -33,7 +33,7 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
     req.user = decoded
     next()
   } catch (error) {
-    return res.status(403).json({ error: '无效的认证令牌' })
+    return res.status(401).json({ error: '无效的认证令牌' })
   }
 }
 

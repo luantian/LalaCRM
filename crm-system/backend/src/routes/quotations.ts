@@ -56,7 +56,7 @@ router.get('/', authenticateToken, checkPermission('crm:quotation:list'), applyD
         organization: { select: { id: true, name: true } },
         contact: { select: { id: true, name: true, title: true, phone: true } },
         owner: { select: { id: true, name: true } },
-        _count: { select: { items: true, files: true } }
+        _count: { select: { items: { where: { deletedAt: null } }, files: { where: { deletedAt: null } } } }
       },
       orderBy: { [sortBy as string]: sortOrder as string },
       skip,
@@ -113,7 +113,7 @@ router.get('/opportunity/:oppId/versions', authenticateToken, checkPermission('c
     const quotations = await prisma.quotation.findMany({
       where: { opportunityId: oppId, deletedAt: null },
       include: {
-        items: { orderBy: { id: 'asc' } },
+        items: { where: { deletedAt: null }, orderBy: { id: 'asc' } },
         owner: { select: { id: true, name: true } }
       },
       orderBy: [{ version: 'desc' }]
@@ -138,8 +138,8 @@ router.get('/:id', authenticateToken, checkPermission('crm:quotation:list'), app
         organization: { select: { id: true, name: true } },
         contact: { select: { id: true, name: true, title: true, phone: true } },
         owner: { select: { id: true, name: true } },
-        items: { orderBy: { id: 'asc' } },
-        files: { orderBy: { uploadedAt: 'desc' } }
+        items: { where: { deletedAt: null }, orderBy: { id: 'asc' } },
+        files: { where: { deletedAt: null }, orderBy: { uploadedAt: 'desc' } }
       }
     })
 
@@ -242,6 +242,11 @@ router.put('/:id', authenticateToken, checkPermission('crm:quotation:edit'), log
       return res.status(400).json({ error: '只有草稿状态的报价单可以编辑' })
     }
 
+    // 所有权校验：只能编辑自己创建的报价单（管理员除外）
+    if (existing.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '无权编辑此报价单' })
+    }
+
     // 先删除旧明细，再创建新明细
     if (items) {
       await prisma.quotationItem.updateMany({ where: { quotationId: id }, data: { deletedAt: new Date() } })
@@ -306,6 +311,11 @@ router.delete('/:id', authenticateToken, checkPermission('crm:quotation:edit'), 
       return res.status(400).json({ error: '只有草稿状态的报价单可以删除' })
     }
 
+    // 所有权校验：只能删除自己创建的报价单（管理员除外）
+    if (existing.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '无权删除此报价单' })
+    }
+
     await prisma.quotationItem.updateMany({ where: { quotationId: id }, data: { deletedAt: new Date() } })
     await prisma.quotationFile.updateMany({ where: { quotationId: id }, data: { deletedAt: new Date() } })
     await prisma.quotation.update({ where: { id }, data: { deletedAt: new Date() } })
@@ -324,6 +334,11 @@ router.post('/:id/submit', authenticateToken, checkPermission('crm:quotation:edi
     if (!existing) return res.status(404).json({ error: '报价单不存在' })
     if (existing.status !== 'DRAFT') {
       return res.status(400).json({ error: '只有草稿状态可以提交' })
+    }
+
+    // 所有权校验：只能提交自己创建的报价单（管理员除外）
+    if (existing.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '无权提交此报价单' })
     }
 
     const quotation = await prisma.quotation.update({
@@ -461,12 +476,24 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('crm:quot
 })
 
 // 下载报价单附件
-router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateToken, checkPermission('crm:quotation:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.quotationFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.quotationFile.findFirst({ 
+      where: { id: fileId, deletedAt: null },
+      include: { quotation: { select: { ownerId: true } } }
+    })
 
     if (!file) return res.status(404).json({ error: '文件不存在' })
+
+    // 权限校验：管理员或报价单所有者可以下载
+    const userId = req.user!.id
+    const isAdmin = req.user!.role === 'ADMIN'
+    const isOwner = file.quotation?.ownerId === userId
+    
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ error: '没有权限下载此文件' })
+    }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: '文件不存在' })
@@ -479,13 +506,26 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
 })
 
 // 预览报价单附件（图片/PDF/Word/Excel）
-router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateToken, checkPermission('crm:quotation:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.quotationFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.quotationFile.findFirst({ 
+      where: { id: fileId, deletedAt: null },
+      include: { quotation: { select: { ownerId: true } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
+
+    // 权限校验：管理员或报价单所有者可以预览
+    const userId = req.user!.id
+    const isAdmin = req.user!.role === 'ADMIN'
+    const isOwner = file.quotation?.ownerId === userId
+    
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ error: '没有权限预览此文件' })
+    }
+
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })

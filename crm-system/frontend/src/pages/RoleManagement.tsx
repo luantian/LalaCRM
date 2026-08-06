@@ -135,14 +135,12 @@ function RoleManagement() {
     setMenuModalVisible(true)
     try {
       const response: any = await getRoleMenus(role.id)
-      // 提取所有菜单ID（包括子菜单，过滤掉 BUTTON 类型）
+      // 提取所有菜单ID（包括子菜单和 BUTTON 类型）
       const extractIds = (menus: any[]): number[] => {
         const ids: number[] = []
         menus.forEach((m: any) => {
-          if (m.menuType !== 'BUTTON') {
-            ids.push(m.id)
-            if (m.children?.length) ids.push(...extractIds(m.children))
-          }
+          ids.push(m.id)
+          if (m.children?.length) ids.push(...extractIds(m.children))
         })
         return ids
       }
@@ -158,6 +156,7 @@ function RoleManagement() {
   const handleSaveMenus = async () => {
     if (!currentRole) return
     try {
+      console.log('发送的 menuIds:', checkedMenuIds)
       await assignRoleMenus(currentRole.id, checkedMenuIds)
       message.success('菜单分配成功')
       setMenuModalVisible(false)
@@ -167,15 +166,15 @@ function RoleManagement() {
     }
   }
 
-  // 将菜单列表转换为Tree数据
+  // 将菜单列表转换为Tree数据（包含 BUTTON 类型）
   const buildTreeData = (menus: MenuItem[]): DataNode[] => {
     return menus
-      .filter(m => m.menuType !== 'BUTTON') // 按钮类型不显示在树中
       .sort((a, b) => a.order - b.order)
       .map(menu => ({
         key: menu.id,
         title: (
-          <span>
+          <span style={{ color: menu.menuType === 'BUTTON' ? '#888' : undefined, fontSize: menu.menuType === 'BUTTON' ? 12 : undefined }}>
+            {menu.menuType === 'BUTTON' && '🔘 '}
             {menu.label}
             {menu.perm && <span style={{ color: '#999', fontSize: 11, marginLeft: 8 }}>({menu.perm})</span>}
           </span>
@@ -184,13 +183,27 @@ function RoleManagement() {
       }))
   }
 
-  // 构建带子菜单的完整列表
-  const menusWithChildren: MenuItem[] = allMenus
-    .filter(m => m.parentId === null)
-    .map(m => ({
-      ...m,
-      children: allMenus.filter(c => c.parentId === m.id)
-    }))
+  // 从扁平列表构建完整的树形结构（支持任意层级）
+  const buildMenuTree = (items: MenuItem[]): MenuItem[] => {
+    const map = new Map<number, MenuItem & { children: MenuItem[] }>()
+    const roots: MenuItem[] = []
+    items.forEach(item => map.set(item.id, { ...item, children: [] }))
+    items.forEach(item => {
+      const node = map.get(item.id)!
+      if (item.parentId == null) {
+        roots.push(node)
+      } else {
+        const parent = map.get(item.parentId)
+        if (parent) parent.children.push(node)
+      }
+    })
+    // 排序
+    const sortTree = (nodes: MenuItem[]): MenuItem[] =>
+      nodes.sort((a, b) => a.order - b.order).map(n => ({ ...n, children: sortTree((n as any).children || []) }))
+    return sortTree(roots)
+  }
+
+  const menusWithChildren: MenuItem[] = buildMenuTree(allMenus)
 
   // ===== 角色 CRUD =====
   const handleCreateRole = () => {
@@ -418,9 +431,13 @@ function RoleManagement() {
         {allMenus.length > 0 ? (
           <Tree
             checkable
+            checkStrictly
             defaultExpandAll
-            checkedKeys={checkedMenuIds}
-            onCheck={(checked: any) => setCheckedMenuIds(Array.isArray(checked) ? checked : checked.checked)}
+            checkedKeys={{ checked: checkedMenuIds, halfChecked: [] }}
+            onCheck={(checked: any) => {
+              const ids = Array.isArray(checked) ? checked : checked.checked
+              setCheckedMenuIds(ids)
+            }}
             treeData={buildTreeData(menusWithChildren)}
             style={{ maxHeight: 400, overflow: 'auto' }}
           />

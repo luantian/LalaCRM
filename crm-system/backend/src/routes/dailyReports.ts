@@ -241,11 +241,12 @@ router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport
 })
 
 // 获取单个日报详情
-router.get('/:id', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope('userId'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const report = await prisma.dailyReport.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...dataScopeWhere },
       include: {
         user: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } }
@@ -437,7 +438,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('office:dailyrepo
 
     const report = await prisma.dailyReport.findFirst({
       where: { id, deletedAt: null },
-      include: { user: { select: { deptId: true } } }
+      include: { user: { select: { id: true, deptId: true } } }
     })
     if (!report) {
       return res.status(404).json({ error: '工作日报不存在' })
@@ -445,6 +446,11 @@ router.post('/:id/approve', authenticateToken, checkPermission('office:dailyrepo
 
     if (report.status !== 'SUBMITTED') {
       return res.status(400).json({ error: '只能审批已提交的日报' })
+    }
+
+    // 自审批防护：不能审批自己的日报（管理员除外）
+    if (report.userId === req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '不能审批自己的日报' })
     }
 
     const updated = await prisma.dailyReport.update({
@@ -478,6 +484,11 @@ router.post('/:id/reject', authenticateToken, checkPermission('office:dailyrepor
       return res.status(400).json({ error: '只能拒绝已提交的日报' })
     }
 
+    // 自审批防护：不能拒绝自己的日报（管理员除外）
+    if (report.userId === req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '不能拒绝自己的日报' })
+    }
+
     const updated = await prisma.dailyReport.update({
       where: { id },
       data: { status: 'REJECTED', issues: reason || report.issues },
@@ -507,6 +518,11 @@ router.post('/:id/rate', authenticateToken, checkPermission('office:dailyreport:
     const report = await prisma.dailyReport.findFirst({ where: { id, deletedAt: null } })
     if (!report) {
       return res.status(404).json({ error: '工作日报不存在' })
+    }
+
+    // 自评分防护：不能给自己的日报评分（管理员除外）
+    if (report.userId === req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '不能给自己的日报评分' })
     }
 
     const updated = await prisma.dailyReport.update({

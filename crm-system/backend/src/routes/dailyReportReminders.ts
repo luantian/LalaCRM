@@ -73,10 +73,11 @@ router.get('/missing-dates', authenticateToken, async (req: AuthRequest, res) =>
     const start = new Date(startDate as string)
     const end = new Date(endDate as string)
 
-    // 获取该时间段内的所有日报
+    // 获取该时间段内的所有日报（只查询未删除的）
     const reports = await prisma.dailyReport.findMany({
       where: {
         userId: req.user!.id,
+        deletedAt: null,
         reportDate: {
           gte: start,
           lte: end
@@ -129,10 +130,11 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - daysCount)
 
-    // 获取该时间段内的所有日报
+    // 获取该时间段内的所有日报（只查询未删除的）
     const reports = await prisma.dailyReport.findMany({
       where: {
         userId: req.user!.id,
+        deletedAt: null,
         reportDate: {
           gte: startDate,
           lte: endDate

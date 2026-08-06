@@ -137,11 +137,28 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('projec
     const fileId = parseInt(req.params.fileId as string)
 
     const file = await prisma.contractFile.findFirst({
-      where: { id: fileId, deletedAt: null }
+      where: { id: fileId, deletedAt: null },
+      include: { contract: { select: { ownerId: true, projectId: true } } }
     })
 
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 权限校验：管理员、合同所有者或项目团队成员可以下载
+    if (!(await isAdmin(req.user!.id))) {
+      const isContractOwner = file.contract?.ownerId === req.user!.id
+      let isProjectMember = false
+      
+      if (file.contract?.projectId) {
+        isProjectMember = !!(await prisma.projectTeamMember.findFirst({
+          where: { projectId: file.contract.projectId, userId: req.user!.id, deletedAt: null }
+        }))
+      }
+      
+      if (!isContractOwner && !isProjectMember) {
+        return res.status(403).json({ error: '没有权限下载此文件' })
+      }
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)
@@ -161,10 +178,30 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('projec
 router.get('/files/:fileId/preview', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.contractFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.contractFile.findFirst({ 
+      where: { id: fileId, deletedAt: null },
+      include: { contract: { select: { ownerId: true, projectId: true } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
+    
+    // 权限校验：管理员、合同所有者或项目团队成员可以预览
+    if (!(await isAdmin(req.user!.id))) {
+      const isContractOwner = file.contract?.ownerId === req.user!.id
+      let isProjectMember = false
+      
+      if (file.contract?.projectId) {
+        isProjectMember = !!(await prisma.projectTeamMember.findFirst({
+          where: { projectId: file.contract.projectId, userId: req.user!.id, deletedAt: null }
+        }))
+      }
+      
+      if (!isContractOwner && !isProjectMember) {
+        return res.status(403).json({ error: '没有权限预览此文件' })
+      }
+    }
+    
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
@@ -426,7 +463,19 @@ router.delete('/:id', authenticateToken, checkPermission('project:contract:delet
       where: { orderItem: { contractId: numericId } },
       data: { deletedAt: new Date() }
     })
+    // 级联软删除 ContractPayment 及其附件 ContractPaymentFile
+    const payments = await prisma.contractPayment.findMany({ where: { contractId: numericId }, select: { id: true } })
+    const paymentIds = payments.map(p => p.id)
+    if (paymentIds.length > 0) {
+      await prisma.contractPaymentFile.updateMany({ where: { paymentId: { in: paymentIds } }, data: { deletedAt: new Date() } })
+    }
     await prisma.contractPayment.updateMany({ where: { contractId: numericId }, data: { deletedAt: new Date() } })
+    // 级联软删除 ContractShipment 及其附件 ContractShipmentFile
+    const shipments = await prisma.contractShipment.findMany({ where: { contractId: numericId }, select: { id: true } })
+    const shipmentIds = shipments.map(s => s.id)
+    if (shipmentIds.length > 0) {
+      await prisma.contractShipmentFile.updateMany({ where: { shipmentId: { in: shipmentIds } }, data: { deletedAt: new Date() } })
+    }
     await prisma.contractShipment.updateMany({ where: { contractId: numericId }, data: { deletedAt: new Date() } })
 
     res.json({ message: '删除成功' })

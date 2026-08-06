@@ -57,12 +57,20 @@ router.get('/', authenticateToken, checkAnyPermission(['crm:opportunity:list', '
       where.organizationId = parseInt(organizationId as string)
     }
 
+    // 搜索条件：用 AND 合并，避免覆盖上面的权限 OR 条件
+    const conditions: any[] = []
     if (search) {
       const searchTerm = search as string
-      where.OR = [
-        { name: { contains: searchTerm, mode: 'insensitive' } },
-        { opportunityNo: { contains: searchTerm, mode: 'insensitive' } }
-      ]
+      conditions.push({
+        OR: [
+          { name: { contains: searchTerm, mode: 'insensitive' } },
+          { opportunityNo: { contains: searchTerm, mode: 'insensitive' } }
+        ]
+      })
+    }
+
+    if (conditions.length > 0) {
+      where.AND = conditions
     }
 
     const total = await prisma.opportunity.count({ where })
@@ -75,7 +83,7 @@ router.get('/', authenticateToken, checkAnyPermission(['crm:opportunity:list', '
         owner: { select: { id: true, name: true } },
         project: { select: { id: true, name: true, status: true } },
         _count: {
-          select: { teamMembers: true, files: true }
+          select: { teamMembers: { where: { deletedAt: null } }, files: { where: { deletedAt: null } } }
         }
       },
       orderBy: { [sortBy as string]: sortOrder as string },
@@ -326,8 +334,20 @@ router.delete('/:id', authenticateToken, checkPermission('crm:opportunity:edit')
       return res.status(404).json({ error: '商机不存在' })
     }
 
+    // 只有管理员或商机负责人才能删除
+    if (!(await isAdmin(req.user!.id)) && existing.ownerId !== req.user!.id) {
+      return res.status(403).json({ error: '只有管理员或商机负责人才能删除商机' })
+    }
+
     await prisma.opportunityTeamMember.updateMany({ where: { opportunityId: numericId }, data: { deletedAt: new Date() } })
     await prisma.opportunityFile.updateMany({ where: { opportunityId: numericId }, data: { deletedAt: new Date() } })
+    // 级联软删除 OpportunityRecord 和 OpportunityRecordFile
+    const records = await prisma.opportunityRecord.findMany({ where: { opportunityId: numericId }, select: { id: true } })
+    const recordIds = records.map(r => r.id)
+    if (recordIds.length > 0) {
+      await prisma.opportunityRecordFile.updateMany({ where: { recordId: { in: recordIds } }, data: { deletedAt: new Date() } })
+    }
+    await prisma.opportunityRecord.updateMany({ where: { opportunityId: numericId }, data: { deletedAt: new Date() } })
     await prisma.opportunity.update({
       where: { id: numericId },
       data: { deletedAt: new Date() }
@@ -529,11 +549,23 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('crm:op
     const fileId = parseInt(req.params.fileId as string)
 
     const file = await prisma.opportunityFile.findFirst({
-      where: { id: fileId, deletedAt: null }
+      where: { id: fileId, deletedAt: null },
+      include: { opportunity: { select: { ownerId: true } } }
     })
 
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 权限校验：只有商机负责人或管理员可以下载
+    if (!(await isAdmin(req.user!.id))) {
+      const isOwner = file.opportunity?.ownerId === req.user!.id
+      const isTeamMember = await prisma.opportunityTeamMember.findFirst({
+        where: { opportunityId: file.opportunityId, userId: req.user!.id, deletedAt: null }
+      })
+      if (!isOwner && !isTeamMember) {
+        return res.status(403).json({ error: '没有权限下载此文件' })
+      }
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)

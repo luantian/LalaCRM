@@ -278,7 +278,7 @@ router.get('/me', async (req, res) => {
       menus
     })
   } catch (error) {
-    res.status(403).json({ error: '无效的认证令牌' })
+    res.status(401).json({ error: '无效的认证令牌' })
   }
 })
 
@@ -306,7 +306,7 @@ router.get('/menus', async (req, res) => {
     const menus = await getUserMenus(user.id, user.roleId, user.role)
     res.json({ menus })
   } catch (error) {
-    res.status(403).json({ error: '无效的认证令牌' })
+    res.status(401).json({ error: '无效的认证令牌' })
   }
 })
 

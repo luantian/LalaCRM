@@ -190,6 +190,25 @@ router.post('/', authenticateToken, checkPermission('finance:expense:add'), logO
       return res.status(400).json({ error: '标题和费用明细不能为空' })
     }
 
+    // 验证每个费用项的必填字段
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (!item.category || !item.amount || !item.expenseDate) {
+        return res.status(400).json({ 
+          error: '费用明细信息不完整',
+          details: `第 ${i + 1} 项缺少必填字段（类别、金额、日期）`
+        })
+      }
+      // 验证日期格式
+      const date = new Date(item.expenseDate)
+      if (isNaN(date.getTime())) {
+        return res.status(400).json({ 
+          error: '费用日期格式无效',
+          details: `第 ${i + 1} 项的日期格式不正确`
+        })
+      }
+    }
+
     // 计算总金额
     const totalAmount = items.reduce((sum: number, item: any) => sum + parseFloat(item.amount || 0), 0)
 
@@ -350,6 +369,11 @@ router.post('/:id/submit', authenticateToken, checkPermission('finance:expense:a
     const expense = await prisma.expense.findFirst({ where: { id, deletedAt: null } })
     if (!expense) {
       return res.status(404).json({ error: '费用报销记录不存在' })
+    }
+
+    // 所有权校验：只能提交自己的报销（管理员除外）
+    if (expense.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '无权提交此报销申请' })
     }
 
     if (expense.status !== 'DRAFT') {

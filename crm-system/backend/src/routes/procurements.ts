@@ -254,8 +254,42 @@ router.delete('/:id', authenticateToken, checkPermission('project:procurement:ed
       return res.status(400).json({ error: '只能删除计划中或已取消的采购单' })
     }
 
-    await prisma.procurementPayment.updateMany({ where: { procurementId: id }, data: { deletedAt: new Date() } })
+    // 权限校验：只有创建者、项目负责人或管理员可以删除
+    if (!(await isAdmin(req.user!.id))) {
+      // 检查是否是创建者
+      const isCreator = existing.assignedTo === req.user!.id
+      
+      // 检查是否是关联项目的负责人或团队成员
+      const isProjectOwnerOrTeam = await prisma.project.findFirst({
+        where: {
+          id: existing.projectId,
+          deletedAt: null,
+          OR: [
+            { ownerId: req.user!.id },
+            { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
+          ]
+        }
+      })
+
+      if (!isCreator && !isProjectOwnerOrTeam) {
+        return res.status(403).json({ error: '只有创建者或项目团队成员才能删除采购单' })
+      }
+    }
+
+    // 级联软删除采购明细及其附件
+    const items = await prisma.procurementItem.findMany({ where: { procurementId: id }, select: { id: true } })
+    const itemIds = items.map(i => i.id)
+    if (itemIds.length > 0) {
+      await prisma.procurementItemFile.updateMany({ where: { procurementItemId: { in: itemIds } }, data: { deletedAt: new Date() } })
+    }
     await prisma.procurementItem.updateMany({ where: { procurementId: id }, data: { deletedAt: new Date() } })
+    // 级联软删除采购付款及其附件
+    const payments = await prisma.procurementPayment.findMany({ where: { procurementId: id }, select: { id: true } })
+    const paymentIds = payments.map(p => p.id)
+    if (paymentIds.length > 0) {
+      await prisma.procurementPaymentFile.updateMany({ where: { procurementPaymentId: { in: paymentIds } }, data: { deletedAt: new Date() } })
+    }
+    await prisma.procurementPayment.updateMany({ where: { procurementId: id }, data: { deletedAt: new Date() } })
     await prisma.procurementFile.updateMany({ where: { procurementId: id }, data: { deletedAt: new Date() } })
     await prisma.procurement.update({ where: { id }, data: { deletedAt: new Date() } })
     res.json({ message: '删除成功' })
@@ -324,6 +358,35 @@ router.put('/items/:itemId', authenticateToken, checkPermission('project:procure
 router.delete('/items/:itemId', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const itemId = parseInt(req.params.itemId as string)
+    
+    // 先查找明细及关联的采购单
+    const item = await prisma.procurementItem.findFirst({ 
+      where: { id: itemId, deletedAt: null },
+      include: { procurement: { select: { id: true, projectId: true, assignedTo: true } } }
+    })
+    if (!item) {
+      return res.status(404).json({ error: '采购明细不存在' })
+    }
+
+    // 权限校验：管理员或采购单创建者或项目团队成员
+    if (!(await isAdmin(req.user!.id))) {
+      const isCreator = item.procurement.assignedTo === req.user!.id
+      let isProjectTeam = false
+      if (item.procurement.projectId) {
+        const teamMember = await prisma.projectTeamMember.findFirst({
+          where: { projectId: item.procurement.projectId, userId: req.user!.id, deletedAt: null }
+        })
+        isProjectTeam = !!teamMember
+      }
+      if (!isCreator && !isProjectTeam) {
+        return res.status(403).json({ error: '无权删除此采购明细' })
+      }
+    }
+
+    // 级联软删除明细附件
+    await prisma.procurementItemFile.updateMany({ where: { procurementItemId: itemId }, data: { deletedAt: new Date() } })
+    // 级联软删除明细附件
+    await prisma.procurementItemFile.updateMany({ where: { procurementItemId: itemId }, data: { deletedAt: new Date() } })
     await prisma.procurementItem.update({ where: { id: itemId }, data: { deletedAt: new Date() } })
     res.json({ message: '删除成功' })
   } catch (error) {
@@ -435,6 +498,12 @@ router.get('/files/:fileId/preview', authenticateToken, checkPermission('project
 router.delete('/files/:fileId', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
+    
+    const file = await prisma.procurementFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    if (!file) {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+
     await prisma.procurementFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
     cleanupPreviewCache(fileId)
     res.json({ message: '文件删除成功' })
@@ -547,6 +616,12 @@ router.get('/item-files/:fileId/preview', authenticateToken, checkPermission('pr
 router.delete('/item-files/:fileId', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'DELETE_ITEM_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
+    
+    const file = await prisma.procurementItemFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    if (!file) {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+
     await prisma.procurementItemFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
     cleanupPreviewCache(fileId)
     res.json({ message: '文件删除成功' })
@@ -614,13 +689,41 @@ router.get('/payments/:paymentId/files', authenticateToken, checkPermission('pro
 })
 
 // 下载采购付款记录附件
-router.get('/payment-files/:fileId/download', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/payment-files/:fileId/download', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.procurementPaymentFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.procurementPaymentFile.findFirst({ 
+      where: { id: fileId, deletedAt: null },
+      include: { 
+        procurementPayment: { 
+          include: { 
+            procurement: { select: { assignedTo: true, projectId: true } } 
+          } 
+        } 
+      } 
+    })
 
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 权限校验：管理员或采购单负责人或项目团队成员可以下载
+    const userId = req.user!.id
+    if (!(await isAdmin(userId))) {
+      const procurement = file.procurementPayment?.procurement
+      const isAssigned = procurement?.assignedTo === userId
+      
+      let isTeamMember = false
+      if (procurement?.projectId) {
+        const teamMember = await prisma.projectTeamMember.findFirst({
+          where: { projectId: procurement.projectId, userId, deletedAt: null }
+        })
+        isTeamMember = !!teamMember
+      }
+      
+      if (!isAssigned && !isTeamMember) {
+        return res.status(403).json({ error: '没有权限下载此文件' })
+      }
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)
@@ -636,13 +739,42 @@ router.get('/payment-files/:fileId/download', authenticateToken, async (req: Aut
 })
 
 // 预览采购付款记录附件（图片/PDF/Word/Excel）
-router.get('/payment-files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/payment-files/:fileId/preview', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.procurementPaymentFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.procurementPaymentFile.findFirst({ 
+      where: { id: fileId, deletedAt: null },
+      include: { 
+        procurementPayment: { 
+          include: { 
+            procurement: { select: { assignedTo: true, projectId: true } } 
+          } 
+        } 
+      } 
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
+
+    // 权限校验：管理员或采购单负责人或项目团队成员可以预览
+    const userId = req.user!.id
+    if (!(await isAdmin(userId))) {
+      const procurement = file.procurementPayment?.procurement
+      const isAssigned = procurement?.assignedTo === userId
+      
+      let isTeamMember = false
+      if (procurement?.projectId) {
+        const teamMember = await prisma.projectTeamMember.findFirst({
+          where: { projectId: procurement.projectId, userId, deletedAt: null }
+        })
+        isTeamMember = !!teamMember
+      }
+      
+      if (!isAssigned && !isTeamMember) {
+        return res.status(403).json({ error: '没有权限预览此文件' })
+      }
+    }
+
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
@@ -659,6 +791,12 @@ router.get('/payment-files/:fileId/preview', authenticateToken, async (req: Auth
 router.delete('/payment-files/:fileId', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'DELETE_PAYMENT_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
+    
+    const file = await prisma.procurementPaymentFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    if (!file) {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+
     await prisma.procurementPaymentFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
     cleanupPreviewCache(fileId)
     res.json({ message: '文件删除成功' })

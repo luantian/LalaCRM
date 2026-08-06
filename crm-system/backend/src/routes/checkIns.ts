@@ -80,6 +80,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     const records = await prisma.dailyCheckIn.findMany({
       where: {
         userId,
+        deletedAt: null,
         checkInDate: { gte: startDate, lte: endDate }
       },
       include: {
@@ -113,6 +114,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     const makeupCount = await prisma.dailyCheckIn.count({
       where: {
         userId,
+        deletedAt: null,
         type: 'MAKEUP',
         checkInDate: { gte: startDate, lte: endDate }
       }
@@ -153,6 +155,7 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
     const records = await prisma.dailyCheckIn.findMany({
       where: {
         userId,
+        deletedAt: null,
         checkInTime: { gte: range.start, lt: range.end }
       },
       include: {
@@ -262,6 +265,7 @@ router.post('/', authenticateToken, checkPermission('attendance:checkin:write'),
     const existingRecords = await prisma.dailyCheckIn.findMany({
       where: {
         userId,
+        deletedAt: null,
         checkInTime: { gte: range.start, lt: range.end },
         period: period as any
       },
@@ -324,6 +328,7 @@ router.post('/makeup', authenticateToken, checkPermission('attendance:checkin:wr
     const makeupCount = await prisma.dailyCheckIn.count({
       where: {
         userId,
+        deletedAt: null,
         type: 'MAKEUP',
         checkInDate: { gte: monthStart, lte: monthEnd }
       }
@@ -367,6 +372,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
     const records = await prisma.dailyCheckIn.findMany({
       where: {
         userId,
+        deletedAt: null,
         checkInDate: { gte: startDate, lte: endDate }
       }
     })

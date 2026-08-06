@@ -3,12 +3,13 @@ import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
+import { clearPermissionCache } from '../utils/permission'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 // 获取角色的所有菜单（树形结构）
-router.get('/:roleId', authenticateToken, async (req: Request, res: Response) => {
+router.get('/:roleId', authenticateToken, checkPermission('system:menu:list'), async (req: Request, res: Response) => {
   try {
     const roleId = parseInt(req.params.roleId as string)
 
@@ -92,12 +93,14 @@ router.post('/:roleId', authenticateToken, checkPermission('system:menu:edit'), 
       return res.status(400).json({ error: 'menuIds必须是数组' })
     }
 
+    logger.info(`角色 ${roleId} 保存菜单: ${menuIds.length} 个, IDs: [${menuIds.join(', ')}]`)
+
     // 全量替换：先删除该角色的所有菜单关联
     await prisma.roleMenu.deleteMany({
       where: { roleId }
     })
 
-    // 创建新的角色-菜单关联
+    // 创建新的角色-菜单关联（只保存前端传来的 menuIds）
     if (menuIds.length > 0) {
       await prisma.roleMenu.createMany({
         data: menuIds.map((menuId: number) => ({
@@ -106,6 +109,9 @@ router.post('/:roleId', authenticateToken, checkPermission('system:menu:edit'), 
         }))
       })
     }
+
+    // 清除权限缓存，让修改立即生效
+    clearPermissionCache()
 
     // 返回更新后的菜单列表
     const roleMenus = await prisma.roleMenu.findMany({
@@ -156,7 +162,7 @@ router.post('/:roleId', authenticateToken, checkPermission('system:menu:edit'), 
 })
 
 // 获取角色的所有权限字符串
-router.get('/:roleId/perms', authenticateToken, async (req: Request, res: Response) => {
+router.get('/:roleId/perms', authenticateToken, checkPermission('system:menu:list'), async (req: Request, res: Response) => {
   try {
     const roleId = parseInt(req.params.roleId as string)
 
@@ -193,7 +199,7 @@ router.get('/:roleId/perms', authenticateToken, async (req: Request, res: Respon
 })
 
 // 获取用户的所有菜单（根据用户角色）
-router.get('/user/:userId/menus', authenticateToken, async (req: Request, res: Response) => {
+router.get('/user/:userId/menus', authenticateToken, checkPermission('system:user:list'), async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.userId as string)
 
