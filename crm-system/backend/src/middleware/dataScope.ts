@@ -137,8 +137,8 @@ export async function getDataScopeWhere(
       }
     })
   } else if (hasTeamScope && !teamMemberField) {
-    // 如果没有提供 teamMemberField，降级为只看自己的
-    logger.warn('TEAM data scope enabled but teamMemberField not provided, falling back to SELF')
+    // TEAM 数据范围只在项目管理模块生效，其他模块降级为 SELF
+    logger.info('TEAM data scope is only effective for project management module, falling back to SELF')
     conditions.push({ [ownerField]: userId })
   }
 

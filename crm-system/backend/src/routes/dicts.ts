@@ -10,7 +10,7 @@ const prisma = new PrismaClient()
 // ========== 字典类型 ==========
 
 // 获取所有字典类型（包含数据项）
-router.get('/types', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/types', authenticateToken, checkPermission('system:dict:list'), async (req: AuthRequest, res) => {
   try {
     const types = await prisma.dictType.findMany({
       include: { items: true },

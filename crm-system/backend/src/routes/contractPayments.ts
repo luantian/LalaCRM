@@ -8,6 +8,7 @@ import logger from '../utils/logger'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
 import path from 'path'
+import { checkContractProjectArchived } from '../utils/archive'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -64,6 +65,14 @@ router.post('/', authenticateToken, checkPermission('project:contract:edit'), lo
       return res.status(403).json({ error: '无权操作此合同的付款记录' })
     }
 
+    // 检查项目是否已归档
+    if (contract.projectId) {
+      const isArchived = await checkContractProjectArchived(contractId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法创建付款记录' })
+      }
+    }
+
     const payment = await prisma.contractPayment.create({
       data: {
         contractId,
@@ -92,13 +101,21 @@ router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), 
 
     const existing = await prisma.contractPayment.findFirst({
       where: { id, deletedAt: null },
-      include: { contract: { select: { ownerId: true } } }
+      include: { contract: { select: { ownerId: true, projectId: true } } }
     })
     if (!existing) {
       return res.status(404).json({ error: '付款记录不存在' })
     }
     if (existing.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此付款记录' })
+    }
+
+    // 检查项目是否已归档
+    if (existing.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(existing.contractId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法更新付款记录' })
+      }
     }
 
     const payment = await prisma.contractPayment.update({
@@ -131,9 +148,20 @@ router.post('/:id/files', authenticateToken, checkPermission('project:contract:e
       return res.status(400).json({ error: '请选择文件' })
     }
 
-    const payment = await prisma.contractPayment.findFirst({ where: { id: paymentId, deletedAt: null } })
+    const payment = await prisma.contractPayment.findFirst({ 
+      where: { id: paymentId, deletedAt: null },
+      include: { contract: { select: { projectId: true } } }
+    })
     if (!payment) {
       return res.status(404).json({ error: '付款记录不存在' })
+    }
+
+    // 检查项目是否已归档
+    if (payment.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(payment.contractId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法上传附件' })
+      }
     }
 
     const createdFiles = await Promise.all(
@@ -216,10 +244,22 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
 router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同付款', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.contractPaymentFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.contractPaymentFile.findFirst({ 
+      where: { id: fileId, deletedAt: null },
+      include: { payment: { include: { contract: { select: { projectId: true } } } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
+
+    // 检查项目是否已归档
+    if (file.payment.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(file.payment.contractId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法删除附件' })
+      }
+    }
+
     const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)
@@ -239,7 +279,7 @@ router.delete('/:id', authenticateToken, checkPermission('project:contract:edit'
     const id = parseInt(req.params.id as string)
     const existing = await prisma.contractPayment.findFirst({
       where: { id, deletedAt: null },
-      include: { contract: { select: { ownerId: true } } }
+      include: { contract: { select: { ownerId: true, projectId: true } } }
     })
     if (!existing) {
       return res.status(404).json({ error: '付款记录不存在' })
@@ -247,6 +287,15 @@ router.delete('/:id', authenticateToken, checkPermission('project:contract:edit'
     if (existing.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此付款记录' })
     }
+
+    // 检查项目是否已归档
+    if (existing.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(existing.contractId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法删除付款记录' })
+      }
+    }
+
     await prisma.contractPayment.update({ where: { id }, data: { deletedAt: new Date() } })
     // 级联软删除关联文件
     await prisma.contractPaymentFile.updateMany({ where: { paymentId: id }, data: { deletedAt: new Date() } })

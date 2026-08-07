@@ -3,6 +3,8 @@
  * 基于若依模式的前端权限控制
  */
 
+import { ROLE_ADMIN } from '../constants'
+
 /**
  * 检查用户是否拥有指定权限
  * @param permission 权限标识（三段式），如 'office:dailyreport:list'
@@ -16,7 +18,7 @@ export const checkPermission = (permission: string): boolean => {
     const user = JSON.parse(userStr)
     
     // 管理员拥有所有权限
-    if (user.role === 'ADMIN' || user.roleKey === 'admin') {
+    if (user.role === ROLE_ADMIN || user.roleKey === ROLE_ADMIN) {
       return true
     }
 
@@ -59,7 +61,7 @@ export const isAdmin = (): boolean => {
 
   try {
     const user = JSON.parse(userStr)
-    return user.role === 'ADMIN' || user.roleKey === 'admin'
+    return user.role === ROLE_ADMIN || user.roleKey === ROLE_ADMIN
   } catch (error) {
     console.error('管理员检查失败:', error)
     return false

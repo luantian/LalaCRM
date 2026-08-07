@@ -25,41 +25,39 @@ router.get('/:roleId', authenticateToken, checkPermission('system:menu:list'), a
     const roleMenus = await prisma.roleMenu.findMany({
       where: { roleId },
       include: {
-        menu: {
-          include: {
-            children: true
-          }
-        }
+        menu: true
       }
     })
 
-    // 提取菜单并构建树形结构（只取顶级菜单，children已包含子菜单）
+    // 构建该角色的菜单ID集合（用于过滤children）
+    const roleMenuIds = new Set(roleMenus.map(rm => rm.menuId))
+
+    // 构建树形结构：只包含该角色拥有的菜单
     const menuMap = new Map<number, any>()
     const topMenus: any[] = []
 
     for (const rm of roleMenus) {
-      const menu = rm.menu
-      if (!menuMap.has(menu.id)) {
-        menuMap.set(menu.id, menu)
-      }
+      const menu = { ...rm.menu, children: [] }
+      menuMap.set(menu.id, menu)
     }
 
-    // 过滤出属于该角色的顶级菜单，并只保留属于该角色的children
+    // 构建父子关系（只包含该角色的菜单）
     for (const rm of roleMenus) {
-      const menu = rm.menu
-      if (!menuMap.has(menu.id)) continue
-
-      // 构建树：只返回顶级菜单（parentId为null的），children已在include中加载
+      const menu = menuMap.get(rm.menuId)!
       if (menu.parentId === null || menu.parentId === undefined) {
-        if (!topMenus.find(m => m.id === menu.id)) {
-          topMenus.push(menu)
+        topMenus.push(menu)
+      } else {
+        const parent = menuMap.get(menu.parentId)
+        if (parent) {
+          parent.children.push(menu)
         }
       }
     }
 
-    // 对菜单树按order排序
+    // 对菜单树按order排序，并只保留属于该角色的菜单（过滤掉未分配但被include出来的子节点）
     const sortMenus = (menus: any[]): any[] => {
       return menus
+        .filter(m => menuMap.has(m.id))
         .sort((a, b) => a.order - b.order)
         .map(m => ({
           ...m,
@@ -116,31 +114,24 @@ router.post('/:roleId', authenticateToken, checkPermission('system:menu:edit'), 
     // 返回更新后的菜单列表
     const roleMenus = await prisma.roleMenu.findMany({
       where: { roleId },
-      include: {
-        menu: {
-          include: {
-            children: true
-          }
-        }
-      }
+      include: { menu: true }
     })
 
     const menuMap = new Map<number, any>()
     const topMenus: any[] = []
 
     for (const rm of roleMenus) {
-      const menu = rm.menu
-      if (!menuMap.has(menu.id)) {
-        menuMap.set(menu.id, menu)
-      }
+      const menu = { ...rm.menu, children: [] }
+      menuMap.set(menu.id, menu)
     }
 
     for (const rm of roleMenus) {
-      const menu = rm.menu
+      const menu = menuMap.get(rm.menuId)!
       if (menu.parentId === null || menu.parentId === undefined) {
-        if (!topMenus.find(m => m.id === menu.id)) {
-          topMenus.push(menu)
-        }
+        topMenus.push(menu)
+      } else {
+        const parent = menuMap.get(menu.parentId)
+        if (parent) parent.children.push(menu)
       }
     }
 
@@ -153,7 +144,6 @@ router.post('/:roleId', authenticateToken, checkPermission('system:menu:edit'), 
         }))
     }
 
-    // 返回结果（children已包含在include中）
     res.json(sortMenus(topMenus))
   } catch (error) {
     logger.error('Assign role menus error:', error)
@@ -214,16 +204,8 @@ router.get('/user/:userId/menus', authenticateToken, checkPermission('system:use
       return res.status(404).json({ error: '用户不存在' })
     }
 
-    // 获取用户的所有角色ID
-    let roleIds: number[] = []
-
-    if (user.userRoles.length > 0) {
-      // 优先从UserRole表获取多角色
-      roleIds = user.userRoles.map(ur => ur.roleId)
-    } else if (user.roleId) {
-      // 回退到User.roleId
-      roleIds = [user.roleId]
-    }
+    // 统一从 UserRole 表获取角色
+    const roleIds = user.userRoles.map(ur => ur.roleId)
 
     if (roleIds.length === 0) {
       return res.json([])

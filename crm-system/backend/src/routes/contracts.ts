@@ -4,7 +4,6 @@ import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
-import { applyDataScope } from '../middleware/dataScope'
 import fs from 'fs'
 import path from 'path'
 import { sortValidation, clampPagination, dateValidation } from '../middleware/validation'
@@ -12,12 +11,13 @@ import logger from '../utils/logger'
 import { exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import { autoWriteContractRecord } from '../utils/autoDailyReport'
+import { checkProjectArchived, checkContractProjectArchived } from '../utils/archive'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 // 获取所有合同（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('project:contract:list'), applyDataScope('ownerId'), sortValidation(['name', 'amount', 'signDate', 'startDate', 'endDate', 'status', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('project:contract:list'), sortValidation(['name', 'amount', 'signDate', 'startDate', 'endDate', 'status', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -32,18 +32,7 @@ router.get('/', authenticateToken, checkPermission('project:contract:list'), app
     const skip = (parseInt(page as string) - 1) * parseInt(pageSize as string)
     const take = parseInt(pageSize as string)
 
-    // 获取数据权限条件
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
-
-    const where: any = { deletedAt: null, ...dataScopeWhere }
-
-    // 权限过滤：非管理员只能看自己的合同或不公开的合同
-    if (!(await isAdmin(req.user!.id))) {
-      where.OR = [
-        { isPrivate: false },
-        { ownerId: req.user!.id }
-      ]
-    }
+    const where: any = { deletedAt: null }
 
     if (status) {
       where.status = status as string
@@ -88,23 +77,23 @@ router.get('/', authenticateToken, checkPermission('project:contract:list'), app
 })
 
 // 合同统计
-router.get('/stats/overview', authenticateToken, checkPermission('project:contract:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null }
     // 使用聚合查询，不加载所有数据到内存
     const [total, totalAmount, activeAmount, statusCounts] = await Promise.all([
-      prisma.contract.count({ where: { deletedAt: null, ...dataScopeWhere } }),
+      prisma.contract.count({ where }),
       prisma.contract.aggregate({
         _sum: { amount: true },
-        where: { deletedAt: null, ...dataScopeWhere }
+        where
       }),
       prisma.contract.aggregate({
         _sum: { amount: true },
-        where: { deletedAt: null, status: 'ACTIVE', ...dataScopeWhere }
+        where: { ...where, status: 'ACTIVE' }
       }),
       prisma.contract.groupBy({
         by: ['status'],
-        where: { deletedAt: null, ...dataScopeWhere },
+        where,
         _count: { id: true }
       })
     ])
@@ -137,28 +126,11 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('projec
     const fileId = parseInt(req.params.fileId as string)
 
     const file = await prisma.contractFile.findFirst({
-      where: { id: fileId, deletedAt: null },
-      include: { contract: { select: { ownerId: true, projectId: true } } }
+      where: { id: fileId, deletedAt: null }
     })
 
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
-    }
-
-    // 权限校验：管理员、合同所有者或项目团队成员可以下载
-    if (!(await isAdmin(req.user!.id))) {
-      const isContractOwner = file.contract?.ownerId === req.user!.id
-      let isProjectMember = false
-      
-      if (file.contract?.projectId) {
-        isProjectMember = !!(await prisma.projectTeamMember.findFirst({
-          where: { projectId: file.contract.projectId, userId: req.user!.id, deletedAt: null }
-        }))
-      }
-      
-      if (!isContractOwner && !isProjectMember) {
-        return res.status(403).json({ error: '没有权限下载此文件' })
-      }
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)
@@ -179,27 +151,10 @@ router.get('/files/:fileId/preview', authenticateToken, checkPermission('project
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.contractFile.findFirst({ 
-      where: { id: fileId, deletedAt: null },
-      include: { contract: { select: { ownerId: true, projectId: true } } }
+      where: { id: fileId, deletedAt: null }
     })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
-    }
-    
-    // 权限校验：管理员、合同所有者或项目团队成员可以预览
-    if (!(await isAdmin(req.user!.id))) {
-      const isContractOwner = file.contract?.ownerId === req.user!.id
-      let isProjectMember = false
-      
-      if (file.contract?.projectId) {
-        isProjectMember = !!(await prisma.projectTeamMember.findFirst({
-          where: { projectId: file.contract.projectId, userId: req.user!.id, deletedAt: null }
-        }))
-      }
-      
-      if (!isContractOwner && !isProjectMember) {
-        return res.status(403).json({ error: '没有权限预览此文件' })
-      }
     }
     
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
@@ -215,12 +170,11 @@ router.get('/files/:fileId/preview', authenticateToken, checkPermission('project
 })
 
 // 获取合同详情
-router.get('/:id', authenticateToken, checkPermission('project:contract:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const contract = await prisma.contract.findFirst({
-      where: { id: parseInt(id), deletedAt: null, ...dataScopeWhere },
+      where: { id: parseInt(id), deletedAt: null },
       include: {
         organization: true,
         project: true,
@@ -231,11 +185,6 @@ router.get('/:id', authenticateToken, checkPermission('project:contract:list'), 
 
     if (!contract) {
       return res.status(404).json({ error: '合同不存在' })
-    }
-
-    // 权限检查：非管理员不能查看不公开的非本人合同
-    if (contract.isPrivate && contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
-      return res.status(403).json({ error: '无权查看此合同（该合同已设为不公开）' })
     }
 
     res.json(contract)
@@ -251,6 +200,14 @@ router.post('/', authenticateToken, checkPermission('project:contract:add'), log
 
     if (!name || !organizationId || !amount) {
       return res.status(400).json({ error: '必填字段缺失' })
+    }
+
+    // 检查项目是否已归档
+    if (projectId) {
+      const isArchived = await checkProjectArchived(projectId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法创建合同' })
+      }
     }
 
     const contract = await prisma.contract.create({
@@ -403,6 +360,13 @@ router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), 
     if (currentContract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权编辑此合同' })
     }
+    // 检查关联项目是否已归档
+    if (currentContract.projectId) {
+      const isArchived = await checkProjectArchived(currentContract.projectId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法编辑合同' })
+      }
+    }
     if (status && status !== currentContract.status) {
       return res.status(400).json({ error: '状态变更必须通过审批接口 POST /:id/approve' })
     }
@@ -449,6 +413,13 @@ router.delete('/:id', authenticateToken, checkPermission('project:contract:delet
     // 检查所有权（合同负责人或管理员才能删除）
     if (existing.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权删除此合同' })
+    }
+    // 检查关联项目是否已归档
+    if (existing.projectId) {
+      const isArchived = await checkProjectArchived(existing.projectId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法删除合同' })
+      }
     }
 
     // 软删除合同
@@ -502,6 +473,12 @@ router.post('/:id/files', authenticateToken, checkPermission('project:contract:e
 
     if (!contract) {
       return res.status(404).json({ error: '合同不存在' })
+    }
+
+    // 检查关联项目是否已归档
+    const isArchived = await checkContractProjectArchived(contractId)
+    if (isArchived) {
+      return res.status(403).json({ error: '项目已归档，无法上传合同附件' })
     }
 
     // 保存文件信息到数据库
@@ -561,6 +538,12 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:
       return res.status(404).json({ error: '文件不存在' })
     }
 
+    // 检查关联项目是否已归档
+    const isArchived = await checkContractProjectArchived(file.contractId)
+    if (isArchived) {
+      return res.status(403).json({ error: '项目已归档，无法删除合同附件' })
+    }
+
     // 删除物理文件
     const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (fs.existsSync(filePath)) {
@@ -583,11 +566,10 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:
 })
 
 // 导出合同Excel
-router.get('/export/excel', authenticateToken, checkPermission('project:contract:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.contract.findMany({
-      where: { deletedAt: null, ...dataScopeWhere },
+      where: { deletedAt: null },
       include: { organization: { select: { name: true } }, owner: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }
     })

@@ -3,7 +3,6 @@ import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
-import { applyDataScope } from '../middleware/dataScope'
 import { upload } from '../middleware/upload'
 import logger from '../utils/logger'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
@@ -15,13 +14,14 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // GET /stats/overview - Stats (before /:id)
-router.get('/stats/overview', authenticateToken, checkPermission('project:procurement:list'), applyDataScope('assignedTo'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null }
+    
     const [total, byStatus, amountResult] = await Promise.all([
-      prisma.procurement.count({ where: { deletedAt: null, ...dataScopeWhere } }),
-      prisma.procurement.groupBy({ by: ['status'], where: { deletedAt: null, ...dataScopeWhere }, _count: true }),
-      prisma.procurement.aggregate({ where: { deletedAt: null, ...dataScopeWhere }, _sum: { totalAmount: true } })
+      prisma.procurement.count({ where }),
+      prisma.procurement.groupBy({ by: ['status'], where, _count: true }),
+      prisma.procurement.aggregate({ where, _sum: { totalAmount: true } })
     ])
     const statusCounts: Record<string, number> = {}
     byStatus.forEach(item => { statusCounts[item.status] = item._count })
@@ -33,21 +33,15 @@ router.get('/stats/overview', authenticateToken, checkPermission('project:procur
 })
 
 // GET / - List procurements
-router.get('/', authenticateToken, checkPermission('project:procurement:list'), applyDataScope('assignedTo'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 10
     const skip = (page - 1) * pageSize
     const { projectId, status, search } = req.query
 
-    // 获取数据权限条件
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
-
-    // 构建查询条件：合并数据权限和筛选条件
+    // 构建查询条件
     const conditions: any[] = [{ deletedAt: null }]
-    if (Object.keys(dataScopeWhere).length > 0) {
-      conditions.push(dataScopeWhere)
-    }
 
     if (projectId) conditions.push({ projectId: parseInt(projectId as string) })
     if (status) conditions.push({ status: status as string })
@@ -85,18 +79,6 @@ router.get('/:id', authenticateToken, checkPermission('project:procurement:list'
       include: { project: true, items: { where: { deletedAt: null } }, files: { where: { deletedAt: null } } }
     })
     if (!procurement) return res.status(404).json({ error: '采购单不存在' })
-
-    // 数据范围检查：项目owner或团队成员可以查看（管理员除外）
-    const project = await prisma.project.findFirst({
-      where: { id: procurement.projectId, deletedAt: null },
-      select: { ownerId: true, teamMembers: { where: { deletedAt: null }, select: { userId: true } } }
-    })
-    if (project?.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
-      const isTeamMember = project?.teamMembers.some(tm => tm.userId === req.user!.id)
-      if (!isTeamMember) {
-        return res.status(403).json({ error: '无权访问此采购单' })
-      }
-    }
 
     res.json(procurement)
   } catch (error) {
@@ -254,25 +236,10 @@ router.delete('/:id', authenticateToken, checkPermission('project:procurement:ed
       return res.status(400).json({ error: '只能删除计划中或已取消的采购单' })
     }
 
-    // 权限校验：只有创建者、项目负责人或管理员可以删除
+    // 权限校验：管理员或采购负责人可以删除
     if (!(await isAdmin(req.user!.id))) {
-      // 检查是否是创建者
-      const isCreator = existing.assignedTo === req.user!.id
-      
-      // 检查是否是关联项目的负责人或团队成员
-      const isProjectOwnerOrTeam = await prisma.project.findFirst({
-        where: {
-          id: existing.projectId,
-          deletedAt: null,
-          OR: [
-            { ownerId: req.user!.id },
-            { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
-          ]
-        }
-      })
-
-      if (!isCreator && !isProjectOwnerOrTeam) {
-        return res.status(403).json({ error: '只有创建者或项目团队成员才能删除采购单' })
+      if (existing.assignedTo !== req.user!.id) {
+        return res.status(403).json({ error: '只有采购负责人才能删除采购单' })
       }
     }
 
@@ -368,19 +335,9 @@ router.delete('/items/:itemId', authenticateToken, checkPermission('project:proc
       return res.status(404).json({ error: '采购明细不存在' })
     }
 
-    // 权限校验：管理员或采购单创建者或项目团队成员
+    // 权限校验：有 project:procurement:delete 权限的可以删除
     if (!(await isAdmin(req.user!.id))) {
-      const isCreator = item.procurement.assignedTo === req.user!.id
-      let isProjectTeam = false
-      if (item.procurement.projectId) {
-        const teamMember = await prisma.projectTeamMember.findFirst({
-          where: { projectId: item.procurement.projectId, userId: req.user!.id, deletedAt: null }
-        })
-        isProjectTeam = !!teamMember
-      }
-      if (!isCreator && !isProjectTeam) {
-        return res.status(403).json({ error: '无权删除此采购明细' })
-      }
+      return res.status(403).json({ error: '无权限删除' })
     }
 
     // 级联软删除明细附件
@@ -693,37 +650,11 @@ router.get('/payment-files/:fileId/download', authenticateToken, checkPermission
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementPaymentFile.findFirst({ 
-      where: { id: fileId, deletedAt: null },
-      include: { 
-        procurementPayment: { 
-          include: { 
-            procurement: { select: { assignedTo: true, projectId: true } } 
-          } 
-        } 
-      } 
+      where: { id: fileId, deletedAt: null }
     })
 
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
-    }
-
-    // 权限校验：管理员或采购单负责人或项目团队成员可以下载
-    const userId = req.user!.id
-    if (!(await isAdmin(userId))) {
-      const procurement = file.procurementPayment?.procurement
-      const isAssigned = procurement?.assignedTo === userId
-      
-      let isTeamMember = false
-      if (procurement?.projectId) {
-        const teamMember = await prisma.projectTeamMember.findFirst({
-          where: { projectId: procurement.projectId, userId, deletedAt: null }
-        })
-        isTeamMember = !!teamMember
-      }
-      
-      if (!isAssigned && !isTeamMember) {
-        return res.status(403).json({ error: '没有权限下载此文件' })
-      }
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)
@@ -743,36 +674,10 @@ router.get('/payment-files/:fileId/preview', authenticateToken, checkPermission(
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementPaymentFile.findFirst({ 
-      where: { id: fileId, deletedAt: null },
-      include: { 
-        procurementPayment: { 
-          include: { 
-            procurement: { select: { assignedTo: true, projectId: true } } 
-          } 
-        } 
-      } 
+      where: { id: fileId, deletedAt: null }
     })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
-    }
-
-    // 权限校验：管理员或采购单负责人或项目团队成员可以预览
-    const userId = req.user!.id
-    if (!(await isAdmin(userId))) {
-      const procurement = file.procurementPayment?.procurement
-      const isAssigned = procurement?.assignedTo === userId
-      
-      let isTeamMember = false
-      if (procurement?.projectId) {
-        const teamMember = await prisma.projectTeamMember.findFirst({
-          where: { projectId: procurement.projectId, userId, deletedAt: null }
-        })
-        isTeamMember = !!teamMember
-      }
-      
-      if (!isAssigned && !isTeamMember) {
-        return res.status(403).json({ error: '没有权限预览此文件' })
-      }
     }
 
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))

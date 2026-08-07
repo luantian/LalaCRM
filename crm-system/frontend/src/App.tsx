@@ -5,6 +5,7 @@ import zhCN from 'antd/locale/zh_CN'
 import Login from './pages/Login'
 import Layout from './components/Layout'
 import { routeComponents } from './utils/routeConfig'
+import { ROLE_ADMIN } from './constants'
 import './App.css'
 
 // 加载占位组件
@@ -36,7 +37,7 @@ function App() {
     if (userStr) {
       try {
         const user = JSON.parse(userStr)
-        if (user.role === 'ADMIN' || user.roleKey === 'admin') {
+        if (user.role === ROLE_ADMIN || user.roleKey === ROLE_ADMIN) {
           // 管理员：所有注册的路由都允许
           Object.keys(routeComponents).forEach(path => routes.add(path))
           setAllowedRoutes(routes)

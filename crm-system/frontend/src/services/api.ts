@@ -477,6 +477,7 @@ export const importDailyReports = (file: File) => importFile('/daily-reports/imp
  * 判断文件是否可预览（图片/PDF/Word/Excel）
  */
 export const isPreviewableFile = (fileName: string) => {
+  if (!fileName) return false
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
   return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'].includes(ext)
 }

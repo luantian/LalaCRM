@@ -15,6 +15,7 @@ function ProjectList() {
   const [modalVisible, setModalVisible] = useState(false)
   const [editingProject, setEditingProject] = useState<any>(null)
   const [form] = Form.useForm()
+  const watchedOrgId = Form.useWatch('organizationId', form)
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -436,6 +437,7 @@ function ProjectList() {
             rules={[{ required: true, message: '请选择客户联系人' }]}
           >
             <OrgContactSelector
+              organizationId={watchedOrgId}
               placeholder="请选择客户联系人"
               onContactSelect={(contactId, orgId) => {
                 form.setFieldValue('contactId', contactId)

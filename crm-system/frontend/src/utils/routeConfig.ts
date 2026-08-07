@@ -4,6 +4,7 @@
  */
 
 import { lazy } from 'react'
+import { ROLE_ADMIN } from '../constants'
 
 // 路由级代码分割 — 所有页面组件懒加载
 export const routeComponents: Record<string, React.LazyExoticComponent<any>> = {
@@ -111,7 +112,7 @@ export function canAccessRoute(path: string): boolean {
   if (userStr) {
     try {
       const user = JSON.parse(userStr)
-      if (user.role === 'ADMIN' || user.roleKey === 'admin') {
+      if (user.role === ROLE_ADMIN || user.roleKey === ROLE_ADMIN) {
         return true
       }
     } catch (error) {

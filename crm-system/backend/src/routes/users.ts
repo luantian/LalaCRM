@@ -203,6 +203,16 @@ router.put('/:id', authenticateToken, checkPermission('system:user:edit'), logOp
       }
     })
 
+    // 同步更新 UserRole 关联表，确保权限一致
+    if (roleId !== undefined) {
+      await prisma.userRole.deleteMany({ where: { userId } })
+      if (roleId) {
+        await prisma.userRole.create({
+          data: { userId, roleId }
+        })
+      }
+    }
+
     res.json(userWithoutPassword(user))
   } catch (error) {
     logger.error('Update user error:', error)

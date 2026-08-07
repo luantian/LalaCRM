@@ -5,6 +5,7 @@
 
 import { PrismaClient } from '@prisma/client'
 import logger from './logger'
+import { ROLE_ADMIN } from './constants'
 
 const prisma = new PrismaClient()
 
@@ -15,7 +16,7 @@ const CACHE_TTL = 60 * 1000 // 1分钟缓存
 
 /**
  * 检查用户是否是管理员
- * 判断逻辑：用户是否拥有 roleKey 为 'admin' 的角色
+ * 判断逻辑：用户是否拥有 roleKey 为 'ADMIN' 的角色
  * 兼容旧逻辑：也检查 User.role === 'ADMIN'
  * 
  * @param userId 用户ID
@@ -31,9 +32,16 @@ export async function isAdmin(userId: number): Promise<boolean> {
   }
 
   try {
-    // 先查数据库：用户是否拥有 admin 角色
+    // 先确认用户是否存在（防止旧token穿透到权限判断阶段）
+    const userExists = await prisma.user.findUnique({ where: { id: userId } })
+    if (!userExists) {
+      // 用户不存在时返回 false，并让上层中间件识别为"未认证"
+      return false
+    }
+
+    // 先查数据库：用户是否拥有 ADMIN 角色
     const adminRole = await prisma.roleModel.findFirst({
-      where: { roleKey: 'admin' }
+      where: { roleKey: ROLE_ADMIN }
     })
     
     let result = false
@@ -44,16 +52,7 @@ export async function isAdmin(userId: number): Promise<boolean> {
       result = !!userRole
     }
 
-    // 如果没找到，回退检查旧字段 User.role
-    if (!result) {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true }
-      })
-      if (user?.role === 'ADMIN') {
-        result = true
-      }
-    }
+    // 不再回退到旧字段 User.role，统一以 UserRole 表为准
 
     adminCache.set(userId, { value: result, ts: Date.now() })
     return result
@@ -105,26 +104,6 @@ export async function getUserPerms(userId: number): Promise<string[]> {
     })
     
     if (userRoles.length === 0) {
-      // 没有角色，尝试从旧的 roleId 字段获取
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { roleId: true }
-      })
-      if (user?.roleId) {
-        // 从该角色的 RoleMenu -> MenuItem 获取权限
-        const roleMenus = await prisma.roleMenu.findMany({
-          where: { roleId: user.roleId },
-          include: {
-            menu: { select: { perm: true } }
-          }
-        })
-        const perms = roleMenus
-          .map(rm => rm.menu.perm)
-          .filter((p): p is string => !!p && p.trim() !== '')
-        const result = [...new Set(perms)]
-        permsCache.set(userId, { value: result, ts: Date.now() })
-        return result
-      }
       return []
     }
 
@@ -172,12 +151,6 @@ export async function getUserDataScope(userId: number): Promise<string> {
     })
     
     if (userRoles.length === 0) {
-      // 回退：检查旧字段
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true }
-      })
-      if (user?.role === 'ADMIN') return 'ALL'
       return 'SELF'
     }
     
@@ -268,4 +241,49 @@ export function clearPermissionCache(userId?: number) {
     adminCache.clear()
     permsCache.clear()
   }
+}
+
+/**
+ * 获取数据过滤条件（简化版，替代 applyDataScope）
+ * 硬编码常见场景的数据权限逻辑
+ * 
+ * @param userId 用户ID
+ * @param module 模块名称：'dailyreport' | 'finance' | 'crm' | 'project' | 'sales'
+ * @param ownerField 数据所有者字段名，默认 'ownerId'
+ * @returns Prisma where 条件对象
+ */
+export async function getDataFilter(userId: number, module: string, ownerField: string = 'ownerId'): Promise<any> {
+  // 管理员看全部
+  if (await isAdmin(userId)) {
+    return {}
+  }
+
+  // 日报：所有人看全部
+  if (module === 'dailyreport') {
+    return {}
+  }
+
+  // 费用/发票：财务看全部，普通员工看自己的
+  if (module === 'finance') {
+    const isFinance = await hasAnyRole(userId, ['finance', 'FINANCE'])
+    if (isFinance) {
+      return {}
+    }
+    return { [ownerField]: userId }
+  }
+
+  // 客户/报价/售前/销售：管理员看全部，普通员工看自己的
+  if (module === 'crm' || module === 'project' || module === 'sales') {
+    return { [ownerField]: userId }
+  }
+
+  // 默认：只看自己的
+  return { [ownerField]: userId }
+}
+
+/**
+ * 检查用户是否是财务角色
+ */
+export async function isFinanceRole(userId: number): Promise<boolean> {
+  return await hasAnyRole(userId, ['finance', 'FINANCE'])
 }

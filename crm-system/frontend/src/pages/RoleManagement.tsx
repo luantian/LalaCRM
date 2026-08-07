@@ -1,9 +1,182 @@
-import { useEffect, useState } from 'react'
-import { Card, Table, Tag, message, Button, Modal, Tree, Space, Form, Input, Checkbox, Divider, Empty, Dropdown, Descriptions, Popconfirm } from 'antd'
-import { CheckCircleFilled, CloseCircleFilled, SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, MoreOutlined } from '@ant-design/icons'
+import { useEffect, useState, type FC } from 'react'
+import { Card, Table, Tag, App, Button, Modal, Tree, Space, Form, Input, Checkbox, Empty, Tabs, Descriptions, Popconfirm, Select } from 'antd'
+import { SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, BarChartOutlined } from '@ant-design/icons'
 import type { DataNode } from 'antd/es/tree'
 import api from '../services/api'
 import { getRoleMenus, assignRoleMenus } from '../services/api'
+
+// ===== 权限对照表组件（矩阵打勾式） =====
+
+interface PermRow {
+  label: string   // 操作名称，如"创建客户"
+  perm: string    // 权限标识，如"crm:organization:add"
+}
+
+interface PermGroup {
+  groupLabel: string   // 分组名，如"客户管理"
+  rows: PermRow[]      // 该分组下的所有操作
+}
+
+// 从菜单树构建权限对照表数据（扁平化所有操作按钮）
+function buildPermGroups(menusTree: MenuItem[]): PermGroup[] {
+  const result: PermGroup[] = []
+
+  const processTopMenu = (topMenu: MenuItem) => {
+    const rows: PermRow[] = []
+
+    // 收集顶级菜单直接的按钮
+    const collectButtons = (menu: MenuItem) => {
+      ;(menu.children || []).forEach(child => {
+        if (child.menuType === 'BUTTON' && child.perm) {
+          rows.push({ label: child.label, perm: child.perm })
+        }
+      })
+    }
+
+    const hasSubPages = (topMenu.children || []).some(c => c.menuType === 'PAGE')
+
+    if (hasSubPages) {
+      // 有子页面：每个子页面的按钮按"子页面名/操作名"展示
+      ;(topMenu.children || []).forEach(child => {
+        if (child.menuType === 'PAGE') {
+          // 子页面自身的按钮
+          ;(child.children || []).forEach(btn => {
+            if (btn.menuType === 'BUTTON' && btn.perm) {
+              rows.push({ label: `${child.label} - ${btn.label}`, perm: btn.perm })
+            }
+          })
+        }
+      })
+      // 顶级菜单直接的按钮
+      collectButtons(topMenu)
+    } else {
+      // 无子页面：直接收集按钮
+      collectButtons(topMenu)
+    }
+
+    if (rows.length > 0) {
+      result.push({ groupLabel: topMenu.label, rows })
+    }
+  }
+
+  menusTree.forEach(topMenu => processTopMenu(topMenu))
+  return result
+}
+
+interface PermissionMatrixProps {
+  roles: Role[]
+  permGroups: PermGroup[]
+}
+
+const PermissionMatrix: FC<PermissionMatrixProps> = ({ roles, permGroups }) => {
+  const hasPerm = (role: Role, perm: string) => {
+    // 管理员通配符权限
+    if (role.permissions?.includes('*')) return true
+    return role.permissions?.includes(perm) || false
+  }
+
+  // 统计角色在某分组中拥有的权限数
+  const countPerms = (role: Role, group: PermGroup) =>
+    group.rows.filter(r => hasPerm(role, r.perm)).length
+
+  // 角色颜色
+  const roleColors: Record<string, string> = {
+    ADMIN: '#f5222d', PROJECT_DIRECTOR: '#722ed1',
+    PROJECT_MANAGER: '#1890ff', USER: '#52c41a', VIEWER: '#999'
+  }
+
+  return (
+    <div style={{ width: '100%', overflowX: 'auto' }}>
+      {/* 图例 */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 14, fontSize: 12, color: '#64748b', alignItems: 'center' }}>
+        <span>图例：</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ color: '#52c41a', fontWeight: 700, fontSize: 14 }}>✓</span> 有权限
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ color: '#d9d9d9', fontWeight: 700, fontSize: 14 }}>✗</span> 无权限
+        </span>
+        <span style={{ marginLeft: 12, color: '#94a3b8' }}>
+          表头数字 = 该角色在此模块拥有的权限数/总权限数
+        </span>
+      </div>
+
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        {permGroups.map((group, gi) => (
+          <tbody key={gi}>
+            {/* 分组标题行 */}
+            <tr>
+              <td colSpan={roles.length + 1} style={{
+                padding: '8px 12px',
+                background: '#f8fafc',
+                fontWeight: 600,
+                fontSize: 13,
+                color: '#1e293b',
+                borderBottom: '2px solid #e2e8f0',
+                borderTop: gi > 0 ? '2px solid #e2e8f0' : 'none'
+              }}>
+                {group.groupLabel}
+              </td>
+            </tr>
+            {/* 表头行 */}
+            <tr>
+              <th style={{
+                textAlign: 'left', padding: '6px 12px', width: 160,
+                background: '#fafbfc', color: '#64748b', fontWeight: 500, fontSize: 11,
+                borderBottom: '1px solid #e2e8f0'
+              }}>操作</th>
+              {roles.map(role => {
+                const count = countPerms(role, group)
+                const total = group.rows.length
+                return (
+                  <th key={role.id} style={{
+                    textAlign: 'center', padding: '6px 8px',
+                    background: '#fafbfc',
+                    color: roleColors[role.name] || '#334155',
+                    fontWeight: 600, fontSize: 12,
+                    borderBottom: '1px solid #e2e8f0',
+                    minWidth: 72
+                  }}>
+                    <div>{role.displayName}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400, marginTop: 1 }}>
+                      {count}/{total}
+                    </div>
+                  </th>
+                )
+              })}
+            </tr>
+            {/* 权限行 */}
+            {group.rows.map((row, ri) => (
+              <tr key={ri} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <td style={{
+                  padding: '6px 12px', color: '#475569', fontSize: 12,
+                  background: ri % 2 === 0 ? 'transparent' : '#fafbfc'
+                }}>
+                  {row.label}
+                </td>
+                {roles.map(role => {
+                  const yes = hasPerm(role, row.perm)
+                  return (
+                    <td key={role.id} style={{
+                      textAlign: 'center', padding: '6px 8px',
+                      background: yes ? 'rgba(82,196,26,0.06)' : (ri % 2 === 0 ? 'transparent' : '#fafbfc')
+                    }}>
+                      {yes ? (
+                        <span style={{ color: '#52c41a', fontWeight: 700, fontSize: 15 }}>✓</span>
+                      ) : (
+                        <span style={{ color: '#d9d9d9', fontSize: 15 }}>✗</span>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        ))}
+      </table>
+    </div>
+  )
+}
 
 interface Role {
   id: number
@@ -11,6 +184,7 @@ interface Role {
   displayName: string
   description: string
   permissions: string[]
+  dataScope?: string
 }
 
 interface MenuItem {
@@ -27,69 +201,29 @@ interface MenuItem {
 }
 
 function RoleManagement() {
+  const { message } = App.useApp()
   const [roles, setRoles] = useState<Role[]>([])
   const [allMenus, setAllMenus] = useState<MenuItem[]>([])
   const [loading, setLoading] = useState(false)
 
-  // 菜单分配弹窗状态
-  const [menuModalVisible, setMenuModalVisible] = useState(false)
-  const [currentRole, setCurrentRole] = useState<Role | null>(null)
+  // 编辑弹窗内的菜单权限状态
   const [checkedMenuIds, setCheckedMenuIds] = useState<number[]>([])
   const [menuLoading, setMenuLoading] = useState(false)
+  const [editActiveTab, setEditActiveTab] = useState('info')
 
   // 角色编辑弹窗状态
   const [roleModalVisible, setRoleModalVisible] = useState(false)
   const [editingRole, setEditingRole] = useState<Role | null>(null)
   const [roleForm] = Form.useForm()
-  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([])
   const [viewingRole, setViewingRole] = useState<Role | null>(null)
+
+  // 权限对照表弹窗状态
+  const [permMatrixModalVisible, setPermMatrixModalVisible] = useState(false)
 
   // 联系方式权限配置弹窗状态
   const [contactInfoModalVisible, setContactInfoModalVisible] = useState(false)
   const [contactInfoRoleIds, setContactInfoRoleIds] = useState<number[]>([])
   const [contactInfoLoading, setContactInfoLoading] = useState(false)
-
-  // 权限定义（对照表用）
-  const permissionDefs = [
-    // 系统
-    { key: 'manage_system', label: '系统管理', group: '系统' },
-    // 客户管理
-    { key: 'view_organizations', label: '查看客户', group: '客户管理' },
-    { key: 'edit_organizations', label: '编辑客户', group: '客户管理' },
-    // 项目
-    { key: 'view_projects', label: '查看项目', group: '项目' },
-    { key: 'edit_projects', label: '编辑项目', group: '项目' },
-    { key: 'create_projects', label: '创建项目', group: '项目' },
-    // 售前
-    { key: 'view_opportunities', label: '查看售前', group: '售前' },
-    { key: 'edit_opportunities', label: '管理售前', group: '售前' },
-    // 报价单
-    { key: 'view_quotations', label: '查看报价', group: '报价' },
-    { key: 'edit_quotations', label: '管理报价', group: '报价' },
-    { key: 'approve_quotations', label: '审批报价', group: '报价' },
-    // 合同
-    { key: 'view_contracts', label: '查看合同', group: '合同' },
-    { key: 'edit_contracts', label: '管理合同', group: '合同' },
-    { key: 'approve_contracts', label: '审批合同', group: '合同' },
-    // 采购
-    { key: 'view_procurements', label: '查看采购', group: '采购' },
-    { key: 'edit_procurements', label: '管理采购', group: '采购' },
-    { key: 'approve_procurements', label: '审批采购', group: '采购' },
-    // 出差
-    { key: 'view_business_trips', label: '查看出差', group: '出差' },
-    { key: 'submit_trips', label: '提交出差', group: '出差' },
-    { key: 'approve_business_trips', label: '审批出差', group: '出差' },
-    // 报销
-    { key: 'view_expenses', label: '查看报销', group: '报销' },
-    { key: 'submit_expenses', label: '提交报销', group: '报销' },
-    { key: 'approve_expenses', label: '审批报销', group: '报销' },
-    // 发票
-    { key: 'view_invoices', label: '查看发票', group: '发票' },
-    { key: 'edit_invoices', label: '管理发票', group: '发票' },
-    // 日报
-    { key: 'view_reports', label: '查看日报', group: '日报' },
-    { key: 'create_reports', label: '填写日报', group: '日报' },
-  ]
 
   const roleColors: Record<string, string> = {
     ADMIN: 'red', PROJECT_DIRECTOR: 'purple', PROJECT_MANAGER: 'blue',
@@ -99,7 +233,7 @@ function RoleManagement() {
   const scopeMap: Record<string, string> = {
     ADMIN: '全部数据', PROJECT_DIRECTOR: '全部数据',
     PROJECT_MANAGER: '自己负责的项目', USER: '自己参与的项目',
-    VIEWER: '自己相关的数据', TEAM: '团队成员数据'
+    VIEWER: '自己相关的数据', TEAM: '团队成员数据（仅项目管理）'
   }
 
   const fetchRoles = async () => {
@@ -128,14 +262,11 @@ function RoleManagement() {
     fetchAllMenus()
   }, [])
 
-  // 打开菜单分配弹窗
-  const handleAssignMenus = async (role: Role) => {
-    setCurrentRole(role)
+  // 加载角色的菜单权限数据
+  const loadRoleMenus = async (role: Role) => {
     setMenuLoading(true)
-    setMenuModalVisible(true)
     try {
       const response: any = await getRoleMenus(role.id)
-      // 提取所有菜单ID（包括子菜单和 BUTTON 类型）
       const extractIds = (menus: any[]): number[] => {
         const ids: number[] = []
         menus.forEach((m: any) => {
@@ -154,13 +285,12 @@ function RoleManagement() {
 
   // 保存菜单分配
   const handleSaveMenus = async () => {
-    if (!currentRole) return
+    if (!editingRole) return
     try {
-      console.log('发送的 menuIds:', checkedMenuIds)
-      await assignRoleMenus(currentRole.id, checkedMenuIds)
+      await assignRoleMenus(editingRole.id, checkedMenuIds)
       message.success('菜单分配成功')
-      setMenuModalVisible(false)
-      fetchRoles() // 刷新角色列表以更新对照表
+      fetchRoles()
+      setRoleModalVisible(false)
     } catch (error: any) {
       message.error(error?.error || '保存失败')
     }
@@ -209,23 +339,22 @@ function RoleManagement() {
   const handleCreateRole = () => {
     setEditingRole(null)
     roleForm.resetFields()
-    setSelectedPermissions([])
     setRoleModalVisible(true)
   }
 
   const handleEditRole = (role: Role) => {
     setEditingRole(role)
     roleForm.setFieldsValue(role)
-    // ADMIN 自动拥有所有权限
-    setSelectedPermissions(role.name === 'ADMIN' ? permissionDefs.map(p => p.key) : (role.permissions || []))
+    setEditActiveTab('info')
     setRoleModalVisible(true)
+    loadRoleMenus(role)
   }
 
   const handleRoleSubmit = async () => {
     try {
       const values = await roleForm.validateFields()
       const name = editingRole ? editingRole.name : 'ROLE_' + Date.now().toString(36).toUpperCase()
-      const data = editingRole ? { ...values, permissions: selectedPermissions } : { ...values, name, permissions: selectedPermissions }
+      const data = { ...values }
       if (editingRole) {
         await api.put(`/roles/${editingRole.id}`, data)
         message.success('更新成功')
@@ -284,48 +413,8 @@ function RoleManagement() {
     }
   }
 
-  // ===== 对照表 =====
-  const sortedRoles = [...roles].sort((a, b) => (b.permissions?.length || 0) - (a.permissions?.length || 0))
-
-  const matrixData = permissionDefs.map((perm, index) => {
-    const row: any = { key: index, permission: perm.label, group: perm.group }
-    sortedRoles.forEach(role => {
-      // ADMIN 自动拥有所有权限
-      row[role.name] = role.name === 'ADMIN' || role.permissions.includes(perm.key)
-    })
-    return row
-  })
-
-  const matrixColumns: any[] = [
-    {
-      title: '分组', dataIndex: 'group', key: 'group', width: 80,
-      onCell: (_: any, index: any) => {
-        const currentGroup = _.group
-        const prevRow = index > 0 ? matrixData[index - 1] : null
-        const rowSpan = matrixData.filter(r => r.group === currentGroup).length
-        const isFirst = !prevRow || prevRow.group !== currentGroup
-        return { rowSpan: isFirst ? rowSpan : 0 }
-      },
-      render: (group: string) => <Tag>{group}</Tag>
-    },
-    { title: '功能', dataIndex: 'permission', key: 'permission', width: 120 }
-  ]
-
-  sortedRoles.forEach(role => {
-    matrixColumns.push({
-      title: () => (
-        <div style={{ textAlign: 'center' }}>
-          <Tag color={roleColors[role.name] || 'default'} style={{ fontSize: 13, padding: '2px 10px' }}>
-            {role.displayName}
-          </Tag>
-        </div>
-      ),
-      dataIndex: role.name, key: role.name, width: 100, align: 'center' as const,
-      render: (hasPerm: boolean) => hasPerm
-        ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 20 }} />
-        : <CloseCircleFilled style={{ color: '#d9d9d9', fontSize: 20 }} />
-    })
-  })
+  const sortedRoles = [...roles].sort((a, b) => a.id - b.id)
+  const permGroups = buildPermGroups(menusWithChildren)
 
   return (
     <div>
@@ -333,30 +422,10 @@ function RoleManagement() {
         <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e293b', margin: 0 }}>角色管理</h2>
       </div>
 
-      <div style={{ marginBottom: 12 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1e293b', margin: 0 }}>权限对照表</h2>
-        <span style={{ color: '#999', fontSize: 13 }}>点击角色说明中的"分配菜单"按钮调整各角色可访问的菜单</span>
-      </div>
-      <Card
-        style={{ borderRadius: 12, border: 'none', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
-        styles={{ body: { padding: 0 } }}
-      >
-        <Table
-          columns={matrixColumns}
-          dataSource={matrixData}
-          loading={loading}
-          pagination={false}
-          bordered
-          size="middle"
-          scroll={{ x: 'max-content' }}
-          rowKey="key"
-          locale={{ emptyText: <Empty description="暂无数据" /> }}
-        />
-      </Card>
-
-      <div style={{ marginTop: 24, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1e293b', margin: 0 }}>角色说明</h2>
+      <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1e293b', margin: 0 }}>角色列表</h2>
         <Space>
+          <Button icon={<BarChartOutlined />} onClick={() => setPermMatrixModalVisible(true)}>权限对照表</Button>
           <Button icon={<SettingOutlined />} onClick={handleOpenContactInfoModal}>联系方式权限配置</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateRole}>新建角色</Button>
         </Space>
@@ -389,113 +458,97 @@ function RoleManagement() {
               )
             },
             {
-              title: '操作', key: 'action', width: 300, fixed: 'right' as const,
-              render: (_: any, record: Role) => {
-                const moreItems: any[] = []
-                moreItems.push({ key: 'menu', icon: <SettingOutlined />, label: '分配菜单', onClick: () => handleAssignMenus(record) })
-
-                return (
-                  <Space size={0}>
-                    <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewRole(record)}>查看</Button>
-                    <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditRole(record)}>编辑</Button>
-                    <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteRole(record)}>
-                      <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-                    </Popconfirm>
-                    {moreItems.length > 0 && (
-                      <Dropdown menu={{ items: moreItems }}>
-                        <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
-                      </Dropdown>
-                    )}
-                  </Space>
-                )
-              }
+              title: '操作', key: 'action', width: 220, fixed: 'right' as const,
+              render: (_: any, record: Role) => (
+                <Space size={0}>
+                  <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewRole(record)}>查看</Button>
+                  <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditRole(record)}>编辑</Button>
+                  <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteRole(record)}>
+                    <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                  </Popconfirm>
+                </Space>
+              )
             }
           ]}
           locale={{ emptyText: <Empty description="暂无数据" /> }}
         />
       </Card>
 
-      {/* 菜单分配弹窗 */}
-      <Modal
-        title={`分配菜单 - ${currentRole?.displayName || ''}`}
-        open={menuModalVisible}
-        onOk={handleSaveMenus}
-        onCancel={() => setMenuModalVisible(false)}
-        width={500}
-        confirmLoading={menuLoading}
-        style={{ top: 20 }}
-      >
-        <div style={{ marginBottom: 12, color: '#666', fontSize: 13 }}>
-          勾选该角色可以看到的菜单页面。取消勾选后，该角色的用户将无法看到对应菜单。
-        </div>
-        {allMenus.length > 0 ? (
-          <Tree
-            checkable
-            checkStrictly
-            defaultExpandAll
-            checkedKeys={{ checked: checkedMenuIds, halfChecked: [] }}
-            onCheck={(checked: any) => {
-              const ids = Array.isArray(checked) ? checked : checked.checked
-              setCheckedMenuIds(ids)
-            }}
-            treeData={buildTreeData(menusWithChildren)}
-            style={{ maxHeight: 400, overflow: 'auto' }}
-          />
-        ) : (
-          <div style={{ textAlign: 'center', padding: 20, color: '#999' }}>加载中...</div>
-        )}
-      </Modal>
-
       {/* 新建/编辑角色弹窗 */}
       <Modal
-        title={editingRole ? '编辑角色' : '新建角色'}
+        title={editingRole ? `编辑角色 - ${editingRole.displayName}` : '新建角色'}
         open={roleModalVisible}
-        onOk={handleRoleSubmit}
+        onOk={() => {
+          if (editActiveTab === 'info') {
+            handleRoleSubmit()
+          } else {
+            handleSaveMenus()
+          }
+        }}
         onCancel={() => setRoleModalVisible(false)}
-        width={600}
+        okText={editActiveTab === 'info' ? '保存' : '保存菜单权限'}
+        width={650}
         style={{ top: 20 }}
       >
-        <Form form={roleForm} layout="vertical">
-          <Form.Item name="displayName" label="角色名称" rules={[{ required: true, message: '请输入角色名称' }]}>
-            <Input placeholder="如 销售经理、技术主管" />
-          </Form.Item>
-          <Form.Item name="description" label="角色说明" rules={[{ required: true, message: '请输入角色说明' }]}>
-            <Input.TextArea rows={2} placeholder="描述该角色的职责和权限范围" />
-          </Form.Item>
-          {editingRole && (
-            <Form.Item label="角色标识">
-              <Input value={editingRole.name} disabled />
+        {editingRole ? (
+          <Tabs activeKey={editActiveTab} onChange={setEditActiveTab} items={[
+            {
+              key: 'info',
+              label: '基本信息',
+              children: (
+                <Form form={roleForm} layout="vertical">
+                  <Form.Item name="displayName" label="角色名称" rules={[{ required: true, message: '请输入角色名称' }]}>
+                    <Input placeholder="如 销售经理、技术主管" />
+                  </Form.Item>
+                  <Form.Item name="description" label="角色说明" rules={[{ required: true, message: '请输入角色说明' }]}>
+                    <Input.TextArea rows={2} placeholder="描述该角色的职责和权限范围" />
+                  </Form.Item>
+                  <Form.Item label="角色标识">
+                    <Input value={editingRole.name} disabled />
+                  </Form.Item>
+                </Form>
+              )
+            },
+            {
+              key: 'menus',
+              label: '菜单权限',
+              children: (
+                <div>
+                  <div style={{ marginBottom: 12, color: '#666', fontSize: 13 }}>
+                    勾选该角色可以看到的菜单页面。取消勾选后，该角色的用户将无法看到对应菜单。
+                  </div>
+                  {menuLoading ? (
+                    <div style={{ textAlign: 'center', padding: 20, color: '#999' }}>加载中...</div>
+                  ) : allMenus.length > 0 ? (
+                    <Tree
+                      checkable
+                      checkStrictly
+                      defaultExpandAll
+                      checkedKeys={{ checked: checkedMenuIds, halfChecked: [] }}
+                      onCheck={(checked: any) => {
+                        const ids = Array.isArray(checked) ? checked : checked.checked
+                        setCheckedMenuIds(ids)
+                      }}
+                      treeData={buildTreeData(menusWithChildren)}
+                      style={{ maxHeight: 400, overflow: 'auto' }}
+                    />
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: 20, color: '#999' }}>暂无菜单数据</div>
+                  )}
+                </div>
+              )
+            }
+          ]} />
+        ) : (
+          <Form form={roleForm} layout="vertical">
+            <Form.Item name="displayName" label="角色名称" rules={[{ required: true, message: '请输入角色名称' }]}>
+              <Input placeholder="如 销售经理、技术主管" />
             </Form.Item>
-          )}
-        </Form>
-
-        <Divider orientation="left" plain>功能权限{editingRole?.name === 'ADMIN' && <span style={{ color: '#f5222d', fontWeight: 'normal', fontSize: 12, marginLeft: 8 }}>（管理员默认拥有全部权限）</span>}</Divider>
-        <div style={{ maxHeight: 320, overflow: 'auto', padding: '0 8px' }}>
-          {Array.from(new Set(permissionDefs.map(p => p.group))).map(group => (
-            <div key={group} style={{ marginBottom: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 4, color: '#1890ff' }}>{group}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 0' }}>
-                {permissionDefs.filter(p => p.group === group).map(perm => (
-                  <Checkbox
-                    key={perm.key}
-                    checked={selectedPermissions.includes(perm.key)}
-                    disabled={editingRole?.name === 'ADMIN'}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedPermissions([...selectedPermissions, perm.key])
-                      } else {
-                        setSelectedPermissions(selectedPermissions.filter(k => k !== perm.key))
-                      }
-                    }}
-                    style={{ marginLeft: 0 }}
-                  >
-                    {perm.label}
-                  </Checkbox>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+            <Form.Item name="description" label="角色说明" rules={[{ required: true, message: '请输入角色说明' }]}>
+              <Input.TextArea rows={2} placeholder="描述该角色的职责和权限范围" />
+            </Form.Item>
+          </Form>
+        )}
       </Modal>
 
       {/* 查看角色详情弹窗 */}
@@ -562,6 +615,19 @@ function RoleManagement() {
               />
             </div>
           ))}
+        </div>
+      </Modal>
+
+      {/* 权限对照表弹窗 */}
+      <Modal
+        title="权限对照表"
+        open={permMatrixModalVisible}
+        onCancel={() => setPermMatrixModalVisible(false)}
+        footer={null}
+        width={1000}
+      >
+        <div style={{ padding: '16px 0' }}>
+          <PermissionMatrix roles={sortedRoles} permGroups={permGroups} />
         </div>
       </Modal>
     </div>

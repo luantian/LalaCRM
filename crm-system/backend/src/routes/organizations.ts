@@ -115,22 +115,13 @@ function buildTree(orgs: any[], parentId: number | null = null): OrgTreeNode[] {
     }))
 }
 
-// 获取用户的所有角色 ID
+// 获取用户的所有角色 ID（统一从 UserRole 表读取）
 async function getUserRoleIds(userId: number): Promise<number[]> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: {
-      userRoles: { select: { roleId: true } },
-      roleRef: { select: { id: true } }
-    }
+  const userRoles = await prisma.userRole.findMany({
+    where: { userId },
+    select: { roleId: true }
   })
-  if (!user) return []
-  const ids: number[] = []
-  if (user.roleRef?.id) ids.push(user.roleRef.id)
-  user.userRoles?.forEach(ur => {
-    if (ur.roleId) ids.push(ur.roleId)
-  })
-  return [...new Set(ids)]
+  return userRoles.map(ur => ur.roleId)
 }
 
 // 判断当前用户是否有权查看联系方式（完全依赖 SystemConfig 配置）

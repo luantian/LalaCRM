@@ -8,6 +8,7 @@ import logger from '../utils/logger'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
 import path from 'path'
+import { checkContractProjectArchived } from '../utils/archive'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -44,6 +45,25 @@ router.post('/', authenticateToken, checkPermission('project:contract:edit'), lo
       return res.status(400).json({ error: '缺少必填字段' })
     }
 
+    // 数值范围校验（数据库字段为 Decimal(12,2)，最大值 9999999999.99）
+    const MAX_DECIMAL_VALUE = 9999999999.99
+    const parsedQuantity = Number(quantity)
+    const parsedUnitPrice = Number(unitPrice)
+    const parsedTotalPrice = totalPrice ? Number(totalPrice) : null
+
+    if (parsedQuantity <= 0 || parsedQuantity > 999999) {
+      return res.status(400).json({ error: '数量必须在 1 到 999999 之间' })
+    }
+    if (parsedUnitPrice <= 0 || parsedUnitPrice > MAX_DECIMAL_VALUE) {
+      return res.status(400).json({ error: `单价必须在 0.01 到 ${MAX_DECIMAL_VALUE} 之间` })
+    }
+    if (parsedTotalPrice !== null && parsedTotalPrice > MAX_DECIMAL_VALUE) {
+      return res.status(400).json({ error: `总价不能超过 ${MAX_DECIMAL_VALUE}` })
+    }
+    if (parsedTotalPrice !== null && parsedTotalPrice <= 0) {
+      return res.status(400).json({ error: '总价必须大于 0' })
+    }
+
     // 检查用户是否有权操作该合同
     const contract = await prisma.contract.findFirst({ where: { id: contractId, deletedAt: null } })
     if (!contract) {
@@ -53,16 +73,21 @@ router.post('/', authenticateToken, checkPermission('project:contract:edit'), lo
       return res.status(403).json({ error: '无权操作此合同的订货明细' })
     }
 
-    const parsedUnitPrice = Number(unitPrice)
+    // 检查项目是否已归档
+    const isArchived = await checkContractProjectArchived(contractId)
+    if (isArchived) {
+      return res.status(403).json({ error: '项目已归档，无法创建订货明细' })
+    }
+
     const item = await prisma.contractOrderItem.create({
       data: {
         contractId,
         productName,
         spec,
-        quantity: Number(quantity),
+        quantity: parsedQuantity,
         unit: unit || '个',
         unitPrice: parsedUnitPrice,
-        totalPrice: totalPrice ? Number(totalPrice) : (Number(quantity) * parsedUnitPrice),
+        totalPrice: parsedTotalPrice !== null ? parsedTotalPrice : (parsedQuantity * parsedUnitPrice),
         deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
         contactName,
         contactPhone,
@@ -86,15 +111,38 @@ router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), 
     const parsedUnitPrice = unitPrice ? Number(unitPrice) : undefined
     const parsedQuantity = quantity ? Number(quantity) : undefined
 
+    // 数值范围校验（数据库字段为 Decimal(12,2)，最大值 9999999999.99）
+    const MAX_DECIMAL_VALUE = 9999999999.99
+    if (parsedQuantity !== undefined && (parsedQuantity <= 0 || parsedQuantity > 999999)) {
+      return res.status(400).json({ error: '数量必须在 1 到 999999 之间' })
+    }
+    if (parsedUnitPrice !== undefined && (parsedUnitPrice <= 0 || parsedUnitPrice > MAX_DECIMAL_VALUE)) {
+      return res.status(400).json({ error: `单价必须在 0.01 到 ${MAX_DECIMAL_VALUE} 之间` })
+    }
+    if (totalPrice !== undefined) {
+      const parsedTotalPrice = Number(totalPrice)
+      if (parsedTotalPrice <= 0 || parsedTotalPrice > MAX_DECIMAL_VALUE) {
+        return res.status(400).json({ error: `总价必须在 0.01 到 ${MAX_DECIMAL_VALUE} 之间` })
+      }
+    }
+
     const existing = await prisma.contractOrderItem.findFirst({
       where: { id, deletedAt: null },
-      include: { contract: { select: { ownerId: true } } }
+      include: { contract: { select: { ownerId: true, projectId: true } } }
     })
     if (!existing) {
       return res.status(404).json({ error: '订货明细不存在' })
     }
     if (existing.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此订货明细' })
+    }
+
+    // 检查项目是否已归档
+    if (existing.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(existing.contract.projectId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法更新订货明细' })
+      }
     }
 
     const item = await prisma.contractOrderItem.update({
@@ -132,13 +180,21 @@ router.post('/:id/files', authenticateToken, checkPermission('project:contract:e
 
     const orderItem = await prisma.contractOrderItem.findFirst({
       where: { id: orderItemId, deletedAt: null },
-      include: { contract: { select: { ownerId: true } } }
+      include: { contract: { select: { ownerId: true, projectId: true } } }
     })
     if (!orderItem) {
       return res.status(404).json({ error: '订货明细不存在' })
     }
     if (orderItem.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此订货明细' })
+    }
+
+    // 检查项目是否已归档
+    if (orderItem.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(orderItem.contract.projectId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法上传附件' })
+      }
     }
 
     const createdFiles = await Promise.all(
@@ -221,10 +277,22 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
 router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同订货', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.contractOrderItemFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.contractOrderItemFile.findFirst({
+      where: { id: fileId, deletedAt: null },
+      include: { orderItem: { include: { contract: { select: { projectId: true } } } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
+
+    // 检查项目是否已归档
+    if (file.orderItem.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(file.orderItem.contract.projectId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法删除附件' })
+      }
+    }
+
     const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)
@@ -245,13 +313,21 @@ router.delete('/:id', authenticateToken, checkPermission('project:contract:edit'
 
     const existing = await prisma.contractOrderItem.findFirst({
       where: { id, deletedAt: null },
-      include: { contract: { select: { ownerId: true } } }
+      include: { contract: { select: { ownerId: true, projectId: true } } }
     })
     if (!existing) {
       return res.status(404).json({ error: '订货明细不存在' })
     }
     if (existing.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此订货明细' })
+    }
+
+    // 检查项目是否已归档
+    if (existing.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(existing.contract.projectId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法删除订货明细' })
+      }
     }
 
     // 软删除订货明细

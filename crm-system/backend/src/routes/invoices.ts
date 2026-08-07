@@ -15,7 +15,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // 获取发票列表（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), sortValidation(['invoiceNo', 'amount', 'totalAmount', 'invoiceDate', 'status', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('finance:invoice:list'), applyDataScope('ownerId'), sortValidation(['invoiceNo', 'amount', 'totalAmount', 'invoiceDate', 'status', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',

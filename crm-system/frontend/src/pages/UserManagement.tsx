@@ -76,7 +76,7 @@ function UserManagement() {
     setEditingUser(user)
     form.setFieldsValue({
       ...user,
-      role: user.roleId,  // 使用roleId作为角色的值
+      role: user.roleRef?.id,  // 从 roleRef 读取角色ID（不再使用旧的 roleId 字段）
       password: '' // 编辑时不显示密码
     })
     setModalVisible(true)

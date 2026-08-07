@@ -17,6 +17,7 @@ function ProjectDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const user = safeJsonParse(localStorage.getItem('user'), {})
+  const isArchived = project?.isArchived === true
 
   // 合同管理状态
   const [contractModalVisible, setContractModalVisible] = useState(false)
@@ -171,7 +172,10 @@ function ProjectDetail() {
       fetchFiles()
       fetchOrganizations()
       fetchInfoRecords()
-      fetchProcurements()
+      // 只有有采购权限才加载采购数据
+      if (checkPermission('project:procurement:list')) {
+        fetchProcurements()
+      }
     }
   }, [id])
 
@@ -403,9 +407,9 @@ function ProjectDetail() {
     },
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditContract(r)}>编辑</Button>
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditContract(r)} disabled={isArchived}>编辑</Button>
         <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteContract(r.id)}>
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
         </Popconfirm>
       </Space>
     ) }
@@ -435,9 +439,9 @@ function ProjectDetail() {
     },
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingOrderItem(r); orderForm.setFieldsValue({ ...r, unitPrice: Number(r.unitPrice), deliveryDate: r.deliveryDate ? dayjs(r.deliveryDate) : null }); setOrderModalVisible(true) }}>编辑</Button>
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingOrderItem(r); orderForm.setFieldsValue({ ...r, unitPrice: Number(r.unitPrice), deliveryDate: r.deliveryDate ? dayjs(r.deliveryDate) : null }); setOrderModalVisible(true) }} disabled={isArchived}>编辑</Button>
         <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteOrderItem(r.id); if (orderContractId) fetchOrderItems(orderContractId) }}>
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
         </Popconfirm>
       </Space>
     ) }
@@ -464,9 +468,9 @@ function ProjectDetail() {
     },
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingPayment(r); paymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setPaymentModalVisible(true) }}>编辑</Button>
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingPayment(r); paymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setPaymentModalVisible(true) }} disabled={isArchived}>编辑</Button>
         <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deletePayment(r.id); if (paymentContractId) fetchPayments(paymentContractId) }}>
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
         </Popconfirm>
       </Space>
     ) }
@@ -495,9 +499,9 @@ function ProjectDetail() {
     },
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingShipment(r); shipmentForm.setFieldsValue({ ...r, shipDate: dayjs(r.shipDate), receiveDate: r.receiveDate ? dayjs(r.receiveDate) : null }); setShipmentModalVisible(true) }}>编辑</Button>
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingShipment(r); shipmentForm.setFieldsValue({ ...r, shipDate: dayjs(r.shipDate), receiveDate: r.receiveDate ? dayjs(r.receiveDate) : null }); setShipmentModalVisible(true) }} disabled={isArchived}>编辑</Button>
         <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteShipment(r.id); if (shipmentContractId) fetchShipments(shipmentContractId) }}>
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
         </Popconfirm>
       </Space>
     ) }
@@ -529,9 +533,9 @@ function ProjectDetail() {
     },
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditInvoice(r)}>编辑</Button>
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditInvoice(r)} disabled={isArchived}>编辑</Button>
         <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteInvoice(r.id)}>
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
         </Popconfirm>
       </Space>
     ) }
@@ -799,7 +803,7 @@ function ProjectDetail() {
         </Card>
 
         <Card title="信息记录" style={{ marginTop: 16 }} extra={
-          <Button type="primary" icon={<PlusOutlined />} size="small" onClick={() => { infoForm.resetFields(); setEditingInfoRecord(null); setInfoModalVisible(true) }}>Notes信息</Button>
+          <Button type="primary" icon={<PlusOutlined />} size="small" onClick={() => { infoForm.resetFields(); setEditingInfoRecord(null); setInfoModalVisible(true) }} disabled={isArchived}>Notes信息</Button>
         }>
           {infoRecords.length === 0 ? (
             <Empty description="暂无信息记录" />
@@ -812,11 +816,11 @@ function ProjectDetail() {
                 <List.Item
                   actions={[
                     isOwner && (
-                      <Button key="edit" type="text" size="small" icon={<EditOutlined />} onClick={() => handleEditInfoRecord(record)} />
+                      <Button key="edit" type="text" size="small" icon={<EditOutlined />} onClick={() => handleEditInfoRecord(record)} disabled={isArchived} />
                     ),
                     isOwner && (
                       <Popconfirm key="del" title="确定删除此记录？" onConfirm={() => handleDeleteInfoRecord(record.id)}>
-                        <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                        <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                       </Popconfirm>
                     )
                   ].filter(Boolean)}
@@ -866,7 +870,7 @@ function ProjectDetail() {
     )},
     { key: 'contracts', label: `合同管理 (${contractCount})`, children: (
       <div>
-        <div style={{ marginBottom: 16 }}><Button type="primary" icon={<PlusOutlined />} onClick={handleAddContract}>新增合同</Button></div>
+        <div style={{ marginBottom: 16 }}><Button type="primary" icon={<PlusOutlined />} onClick={handleAddContract} disabled={isArchived}>新增合同</Button></div>
         <Table
           columns={contractColumns}
           dataSource={project.contracts || []}
@@ -883,7 +887,7 @@ function ProjectDetail() {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                       <span style={{ fontWeight: 600, fontSize: 14 }}>📎 合同附件</span>
                       <input type="file" multiple ref={el => { contractFileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleContractFileUpload(record.id, e.target.files); e.target.value = '' } }} />
-                      <Button icon={<UploadOutlined />} loading={contractFileUploading[record.id]} size="small" onClick={() => contractFileInputRef.current?.click()}>上传附件</Button>
+                      <Button icon={<UploadOutlined />} loading={contractFileUploading[record.id]} size="small" onClick={() => contractFileInputRef.current?.click()} disabled={isArchived}>上传附件</Button>
                     </div>
                     {contractFiles[record.id] && contractFiles[record.id].length > 0 ? (
                       <List size="small" dataSource={contractFiles[record.id]} renderItem={(file: any) => (
@@ -893,7 +897,7 @@ function ProjectDetail() {
                           ),
                           <a key="dl" href={downloadContractFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                           <Popconfirm key="del" title="确定删除？" onConfirm={() => handleContractFileDelete(record.id, file.id)}>
-                            <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                            <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                           </Popconfirm>
                         ].filter(Boolean)}>
                           <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
@@ -908,7 +912,7 @@ function ProjectDetail() {
                   { key: 'orders', label: '订货明细(售出)', children: (
                     <div>
                       <div style={{ marginBottom: 12 }}>
-                        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingOrderItem(null); orderForm.resetFields(); setOrderModalVisible(true) }}>添加明细</Button>
+                        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingOrderItem(null); orderForm.resetFields(); setOrderModalVisible(true) }} disabled={isArchived}>添加明细</Button>
                       </div>
                       <Table columns={orderColumns} dataSource={orderItems} rowKey="id" pagination={false} size="small" locale={{ emptyText: '暂无订货明细' }}
                         expandable={{
@@ -918,7 +922,7 @@ function ProjectDetail() {
                               <div style={{ padding: '8px 0' }}>
                                 <div style={{ marginBottom: 12 }}>
                                   <input type="file" multiple ref={el => { fileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleOrderFileUpload(or.id, e.target.files); e.target.value = '' } }} />
-                                  <Button icon={<UploadOutlined />} loading={orderUploading[or.id]} size="small" onClick={() => fileInputRef.current?.click()}>上传附件</Button>
+                                  <Button icon={<UploadOutlined />} loading={orderUploading[or.id]} size="small" onClick={() => fileInputRef.current?.click()} disabled={isArchived}>上传附件</Button>
                                 </div>
                                 {or.files && or.files.length > 0 ? (
                                   <List size="small" dataSource={or.files} renderItem={(file: any) => (
@@ -928,7 +932,7 @@ function ProjectDetail() {
                                       ),
                                       <a key="dl" href={downloadOrderItemFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handleOrderFileDelete(or.id, file.id)}>
-                                        <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                                        <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                       </Popconfirm>
                                     ].filter(Boolean)}>
                                       <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
@@ -946,7 +950,7 @@ function ProjectDetail() {
                   { key: 'payments', label: '付款记录', children: (
                     <div>
                       <div style={{ marginBottom: 12 }}>
-                        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentForm.resetFields(); paymentForm.setFieldsValue({ paymentType: 'PROGRESS', status: 'PENDING' }); setPaymentModalVisible(true) }}>添加付款</Button>
+                        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentForm.resetFields(); paymentForm.setFieldsValue({ paymentType: 'PROGRESS', status: 'PENDING' }); setPaymentModalVisible(true) }} disabled={isArchived}>添加付款</Button>
                         {paymentSummary.totalPaid > 0 && <span style={{ marginLeft: 16 }}><Statistic title="已付款总额" value={paymentSummary.totalPaid} precision={2} suffix="元" valueStyle={{ color: '#52c41a' }} /></span>}
                       </div>
                       <Table columns={paymentColumns} dataSource={payments} rowKey="id" pagination={false} size="small" locale={{ emptyText: '暂无付款记录' }}
@@ -957,7 +961,7 @@ function ProjectDetail() {
                               <div style={{ padding: '8px 0' }}>
                                 <div style={{ marginBottom: 12 }}>
                                   <input type="file" multiple ref={el => { fileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handlePaymentFileUpload(payment.id, e.target.files); e.target.value = '' } }} />
-                                  <Button icon={<UploadOutlined />} loading={paymentUploading[payment.id]} size="small" onClick={() => fileInputRef.current?.click()}>上传附件</Button>
+                                  <Button icon={<UploadOutlined />} loading={paymentUploading[payment.id]} size="small" onClick={() => fileInputRef.current?.click()} disabled={isArchived}>上传附件</Button>
                                 </div>
                                 {payment.files && payment.files.length > 0 ? (
                                   <List size="small" dataSource={payment.files} renderItem={(file: any) => (
@@ -967,7 +971,7 @@ function ProjectDetail() {
                                       ),
                                       <a key="dl" href={downloadPaymentFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handlePaymentFileDelete(payment.id, file.id)}>
-                                        <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                                        <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                       </Popconfirm>
                                     ].filter(Boolean)}>
                                       <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
@@ -985,7 +989,7 @@ function ProjectDetail() {
                   { key: 'shipments', label: '发货记录', children: (
                     <div>
                       <div style={{ marginBottom: 12 }}>
-                        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingShipment(null); shipmentForm.resetFields(); shipmentForm.setFieldsValue({ status: 'SHIPPED' }); setShipmentModalVisible(true) }}>添加发货</Button>
+                        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingShipment(null); shipmentForm.resetFields(); shipmentForm.setFieldsValue({ status: 'SHIPPED' }); setShipmentModalVisible(true) }} disabled={isArchived}>添加发货</Button>
                       </div>
                       <Table columns={shipmentColumns} dataSource={shipments} rowKey="id" pagination={false} size="small" locale={{ emptyText: '暂无发货记录' }}
                         expandable={{
@@ -995,7 +999,7 @@ function ProjectDetail() {
                               <div style={{ padding: '8px 0' }}>
                                 <div style={{ marginBottom: 12 }}>
                                   <input type="file" multiple ref={el => { fileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleShipmentFileUpload(shipment.id, e.target.files); e.target.value = '' } }} />
-                                  <Button icon={<UploadOutlined />} loading={shipmentUploading[shipment.id]} size="small" onClick={() => fileInputRef.current?.click()}>上传附件</Button>
+                                  <Button icon={<UploadOutlined />} loading={shipmentUploading[shipment.id]} size="small" onClick={() => fileInputRef.current?.click()} disabled={isArchived}>上传附件</Button>
                                 </div>
                                 {shipment.files && shipment.files.length > 0 ? (
                                   <List size="small" dataSource={shipment.files} renderItem={(file: any) => (
@@ -1005,7 +1009,7 @@ function ProjectDetail() {
                                       ),
                                       <a key="dl" href={downloadShipmentFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handleShipmentFileDelete(shipment.id, file.id)}>
-                                        <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                                        <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                       </Popconfirm>
                                     ].filter(Boolean)}>
                                       <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
@@ -1023,7 +1027,7 @@ function ProjectDetail() {
                   { key: 'invoices', label: '开票记录', children: (
                     <div>
                       <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Button type="primary" icon={<PlusOutlined />} onClick={handleAddInvoice}>添加开票</Button>
+                        <Button type="primary" icon={<PlusOutlined />} onClick={handleAddInvoice} disabled={isArchived}>添加开票</Button>
                         {invoices.length > 0 && (
                           <div style={{ display: 'flex', gap: 16 }}>
                             <span style={{ padding: '4px 12px', background: '#f6ffed', borderRadius: 6, fontSize: 13 }}>
@@ -1043,7 +1047,7 @@ function ProjectDetail() {
                               <div style={{ padding: '8px 0' }}>
                                 <div style={{ marginBottom: 12 }}>
                                   <input type="file" multiple ref={el => { fileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleInvoiceFileUpload(invoice.id, e.target.files); e.target.value = '' } }} />
-                                  <Button icon={<UploadOutlined />} loading={invoiceUploading[invoice.id]} size="small" onClick={() => fileInputRef.current?.click()}>上传附件</Button>
+                                  <Button icon={<UploadOutlined />} loading={invoiceUploading[invoice.id]} size="small" onClick={() => fileInputRef.current?.click()} disabled={isArchived}>上传附件</Button>
                                 </div>
                                 {invoice.files && invoice.files.length > 0 ? (
                                   <List size="small" dataSource={invoice.files} renderItem={(file: any) => (
@@ -1053,7 +1057,7 @@ function ProjectDetail() {
                                       ),
                                       <a key="dl" href={downloadInvoiceFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handleInvoiceFileDelete(invoice.id, file.id)}>
-                                        <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                                        <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                       </Popconfirm>
                                     ].filter(Boolean)}>
                                       <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
@@ -1093,7 +1097,7 @@ function ProjectDetail() {
     { key: 'procurements', label: '采购管理', children: (
       <div>
         <div style={{ marginBottom: 16 }}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { handleAddProcurement(); fetchProcurements() }}>新增采购单</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { handleAddProcurement(); fetchProcurements() }} disabled={isArchived}>新增采购单</Button>
         </div>
         <Table
           dataSource={procurements}
@@ -1110,7 +1114,7 @@ function ProjectDetail() {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                       <span style={{ fontWeight: 600, fontSize: 14 }}>📎 采购附件</span>
                       <input type="file" multiple ref={el => { procFileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleProcFileUpload(record.id, e.target.files); e.target.value = '' } }} />
-                      <Button icon={<UploadOutlined />} loading={procFileUploading[record.id]} size="small" onClick={() => procFileInputRef.current?.click()}>上传附件</Button>
+                      <Button icon={<UploadOutlined />} loading={procFileUploading[record.id]} size="small" onClick={() => procFileInputRef.current?.click()} disabled={isArchived}>上传附件</Button>
                     </div>
                     {procFiles[record.id] && procFiles[record.id].length > 0 ? (
                       <List size="small" dataSource={procFiles[record.id]} renderItem={(file: any) => (
@@ -1120,7 +1124,7 @@ function ProjectDetail() {
                           ] : []),
                           <a key="dl" href={`/api/procurements/files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                           <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcFileDelete(record.id, file.id)}>
-                            <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                            <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                           </Popconfirm>
                         ]}>
                           <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
@@ -1133,7 +1137,7 @@ function ProjectDetail() {
                 { key: 'items', label: '采购明细', children: (
                   <div>
                     <div style={{ marginBottom: 12 }}>
-                      <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setCurrentProcurement(record); procItemForm.resetFields(); setProcItemModalVisible(true) }}>添加设备/材料</Button>
+                      <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setCurrentProcurement(record); procItemForm.resetFields(); setProcItemModalVisible(true) }} disabled={isArchived}>添加设备/材料</Button>
                     </div>
                     <Table
                       size="small"
@@ -1149,7 +1153,7 @@ function ProjectDetail() {
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                                 <span style={{ fontWeight: 600, fontSize: 13 }}>📎 明细附件</span>
                                 <input type="file" multiple ref={el => { itemFileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleProcItemFileUpload(item.id, e.target.files); e.target.value = '' } }} />
-                                <Button icon={<UploadOutlined />} loading={procItemFileUploading[item.id]} size="small" onClick={() => itemFileInputRef.current?.click()}>上传附件</Button>
+                                <Button icon={<UploadOutlined />} loading={procItemFileUploading[item.id]} size="small" onClick={() => itemFileInputRef.current?.click()} disabled={isArchived}>上传附件</Button>
                               </div>
                               {procItemFiles[item.id] && procItemFiles[item.id].length > 0 ? (
                                 <List size="small" dataSource={procItemFiles[item.id]} renderItem={(file: any) => (
@@ -1159,7 +1163,7 @@ function ProjectDetail() {
                                     ] : []),
                                     <a key="dl" href={`/api/procurements/item-files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                     <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcItemFileDelete(item.id, file.id)}>
-                                      <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                                      <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                     </Popconfirm>
                                   ]}>
                                     <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
@@ -1195,7 +1199,7 @@ function ProjectDetail() {
                         { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
                           <Space size={0}>
                             <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteProcurementItem(r.id); handleViewProcurement(record) }}>
-                              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
                             </Popconfirm>
                           </Space>
                         )}
@@ -1216,7 +1220,7 @@ function ProjectDetail() {
                           {record.totalAmount && <span style={{ marginLeft: 12 }}>待付：<strong style={{ color: '#faad14' }}>{Number(record.totalAmount) - procPayments.reduce((s, p) => s + Number(p.amount), 0)}元</strong></span>}
                         </div>
                       )}
-                      <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setCurrentProcurement(record); setEditingProcPayment(null); procPaymentForm.resetFields(); procPaymentForm.setFieldsValue({ paymentType: 'PROGRESS', status: 'PENDING' }); setProcPaymentModalVisible(true) }}>添加付款</Button>
+                      <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setCurrentProcurement(record); setEditingProcPayment(null); procPaymentForm.resetFields(); procPaymentForm.setFieldsValue({ paymentType: 'PROGRESS', status: 'PENDING' }); setProcPaymentModalVisible(true) }} disabled={isArchived}>添加付款</Button>
                     </div>
                     <Table
                       size="small"
@@ -1232,7 +1236,7 @@ function ProjectDetail() {
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                                 <span style={{ fontWeight: 600, fontSize: 13 }}>📎 付款附件</span>
                                 <input type="file" multiple ref={el => { paymentFileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleProcPaymentFileUpload(payment.id, e.target.files); e.target.value = '' } }} />
-                                <Button icon={<UploadOutlined />} loading={procPaymentFileUploading[payment.id]} size="small" onClick={() => paymentFileInputRef.current?.click()}>上传附件</Button>
+                                <Button icon={<UploadOutlined />} loading={procPaymentFileUploading[payment.id]} size="small" onClick={() => paymentFileInputRef.current?.click()} disabled={isArchived}>上传附件</Button>
                               </div>
                               {procPaymentFiles[payment.id] && procPaymentFiles[payment.id].length > 0 ? (
                                 <List size="small" dataSource={procPaymentFiles[payment.id]} renderItem={(file: any) => (
@@ -1242,7 +1246,7 @@ function ProjectDetail() {
                                     ] : []),
                                     <a key="dl" href={`/api/procurements/payment-files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
                                     <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcPaymentFileDelete(payment.id, file.id)}>
-                                      <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+                                      <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                     </Popconfirm>
                                   ]}>
                                     <List.Item.Meta avatar={<FileOutlined />} title={file.fileName} description={`${(file.fileSize / 1024).toFixed(1)} KB · ${dayjs(file.uploadedAt).format('YYYY-MM-DD HH:mm')}`} />
@@ -1276,9 +1280,9 @@ function ProjectDetail() {
                         },
                         { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
                           <Space size={0}>
-                            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setCurrentProcurement(record); setEditingProcPayment(r); procPaymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setProcPaymentModalVisible(true) }}>编辑</Button>
+                            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setCurrentProcurement(record); setEditingProcPayment(r); procPaymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setProcPaymentModalVisible(true) }} disabled={isArchived}>编辑</Button>
                             <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteProcurementPayment(r.id); fetchProcPayments(record.id) }}>
-                              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
                             </Popconfirm>
                           </Space>
                         )}
@@ -1316,9 +1320,9 @@ function ProjectDetail() {
             },
             { title: '操作', key: 'action', width: 160, render: (_: any, record: any) => (
               <Space size={0}>
-                <Button type="link" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEditProcurement(record) }}>编辑</Button>
+                <Button type="link" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEditProcurement(record) }} disabled={isArchived}>编辑</Button>
                 <Popconfirm title="确定删除此采购单？" onConfirm={async (e) => { e?.stopPropagation(); await deleteProcurement(record.id); fetchProcurements() }}>
-                  <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()}>删除</Button>
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} disabled={isArchived}>删除</Button>
                 </Popconfirm>
               </Space>
             )},
@@ -1329,7 +1333,7 @@ function ProjectDetail() {
     { key: 'team', label: '团队成员', children: (
       <div>
         <div style={{ marginBottom: 16 }}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { handleAddTeamMember(); fetchTeamMembers() }}>添加成员</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { handleAddTeamMember(); fetchTeamMembers() }} disabled={isArchived}>添加成员</Button>
         </div>
         <Table
           columns={[
@@ -1343,9 +1347,9 @@ function ProjectDetail() {
             { title: '加入时间', dataIndex: 'joinDate', key: 'joinDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
             { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
               <Space size={0}>
-                <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditTeamMember(r)}>编辑</Button>
+                <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditTeamMember(r)} disabled={isArchived}>编辑</Button>
                 <Popconfirm title="确定要删除吗?" onConfirm={() => handleRemoveMember(r.id)}>
-                  <Button type="link" size="small" danger icon={<DeleteOutlined />}>移除</Button>
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>移除</Button>
                 </Popconfirm>
               </Space>
             )}
@@ -1382,7 +1386,7 @@ function ProjectDetail() {
           </Col>
           <Col flex="none">
             <Space>
-              <Button type="primary" icon={<EditOutlined />} onClick={handleEditProject}>编辑</Button>
+              <Button type="primary" icon={<EditOutlined />} onClick={handleEditProject} disabled={isArchived}>编辑</Button>
             </Space>
           </Col>
         </Row>

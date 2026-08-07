@@ -8,6 +8,7 @@ import logger from '../utils/logger'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
 import path from 'path'
+import { checkContractProjectArchived } from '../utils/archive'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -53,6 +54,14 @@ router.post('/', authenticateToken, checkPermission('project:contract:edit'), lo
       return res.status(403).json({ error: '无权操作此合同的发货记录' })
     }
 
+    // 检查项目是否已归档
+    if (contract.projectId) {
+      const isArchived = await checkContractProjectArchived(contractId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法创建发货记录' })
+      }
+    }
+
     const shipment = await prisma.contractShipment.create({
       data: {
         contractId,
@@ -83,13 +92,21 @@ router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), 
 
     const existing = await prisma.contractShipment.findFirst({
       where: { id, deletedAt: null },
-      include: { contract: { select: { ownerId: true } } }
+      include: { contract: { select: { ownerId: true, projectId: true } } }
     })
     if (!existing) {
       return res.status(404).json({ error: '发货记录不存在' })
     }
     if (existing.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此发货记录' })
+    }
+
+    // 检查项目是否已归档
+    if (existing.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(existing.contractId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法更新发货记录' })
+      }
     }
 
     const shipment = await prisma.contractShipment.update({
@@ -126,13 +143,21 @@ router.post('/:id/files', authenticateToken, checkPermission('project:contract:e
 
     const shipment = await prisma.contractShipment.findFirst({
       where: { id: shipmentId, deletedAt: null },
-      include: { contract: { select: { ownerId: true } } }
+      include: { contract: { select: { ownerId: true, projectId: true } } }
     })
     if (!shipment) {
       return res.status(404).json({ error: '发货记录不存在' })
     }
     if (shipment.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此发货记录' })
+    }
+
+    // 检查项目是否已归档
+    if (shipment.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(shipment.contractId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法上传发货附件' })
+      }
     }
 
     const createdFiles = await Promise.all(
@@ -215,10 +240,22 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
 router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同发货', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.contractShipmentFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.contractShipmentFile.findFirst({ 
+      where: { id: fileId, deletedAt: null },
+      include: { shipment: { include: { contract: { select: { projectId: true } } } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
+    
+    // 检查项目是否已归档
+    if (file.shipment.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(file.shipment.contractId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法删除发货附件' })
+      }
+    }
+    
     const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)
@@ -238,7 +275,7 @@ router.delete('/:id', authenticateToken, checkPermission('project:contract:edit'
     const id = parseInt(req.params.id as string)
     const existing = await prisma.contractShipment.findFirst({
       where: { id, deletedAt: null },
-      include: { contract: { select: { ownerId: true } } }
+      include: { contract: { select: { ownerId: true, projectId: true } } }
     })
     if (!existing) {
       return res.status(404).json({ error: '发货记录不存在' })
@@ -246,6 +283,15 @@ router.delete('/:id', authenticateToken, checkPermission('project:contract:edit'
     if (existing.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
       return res.status(403).json({ error: '无权操作此发货记录' })
     }
+    
+    // 检查项目是否已归档
+    if (existing.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(existing.contractId)
+      if (isArchived) {
+        return res.status(403).json({ error: '项目已归档，无法删除发货记录' })
+      }
+    }
+    
     await prisma.contractShipment.update({ where: { id }, data: { deletedAt: new Date() } })
     // 级联软删除关联文件
     await prisma.contractShipmentFile.updateMany({ where: { shipmentId: id }, data: { deletedAt: new Date() } })

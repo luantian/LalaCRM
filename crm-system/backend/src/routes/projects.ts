@@ -1,10 +1,10 @@
 import { Router, Request } from 'express'
-import { isAdmin, getUserDataScope } from '../utils/permission'
+import { isAdmin } from '../utils/permission'
 import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
 import { logOperation } from '../middleware/logOperation'
-import { applyDataScope, getDataScopeWhere } from '../middleware/dataScope'
+
 import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { autoWriteProjectRecord } from '../utils/autoDailyReport'
@@ -18,12 +18,8 @@ const prisma = new PrismaClient()
 
 /**
  * 获取项目的数据权限条件
- * 根据角色的 dataScope 配置返回对应的查询条件
- * - ALL: 所有项目
- * - TEAM: 自己创建的 + 自己是团队成员的
- * - DEPARTMENT/DEPARTMENT_BELOW: 基于部门的项目
- * - SELF: 只有自己创建的
- * - CUSTOM: 自定义部门列表
+ * - 管理员：看所有项目
+ * - 非管理员：只能看自己创建的 + 自己是团队成员的项目
  */
 async function getProjectScopeWhere(userId: number, userRole: string): Promise<any> {
   // 管理员可以看到所有数据
@@ -31,22 +27,13 @@ async function getProjectScopeWhere(userId: number, userRole: string): Promise<a
     return {}
   }
 
-  // 获取用户的数据权限范围
-  const dataScope = await getUserDataScope(userId)
-
-  // 如果没有配置数据权限，默认使用 TEAM 模式
-  if (!dataScope || dataScope === 'TEAM') {
-    return {
-      OR: [
-        { ownerId: userId },
-        { teamMembers: { some: { userId, deletedAt: null } } }
-      ]
-    }
+  // 非管理员：只能看自己创建的 或 自己是团队成员的项目
+  return {
+    OR: [
+      { ownerId: userId },
+      { teamMembers: { some: { userId, deletedAt: null } } }
+    ]
   }
-
-  // 使用通用的数据权限中间件
-  const scopeWhere = await getDataScopeWhere(userId, userRole, 'ownerId', 'teamMembers')
-  return scopeWhere
 }
 
 // 获取所有项目（支持分页、筛选）
@@ -367,22 +354,28 @@ router.put('/:id', authenticateToken, checkPermission('project:project:edit'), l
       }
     }
 
+    // 构建更新数据
+    const updateData: any = {
+      name,
+      projectNo: projectNo !== undefined ? (projectNo || null) : undefined,
+      organizationId,
+      contactId: contactId !== undefined ? (contactId || null) : undefined,
+      status,
+      budget,
+      startDate: startDate ? new Date(startDate) : null,
+      endDate: endDate ? new Date(endDate) : null,
+      description
+    }
+
+    // 状态变为"已完成"或"已取消"时自动归档
+    if (status === 'COMPLETED' || status === 'CANCELLED') {
+      updateData.isArchived = true
+      updateData.archivedAt = new Date()
+    }
+
     const project = await prisma.project.update({
       where: { id: parseInt(id) },
-      data: {
-        name,
-        projectNo: projectNo !== undefined ? (projectNo || null) : undefined,
-        organizationId,
-        contactId: contactId !== undefined ? (contactId || null) : undefined,
-        status,
-        budget,
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null,
-        description,
-        // 状态变为"已完成"或"已取消"时自动归档
-        isArchived: status === 'COMPLETED' || status === 'CANCELLED' ? true : undefined,
-        archivedAt: status === 'COMPLETED' || status === 'CANCELLED' ? new Date() : undefined
-      }
+      data: updateData
     })
 
     // 自动记录到日报
@@ -462,6 +455,11 @@ router.delete('/:id', authenticateToken, checkPermission('project:project:edit')
       if (!isOwner && !isTeamMember) {
         return res.status(403).json({ error: '只有项目负责人或团队成员才能删除' })
       }
+    }
+
+    // 归档状态检查：已归档项目禁止删除
+    if (project.isArchived) {
+      return res.status(403).json({ error: '已归档项目无法删除' })
     }
 
     // 软删除项目及所有关联业务实体

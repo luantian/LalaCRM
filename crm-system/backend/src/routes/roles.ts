@@ -14,7 +14,27 @@ router.get('/', authenticateToken, checkPermission('system:role:list'), async (r
       orderBy: { createdAt: 'desc' }
     })
 
-    res.json(roles)
+    // 为每个角色从 RoleMenu -> MenuItem 动态获取三段式权限
+    const rolesWithPerms = await Promise.all(roles.map(async (role) => {
+      // 管理员特殊处理：返回通配符
+      if (role.name === 'ADMIN') {
+        return { ...role, permissions: ['*'] }
+      }
+
+      // 从 RoleMenu -> MenuItem.perm 获取三段式权限标识
+      const roleMenus = await prisma.roleMenu.findMany({
+        where: { roleId: role.id },
+        include: { menu: { select: { perm: true } } }
+      })
+
+      const perms = roleMenus
+        .map(rm => rm.menu?.perm)
+        .filter((perm): perm is string => !!perm)
+
+      return { ...role, permissions: [...new Set(perms)] }
+    }))
+
+    res.json(rolesWithPerms)
   } catch (error) {
     logger.error('Get roles error:', error)
     res.status(500).json({ error: '获取角色列表失败' })
@@ -24,7 +44,7 @@ router.get('/', authenticateToken, checkPermission('system:role:list'), async (r
 // 创建角色（仅admin）
 router.post('/', authenticateToken, checkPermission('system:role:add'), logOperation('角色管理', 'CREATE'), async (req: Request, res: Response) => {
   try {
-    const { name, displayName, description, permissions } = req.body
+    const { name, displayName, description } = req.body
 
     // 验证必填字段
     if (!name || !displayName || !description) {
@@ -51,7 +71,7 @@ router.post('/', authenticateToken, checkPermission('system:role:add'), logOpera
         displayName,
         roleKey: name, // 使用角色名称作为 roleKey
         description,
-        permissions: permissions || []
+        dataScope: req.body.dataScope || 'ALL'
       }
     })
 
@@ -66,7 +86,7 @@ router.post('/', authenticateToken, checkPermission('system:role:add'), logOpera
 router.put('/:id', authenticateToken, checkPermission('system:role:edit'), logOperation('角色管理', 'UPDATE'), async (req: Request, res: Response) => {
   try {
     const roleId = parseInt(req.params.id as string)
-    const { displayName, description, permissions } = req.body
+    const { displayName, description } = req.body
 
     // 检查角色是否存在
     const existingRole = await prisma.roleModel.findUnique({
@@ -82,7 +102,7 @@ router.put('/:id', authenticateToken, checkPermission('system:role:edit'), logOp
       data: {
         displayName,
         description,
-        permissions
+        ...(req.body.dataScope && { dataScope: req.body.dataScope })
       }
     })
 

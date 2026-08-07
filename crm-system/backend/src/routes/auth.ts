@@ -58,24 +58,19 @@ function cleanIp(req: any): string {
 }
 
 // Helper: fetch menus for a given user
-async function getUserMenus(userId: number, fallbackRoleId: number | null, roleString?: string) {
+async function getUserMenus(userId: number, roleString?: string) {
   // If ADMIN role, return all menus
   if (roleString === 'ADMIN') {
     return await prisma.menuItem.findMany()
   }
 
-  // Get user's roles (support multiple roles via UserRole table)
+  // 统一从 UserRole 表获取角色（不再回退到旧的 User.roleId）
   const userRoles = await prisma.userRole.findMany({
     where: { userId },
     select: { roleId: true }
   })
 
   const roleIds = userRoles.map(ur => ur.roleId)
-  
-  // If user has legacy single role (fallbackRoleId), include it
-  if (fallbackRoleId && !roleIds.includes(fallbackRoleId)) {
-    roleIds.push(fallbackRoleId)
-  }
 
   // If no roles assigned, return empty array
   if (roleIds.length === 0) {
@@ -125,24 +120,13 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: '用户名或密码错误' })
     }
 
-    // 获取用户角色权限：从 RoleMenu → MenuItem.perm 读取三段式权限标识
+    // 获取用户角色权限：统一从 UserRole 表读取
     const userRolesList = await prisma.userRole.findMany({
       where: { userId: user.id },
       select: { roleId: true }
     })
 
     const roleIds = userRolesList.map(ur => ur.roleId)
-    
-    // Fallback: 从旧的 roleId 字段获取
-    let resolvedRoleId = user.roleId
-    if (!resolvedRoleId && user.role) {
-      const roleModel = await prisma.roleModel.findUnique({ where: { name: user.role } })
-      if (roleModel) resolvedRoleId = roleModel.id
-    }
-    if (resolvedRoleId && !roleIds.includes(resolvedRoleId)) {
-      roleIds.push(resolvedRoleId)
-    }
-
     const permissionSet = new Set<string>()
     
     // 如果是管理员，返回通配符权限
@@ -165,7 +149,7 @@ router.post('/login', async (req, res) => {
     const permissions = Array.from(permissionSet)
 
     // 获取用户菜单
-    const menus = await getUserMenus(user.id, resolvedRoleId, user.role)
+    const menus = await getUserMenus(user.id, user.role)
 
     const secret = process.env.JWT_SECRET
     if (!secret) {
@@ -232,19 +216,13 @@ router.get('/me', async (req, res) => {
       return res.status(404).json({ error: '用户不存在' })
     }
 
-    // 从 RoleMenu → MenuItem.perm 获取三段式权限标识（与登录接口一致）
+    // 从 RoleMenu → MenuItem.perm 获取三段式权限标识（统一从 UserRole 表读取）
     const userRolesList = await prisma.userRole.findMany({
       where: { userId: user.id },
       select: { roleId: true }
     })
 
     const roleIds = userRolesList.map(ur => ur.roleId)
-    
-    // Fallback: 从旧的 roleId 字段获取
-    if (user.roleId && !roleIds.includes(user.roleId)) {
-      roleIds.push(user.roleId)
-    }
-
     const permissionSet = new Set<string>()
     
     // 如果是管理员，返回通配符权限
@@ -266,7 +244,7 @@ router.get('/me', async (req, res) => {
 
     const permissions = Array.from(permissionSet)
 
-    const menus = await getUserMenus(user.id, user.roleId, user.role)
+    const menus = await getUserMenus(user.id, user.role)
 
     res.json({
       id: user.id,
@@ -303,7 +281,7 @@ router.get('/menus', async (req, res) => {
       return res.status(404).json({ error: '用户不存在' })
     }
 
-    const menus = await getUserMenus(user.id, user.roleId, user.role)
+    const menus = await getUserMenus(user.id, user.role)
     res.json({ menus })
   } catch (error) {
     res.status(401).json({ error: '无效的认证令牌' })
