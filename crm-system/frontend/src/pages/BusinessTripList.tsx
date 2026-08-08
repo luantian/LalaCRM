@@ -318,16 +318,25 @@ function BusinessTripList() {
     },
     { title: '天数', dataIndex: 'days', key: 'days', render: (days: number) => `${days}天` },
     {
-      title: '报销金额',
-      key: 'expenses',
+      title: '报销状态',
+      key: 'expenseStatus',
       render: (_: any, r: any) => {
-        const total = (r.expenses || []).reduce((s: number, e: any) => s + Number(e.amount || 0), 0)
-        return total > 0 ? `${total.toFixed(2)}元` : '-'
+        const hasExpenses = (r.expenses || []).length > 0
+        return hasExpenses ? (
+          <Tag color="green">已报销</Tag>
+        ) : (
+          <Tag color="default">未报销</Tag>
+        )
       },
-      sorter: (a: any, b: any) => {
-        const ta = (a.expenses || []).reduce((s: number, e: any) => s + Number(e.amount || 0), 0)
-        const tb = (b.expenses || []).reduce((s: number, e: any) => s + Number(e.amount || 0), 0)
-        return ta - tb
+      filters: [
+        { text: '已报销', value: 'hasExpenses' },
+        { text: '未报销', value: 'noExpenses' }
+      ],
+      onFilter: (value: any, record: any) => {
+        const hasExpenses = (record.expenses || []).length > 0
+        if (value === 'hasExpenses') return hasExpenses
+        if (value === 'noExpenses') return !hasExpenses
+        return true
       }
     },
     {
@@ -405,20 +414,17 @@ function BusinessTripList() {
       {/* 统计信息 */}
       <Card size="small" style={{ marginBottom: 16 }}>
         <Row gutter={16}>
-          <Col span={5}>
+          <Col span={6}>
             <Statistic title="出差次数" value={stats?.totalTrips || 0} suffix="次" />
           </Col>
-          <Col span={5}>
+          <Col span={6}>
             <Statistic title="总天数" value={stats?.totalDays || 0} suffix="天" />
           </Col>
-          <Col span={5}>
-            <Statistic title="总费用" value={stats?.totalAmount || 0} precision={2} suffix="元" valueStyle={{ color: '#f5222d' }} />
-          </Col>
-          <Col span={5}>
+          <Col span={6}>
             <Statistic title="待审批" value={stats?.submitted || 0} suffix="次" valueStyle={{ color: '#faad14' }} />
           </Col>
-          <Col span={4}>
-            <Statistic title="平均每次" value={stats?.averagePerTrip || 0} precision={2} suffix="元" />
+          <Col span={6}>
+            <Statistic title="已完成" value={stats?.completed || 0} suffix="次" valueStyle={{ color: '#52c41a' }} />
           </Col>
         </Row>
       </Card>
@@ -567,8 +573,7 @@ function BusinessTripList() {
         {approveTarget && (
           <div style={{ marginBottom: 16 }}>
             <p><strong>{approveTarget.title}</strong></p>
-            <p>目的地：{approveTarget.destination} | 天数：{approveTarget.days}天</p>
-            <p>报销金额：¥{(approveTarget.expenses || []).reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0).toFixed(2)} | 申请人：{approveTarget.owner?.name}</p>
+            <p>目的地：{approveTarget.destination} | 天数：{approveTarget.days}天 | 申请人：{approveTarget.owner?.name}</p>
           </div>
         )}
         {approveAction === 'approve' ? (

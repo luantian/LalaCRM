@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { isAdmin, getUserPerms } from '../utils/permission'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 interface AuthRequest extends Request {
   user?: {
@@ -37,10 +40,26 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
   }
 }
 
+// 校验用户是否存在于数据库（防止旧token导致403）
+async function ensureUserExists(userId: number): Promise<boolean> {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    return !!user
+  } catch {
+    return false
+  }
+}
+
 // 管理员检查中间件
 export const checkAdmin = async (req: AuthRequest, res: Response, next: NextFunction) => {
   if (!req.user?.id) {
     return res.status(401).json({ error: '未登录' })
+  }
+  
+  // 检查用户是否存在
+  const exists = await ensureUserExists(req.user.id)
+  if (!exists) {
+    return res.status(401).json({ error: '用户不存在，请重新登录' })
   }
   
   const adminStatus = await isAdmin(req.user.id)
@@ -56,6 +75,12 @@ export const checkPermission = (permission: string) => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user?.id) {
       return res.status(401).json({ error: '未登录' })
+    }
+    
+    // 检查用户是否存在（防止旧token导致误判为权限不足）
+    const exists = await ensureUserExists(req.user.id)
+    if (!exists) {
+      return res.status(401).json({ error: '用户不存在，请重新登录' })
     }
     
     // 管理员拥有所有权限
@@ -81,6 +106,12 @@ export const checkAnyPermission = (permissions: string[]) => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user?.id) {
       return res.status(401).json({ error: '未登录' })
+    }
+    
+    // 检查用户是否存在
+    const exists = await ensureUserExists(req.user.id)
+    if (!exists) {
+      return res.status(401).json({ error: '用户不存在，请重新登录' })
     }
     
     // 管理员拥有所有权限

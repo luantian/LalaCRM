@@ -115,9 +115,6 @@ function BusinessTripDetail() {
 
   const status = statusConfig[trip.status] || { text: trip.status, color: 'default' }
 
-  // 从关联费用报销聚合总金额
-  const totalExpenseAmount = (trip.expenses || []).reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
-
   return (
     <div>
       <Button
@@ -135,7 +132,6 @@ function BusinessTripDetail() {
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>{trip.title}</h3>
               <Tag color={status.color}>{status.text}</Tag>
               <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
-              <span style={{ color: '#6b7280', fontSize: 13 }}>报销金额: <strong style={{ color: '#f5222d' }}>{totalExpenseAmount.toFixed(2)}元</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>天数: <strong style={{ color: '#2563eb' }}>{trip.days || 0}天</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>日期: <strong style={{ color: '#7c3aed' }}>{trip.startDate ? dayjs(trip.startDate).format('MM-DD') : '-'} ~ {trip.endDate ? dayjs(trip.endDate).format('MM-DD') : '-'}</strong></span>
             </div>
@@ -179,9 +175,6 @@ function BusinessTripDetail() {
           <Space>
             <span>关联费用报销</span>
             <Tag color="blue">{trip.expenses?.length || 0} 条</Tag>
-            <span style={{ color: '#f5222d', fontSize: 16, fontWeight: 600 }}>
-              合计: ¥{totalExpenseAmount.toFixed(2)}
-            </span>
           </Space>
         }
         extra={
@@ -206,19 +199,6 @@ function BusinessTripDetail() {
                 dataIndex: 'title',
                 key: 'title',
                 width: 200,
-              },
-              {
-                title: '费用类别',
-                dataIndex: 'category',
-                key: 'category',
-                width: 120,
-              },
-              {
-                title: '金额',
-                dataIndex: 'amount',
-                key: 'amount',
-                width: 120,
-                render: (amount: any) => <span style={{ color: '#f5222d', fontWeight: 600 }}>{Number(amount).toFixed(2)} 元</span>,
               },
               {
                 title: '费用日期',

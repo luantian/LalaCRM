@@ -5,14 +5,33 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    // 防止空闲时 WebSocket 连接断开
+    hmr: {
+      // 开发服务器空闲时保持心跳，防止浏览器断开连接
+      timeout: 0,
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
-        changeOrigin: true
+        changeOrigin: true,
+        // 代理连接保活
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            console.log('proxy error', err)
+          })
+        }
       },
       '/ws': {
         target: 'ws://localhost:5000',
-        ws: true
+        ws: true,
+        // WebSocket 代理心跳保活
+        timeout: 0,
+        pingTimeout: 0,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            console.log('ws proxy error', err)
+          })
+        }
       }
     }
   },
