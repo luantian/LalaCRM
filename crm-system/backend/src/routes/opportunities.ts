@@ -10,6 +10,7 @@ import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { autoWriteOpportunityRecord } from '../utils/autoDailyReport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
+import { hasAmountPermission, filterOpportunityAmount } from '../utils/amountPermission'
 import fs from 'fs'
 import path from 'path'
 
@@ -91,8 +92,12 @@ router.get('/', authenticateToken, checkAnyPermission(['crm:opportunity:list', '
       take
     })
 
+    // 检查当前用户是否有项目金额查看权限
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    const processedOpportunities = canSeeAmount ? opportunities : opportunities.map(filterOpportunityAmount)
+
     res.json({
-      data: opportunities,
+      data: processedOpportunities,
       pagination: {
         total,
         page: parseInt(page as string),
@@ -126,12 +131,17 @@ router.get('/stats/overview', authenticateToken, checkAnyPermission(['crm:opport
       prisma.opportunity.count({ where: { ...where, status: 'LOST', project: null } })
     ])
 
-    const opportunities = await prisma.opportunity.findMany({
-      where,
-      select: { budget: true }
-    })
+    // 检查当前用户是否有项目金额查看权限
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
 
-    const totalBudget = opportunities.reduce((sum, o) => sum + (o.budget ? Number(o.budget) : 0), 0)
+    let totalBudget = null
+    if (canSeeAmount) {
+      const opportunities = await prisma.opportunity.findMany({
+        where,
+        select: { budget: true }
+      })
+      totalBudget = opportunities.reduce((sum, o) => sum + (o.budget ? Number(o.budget) : 0), 0)
+    }
 
     res.json({
       total,
@@ -186,7 +196,11 @@ router.get('/:id', authenticateToken, checkPermission('crm:opportunity:list'), a
       return res.status(404).json({ error: '商机不存在' })
     }
 
-    res.json(opportunity)
+    // 检查当前用户是否有项目金额查看权限
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    const processedOpportunity = canSeeAmount ? opportunity : filterOpportunityAmount(opportunity)
+
+    res.json(processedOpportunity)
   } catch (error) {
     res.status(500).json({ error: '获取商机详情失败' })
   }

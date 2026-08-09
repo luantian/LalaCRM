@@ -98,7 +98,7 @@ const QuotationDetail: React.FC = () => {
               <Tag>v{quotation.version}</Tag>
               <Tag color={sc.color}>{sc.text}</Tag>
               <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
-              <span style={{ color: '#6b7280', fontSize: 13 }}>报价总额: <strong style={{ color: '#cf1322' }}>¥{Number(quotation.totalAmount).toLocaleString()}</strong></span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>报价总额: <strong style={{ color: '#cf1322' }}>{quotation.totalAmount === null ? '—' : `¥${Number(quotation.totalAmount).toLocaleString()}`}</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>有效期: <strong style={{ color: '#2563eb' }}>{quotation.validUntil ? dayjs(quotation.validUntil).format('YYYY-MM-DD') : '未设置'}</strong></span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>明细: <strong style={{ color: '#7c3aed' }}>{quotation.items?.length || 0}项</strong></span>
             </div>
@@ -126,7 +126,7 @@ const QuotationDetail: React.FC = () => {
               summary={() => (
                 <Table.Summary.Row>
                   <Table.Summary.Cell index={0} colSpan={5} align="right"><strong>合计</strong></Table.Summary.Cell>
-                  <Table.Summary.Cell index={1}><strong>¥{Number(quotation.totalAmount).toLocaleString()}</strong></Table.Summary.Cell>
+                  <Table.Summary.Cell index={1}><strong>{quotation.totalAmount === null ? '—' : `¥${Number(quotation.totalAmount).toLocaleString()}`}</strong></Table.Summary.Cell>
                   <Table.Summary.Cell index={2} />
                 </Table.Summary.Row>
               )}

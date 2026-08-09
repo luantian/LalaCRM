@@ -10,6 +10,7 @@ import logger from '../utils/logger'
 import { autoWriteQuotationRecord } from '../utils/autoDailyReport'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
+import { hasAmountPermission, filterQuotationAmount } from '../utils/amountPermission'
 import fs from 'fs'
 import path from 'path'
 
@@ -63,8 +64,12 @@ router.get('/', authenticateToken, checkPermission('crm:quotation:list'), applyD
       take
     })
 
+    // 检查当前用户是否有项目金额查看权限
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    const processedQuotations = canSeeAmount ? quotations : quotations.map(filterQuotationAmount)
+
     res.json({
-      data: quotations,
+      data: processedQuotations,
       pagination: {
         total,
         page: parseInt(page as string),
@@ -96,9 +101,15 @@ router.get('/stats/overview', authenticateToken, checkPermission('crm:quotation:
       where: { deletedAt: null, ...dataScopeWhere },
       select: { totalAmount: true }
     })
-    const totalAmount = quotations.reduce((sum, q) => sum + Number(q.totalAmount), 0)
+    
+    // 检查当前用户是否有项目金额查看权限
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    let totalAmount = null
+    if (canSeeAmount) {
+      totalAmount = quotations.reduce((sum, q) => sum + Number(q.totalAmount), 0)
+    }
 
-    res.json({ total, draft, submitted, approved, rejected, won, lost, totalAmount: totalAmount.toFixed(2) })
+    res.json({ total, draft, submitted, approved, rejected, won, lost, totalAmount: totalAmount === null ? null : totalAmount.toFixed(2) })
   } catch (error) {
     logger.error('Get quotation stats error:', error)
     res.status(500).json({ error: '获取统计失败' })
@@ -147,7 +158,11 @@ router.get('/:id', authenticateToken, checkPermission('crm:quotation:list'), app
       return res.status(404).json({ error: '报价单不存在' })
     }
 
-    res.json(quotation)
+    // 检查当前用户是否有项目金额查看权限
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    const processedQuotation = canSeeAmount ? quotation : filterQuotationAmount(quotation)
+
+    res.json(processedQuotation)
   } catch (error) {
     logger.error('Get quotation detail error:', error)
     res.status(500).json({ error: '获取报价单详情失败' })

@@ -12,6 +12,7 @@ import { exportExcel, parseImportFile, mapImportRow } from '../utils/exportImpor
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import { autoWriteContractRecord } from '../utils/autoDailyReport'
 import { checkProjectArchived, checkContractProjectArchived } from '../utils/archive'
+import { hasAmountPermission, filterContractAmount } from '../utils/amountPermission'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -61,8 +62,14 @@ router.get('/', authenticateToken, checkPermission('project:contract:list'), sor
       take
     })
 
+    // 检查金额权限
+    const hasAmountPerm = await hasAmountPermission(req.user!.id)
+    const processedContracts = contracts.map(contract => 
+      hasAmountPerm ? contract : filterContractAmount(contract)
+    )
+
     res.json({
-      data: contracts,
+      data: processedContracts,
       pagination: {
         total,
         page: parseInt(page as string),
@@ -80,6 +87,10 @@ router.get('/', authenticateToken, checkPermission('project:contract:list'), sor
 router.get('/stats/overview', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
     const where: any = { deletedAt: null }
+    
+    // 检查金额权限
+    const hasAmountPerm = await hasAmountPermission(req.user!.id)
+    
     // 使用聚合查询，不加载所有数据到内存
     const [total, totalAmount, activeAmount, statusCounts] = await Promise.all([
       prisma.contract.count({ where }),
@@ -104,10 +115,11 @@ router.get('/stats/overview', authenticateToken, checkPermission('project:contra
       statusCount[item.status] = item._count.id
     })
 
+    // 如果没有金额权限，返回null
     res.json({
       total,
-      totalAmount: Number(totalAmount._sum.amount || 0),
-      activeAmount: Number(activeAmount._sum.amount || 0),
+      totalAmount: hasAmountPerm ? Number(totalAmount._sum.amount || 0) : null,
+      activeAmount: hasAmountPerm ? Number(activeAmount._sum.amount || 0) : null,
       draft: statusCount['DRAFT'] || 0,
       pending: statusCount['PENDING'] || 0,
       active: statusCount['ACTIVE'] || 0,
@@ -187,7 +199,11 @@ router.get('/:id', authenticateToken, checkPermission('project:contract:list'), 
       return res.status(404).json({ error: '合同不存在' })
     }
 
-    res.json(contract)
+    // 检查金额权限
+    const hasAmountPerm = await hasAmountPermission(req.user!.id)
+    const processedContract = hasAmountPerm ? contract : filterContractAmount(contract)
+
+    res.json(processedContract)
   } catch (error) {
     res.status(500).json({ error: '获取合同详情失败' })
   }

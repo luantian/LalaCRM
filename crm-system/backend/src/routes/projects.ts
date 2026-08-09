@@ -10,6 +10,7 @@ import logger from '../utils/logger'
 import { autoWriteProjectRecord } from '../utils/autoDailyReport'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
+import { hasAmountPermission, filterProjectAmount } from '../utils/amountPermission'
 import fs from 'fs'
 import path from 'path'
 
@@ -130,8 +131,12 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), sort
       const total = paidProjects.length
       const projects = paidProjects.slice(skip, skip + take)
 
+      // 检查当前用户是否有项目金额查看权限
+      const canSeeAmount = await hasAmountPermission(req.user!.id)
+      const processedProjects = canSeeAmount ? projects : projects.map(filterProjectAmount)
+
       return res.json({
-        data: projects.map(p => ({ ...p, contracts: undefined, _count: undefined })),
+        data: processedProjects.map(p => ({ ...p, contracts: undefined, _count: undefined })),
         pagination: {
           total,
           page: parseInt(page as string),
@@ -158,8 +163,11 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), sort
       take
     })
 
+    // 检查当前用户是否有项目金额查看权限
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+
     res.json({
-      data: projects,
+      data: canSeeAmount ? projects : projects.map(filterProjectAmount),
       pagination: {
         total,
         page: parseInt(page as string),
@@ -187,12 +195,17 @@ router.get('/stats/overview', authenticateToken, checkPermission('project:projec
       prisma.project.count({ where: { ...where, status: 'CANCELLED' } })
     ])
 
-    const projects = await prisma.project.findMany({
-      where,
-      select: { budget: true }
-    })
+    // 检查当前用户是否有项目金额查看权限
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
 
-    const totalBudget = projects.reduce((sum, p) => sum + (p.budget ? Number(p.budget) : 0), 0)
+    let totalBudget = null
+    if (canSeeAmount) {
+      const projects = await prisma.project.findMany({
+        where,
+        select: { budget: true }
+      })
+      totalBudget = projects.reduce((sum, p) => sum + (p.budget ? Number(p.budget) : 0), 0)
+    }
 
     res.json({
       total,
@@ -278,7 +291,11 @@ router.get('/:id', authenticateToken, checkPermission('project:project:list'), a
       return res.status(404).json({ error: '项目不存在' })
     }
 
-    res.json(project)
+    // 检查当前用户是否有项目金额查看权限
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    const processedProject = canSeeAmount ? project : filterProjectAmount(project)
+
+    res.json(processedProject)
   } catch (error) {
     res.status(500).json({ error: '获取项目详情失败' })
   }

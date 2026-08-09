@@ -171,7 +171,7 @@ const QuotationList: React.FC = () => {
       const contact = r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : ''
       return contact ? `${org} - ${contact}` : org
     }},
-    { title: '报价总额', dataIndex: 'totalAmount', key: 'totalAmount', render: (v: number) => <strong>¥{Number(v).toLocaleString()}</strong> },
+    { title: '报价总额', dataIndex: 'totalAmount', key: 'totalAmount', render: (v: number | null) => v === null ? '-' : <strong>¥{Number(v).toLocaleString()}</strong> },
     { title: '有效期', dataIndex: 'validUntil', key: 'validUntil', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
     { title: '状态', dataIndex: 'status', key: 'status', width: 90,
       render: (s: string) => { const c = statusConfig[s]; return c ? <Tag color={c.color}>{c.text}</Tag> : s }

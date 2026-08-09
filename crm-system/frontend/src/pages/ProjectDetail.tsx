@@ -232,7 +232,7 @@ function ProjectDetail() {
     CANCELLED: { text: '已取消', color: 'error' }
   }
 
-  const totalContractAmount = project.contracts?.reduce((s: number, c: any) => s + Number(c.amount), 0) || 0
+  const totalContractAmount = project.contracts?.reduce((s: number, c: any) => s + (c.amount ? Number(c.amount) : 0), 0) || 0
   const contractCount = project.contracts?.length || 0
 
   // ===== 合同管理 =====
@@ -1383,7 +1383,8 @@ function ProjectDetail() {
               <Tag color={projectStatus.color}>{projectStatus.text}</Tag>
               <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
               <span style={{ color: '#6b7280', fontSize: 13 }}>预算: <strong style={{ color: '#059669' }}>{project.budget ? `${Number(project.budget)}元` : '-'}</strong></span>
-              <span style={{ color: '#6b7280', fontSize: 13 }}>合同总额: <strong style={{ color: '#2563eb' }}>{totalContractAmount}元</strong></span>
+              <span style={{ color: '#94a3b8', fontSize: 13 }}>|</span>
+              <span style={{ color: '#6b7280', fontSize: 13 }}>合同总额: <strong style={{ color: '#2563eb' }}>{totalContractAmount > 0 ? `${totalContractAmount}元` : '-'}</strong></span>
             </div>
             <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{(() => { const org = project.organization?.name || '暂无客户'; const contact = project.contact ? `${project.contact.name}${project.contact.title ? ` (${project.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()} · 合同 {contractCount} 份</div>
           </Col>

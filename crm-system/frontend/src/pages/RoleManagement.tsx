@@ -1,5 +1,5 @@
 import { useEffect, useState, type FC } from 'react'
-import { Card, Table, Tag, App, Button, Modal, Tree, Space, Form, Input, Checkbox, Empty, Tabs, Descriptions, Popconfirm, Select } from 'antd'
+import { Card, Table, Tag, App, Button, Modal, Tree, Space, Form, Input, Checkbox, Empty, Tabs, Descriptions, Popconfirm } from 'antd'
 import { SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, BarChartOutlined } from '@ant-design/icons'
 import type { DataNode } from 'antd/es/tree'
 import api from '../services/api'
@@ -204,7 +204,6 @@ function RoleManagement() {
   const { message } = App.useApp()
   const [roles, setRoles] = useState<Role[]>([])
   const [allMenus, setAllMenus] = useState<MenuItem[]>([])
-  const [loading, setLoading] = useState(false)
 
   // 编辑弹窗内的菜单权限状态
   const [checkedMenuIds, setCheckedMenuIds] = useState<number[]>([])
@@ -224,6 +223,11 @@ function RoleManagement() {
   const [contactInfoModalVisible, setContactInfoModalVisible] = useState(false)
   const [contactInfoRoleIds, setContactInfoRoleIds] = useState<number[]>([])
   const [contactInfoLoading, setContactInfoLoading] = useState(false)
+
+  // 项目金额权限配置弹窗状态
+  const [projectAmountModalVisible, setProjectAmountModalVisible] = useState(false)
+  const [projectAmountRoleIds, setProjectAmountRoleIds] = useState<number[]>([])
+  const [projectAmountLoading, setProjectAmountLoading] = useState(false)
 
   const roleColors: Record<string, string> = {
     ADMIN: 'red', PROJECT_DIRECTOR: 'purple', PROJECT_MANAGER: 'blue',
@@ -353,7 +357,6 @@ function RoleManagement() {
   const handleRoleSubmit = async () => {
     try {
       const values = await roleForm.validateFields()
-      const name = editingRole ? editingRole.name : 'ROLE_' + Date.now().toString(36).toUpperCase()
       const data = { ...values }
       if (editingRole) {
         await api.put(`/roles/${editingRole.id}`, data)
@@ -413,6 +416,35 @@ function RoleManagement() {
     }
   }
 
+  // ===== 项目金额权限配置 =====
+  const fetchProjectAmountConfig = async () => {
+    setProjectAmountLoading(true)
+    try {
+      const response = await api.get('/settings/project-amount-permission') as any
+      setProjectAmountRoleIds(response.roleIds || [])
+    } catch (error: any) {
+      message.error(error?.error || '获取配置失败')
+      setProjectAmountRoleIds([])
+    } finally {
+      setProjectAmountLoading(false)
+    }
+  }
+
+  const handleOpenProjectAmountModal = () => {
+    setProjectAmountModalVisible(true)
+    fetchProjectAmountConfig()
+  }
+
+  const handleSaveProjectAmountConfig = async () => {
+    try {
+      await api.put('/settings/project-amount-permission', { roleIds: projectAmountRoleIds })
+      message.success('配置保存成功')
+      setProjectAmountModalVisible(false)
+    } catch (error: any) {
+      message.error(error?.error || '保存失败')
+    }
+  }
+
   const sortedRoles = [...roles].sort((a, b) => a.id - b.id)
   const permGroups = buildPermGroups(menusWithChildren)
 
@@ -427,6 +459,7 @@ function RoleManagement() {
         <Space>
           <Button icon={<BarChartOutlined />} onClick={() => setPermMatrixModalVisible(true)}>权限对照表</Button>
           <Button icon={<SettingOutlined />} onClick={handleOpenContactInfoModal}>联系方式权限配置</Button>
+          <Button icon={<SettingOutlined />} onClick={handleOpenProjectAmountModal}>项目金额权限配置</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateRole}>新建角色</Button>
         </Space>
       </div>
@@ -610,6 +643,54 @@ function RoleManagement() {
                     setContactInfoRoleIds([...contactInfoRoleIds, role.id])
                   } else {
                     setContactInfoRoleIds(contactInfoRoleIds.filter(id => id !== role.id))
+                  }
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      </Modal>
+
+      {/* 项目金额权限配置弹窗 */}
+      <Modal
+        title="项目金额权限配置"
+        open={projectAmountModalVisible}
+        onOk={handleSaveProjectAmountConfig}
+        onCancel={() => setProjectAmountModalVisible(false)}
+        confirmLoading={projectAmountLoading}
+        width={500}
+      >
+        <div style={{ marginBottom: 16, color: '#666' }}>
+          选择可以查看项目完整金额信息的角色。
+          <br />
+          <span style={{ fontSize: 12, color: '#999' }}>未选中的角色将看不到项目金额</span>
+        </div>
+        <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+          {roles.map(role => (
+            <div
+              key={role.id}
+              style={{
+                padding: '8px 12px',
+                marginBottom: 8,
+                border: '1px solid #d9d9d9',
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: projectAmountRoleIds.includes(role.id) ? '#f0f5ff' : '#fff'
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 500 }}>{role.displayName}</div>
+                <div style={{ fontSize: 12, color: '#999' }}>{role.description}</div>
+              </div>
+              <Checkbox
+                checked={projectAmountRoleIds.includes(role.id)}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setProjectAmountRoleIds([...projectAmountRoleIds, role.id])
+                  } else {
+                    setProjectAmountRoleIds(projectAmountRoleIds.filter(id => id !== role.id))
                   }
                 }}
               />
