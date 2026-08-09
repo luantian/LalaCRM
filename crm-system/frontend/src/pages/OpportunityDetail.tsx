@@ -403,17 +403,16 @@ function OpportunityDetail() {
                                 {record.files.map((file: any) => (
                                   <span key={file.id} style={{ display: 'inline-flex', alignItems: 'center', marginRight: 12, padding: '2px 8px', background: '#f5f5f5', borderRadius: 4, fontSize: 12, marginBottom: 4 }}>
                                     <FileOutlined style={{ marginRight: 4 }} />
-                                    {isPreviewableFile(file.fileName) ? (
+                                    {isPreviewableFile(file.fileName) && (
                                       <a onClick={() => openFilePreview(previewOpportunityRecordFileUrl, file.id)} style={{ cursor: 'pointer', color: '#1890ff' }}>
                                         {file.fileName}
                                         <EyeOutlined style={{ marginLeft: 4 }} />
                                       </a>
-                                    ) : (
-                                      <a href={downloadOpportunityRecordFileUrl(file.id)} download={file.fileName} style={{ color: '#1890ff' }}>
-                                        {file.fileName}
-                                        <DownloadOutlined style={{ marginLeft: 4 }} />
-                                      </a>
                                     )}
+                                    <a href={downloadOpportunityRecordFileUrl(file.id)} download={file.fileName} style={{ color: '#1890ff', marginLeft: isPreviewableFile(file.fileName) ? 8 : 0 }}>
+                                      {isPreviewableFile(file.fileName) ? '' : file.fileName}
+                                      <DownloadOutlined style={{ marginLeft: 4 }} />
+                                    </a>
                                     <span style={{ color: '#999', marginLeft: 4 }}>({(file.fileSize / 1024).toFixed(1)}KB)</span>
                                   </span>
                                 ))}
@@ -683,17 +682,16 @@ function OpportunityDetail() {
                 {editingRecord.files.map((file: any) => (
                   <div key={file.id} style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', background: '#f5f5f5', borderRadius: 4, marginBottom: 4, fontSize: 12 }}>
                     <FileOutlined style={{ marginRight: 6, color: '#1890ff' }} />
-                    {isPreviewableFile(file.fileName) ? (
+                    {isPreviewableFile(file.fileName) && (
                       <a onClick={() => openFilePreview(previewOpportunityRecordFileUrl, file.id)} style={{ cursor: 'pointer', color: '#1890ff', flex: 1 }}>
                         {file.fileName}
                         <EyeOutlined style={{ marginLeft: 4 }} />
                       </a>
-                    ) : (
-                      <a href={downloadOpportunityRecordFileUrl(file.id)} download={file.fileName} style={{ color: '#1890ff', flex: 1 }}>
-                        {file.fileName}
-                        <DownloadOutlined style={{ marginLeft: 4 }} />
-                      </a>
                     )}
+                    <a href={downloadOpportunityRecordFileUrl(file.id)} download={file.fileName} style={{ color: '#1890ff', flex: 1 }}>
+                      {file.fileName}
+                      <DownloadOutlined style={{ marginLeft: 4 }} />
+                    </a>
                     <span style={{ color: '#999', marginRight: 8 }}>{(file.fileSize / 1024).toFixed(1)}KB</span>
                     <Popconfirm title="确定删除此附件？" onConfirm={async () => {
                       try {

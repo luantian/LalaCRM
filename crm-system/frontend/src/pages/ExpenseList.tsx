@@ -818,10 +818,10 @@ function ExpenseList() {
                 <strong>总金额：</strong><span style={{ color: '#f5222d', fontWeight: 600 }}>{approveTarget.totalAmount}元</span>
               </p>
               <p style={{ margin: '6px 0' }}>
-                <strong>客户：</strong>{getOrganizationName(approveTarget.organizationId)}
+                <strong>客户：</strong>{getOrganizationName(approveTarget.organizationId) || '-'}
               </p>
               <p style={{ margin: '6px 0' }}>
-                <strong>项目：</strong>{getProjectName(approveTarget.projectId)}
+                <strong>项目：</strong>{getProjectName(approveTarget.projectId) || '-'}
               </p>
               {approveTarget.trip && (
                 <p style={{ margin: '6px 0' }}>
@@ -829,15 +829,53 @@ function ExpenseList() {
                 </p>
               )}
               <p style={{ margin: '6px 0' }}>
-                <strong>申请人：</strong>{approveTarget.owner?.name}
+                <strong>申请人：</strong>{approveTarget.owner?.name || '-'}
               </p>
               <p style={{ margin: '6px 0' }}>
                 <strong>申请日期：</strong>{approveTarget.createdAt ? new Date(approveTarget.createdAt).toLocaleDateString('zh-CN') : '-'}
               </p>
-              <p style={{ margin: '6px 0' }}>
-                <strong>明细数：</strong>{approveTarget.items?.length || 0} 条
-              </p>
+              {approveTarget.description && (
+                <p style={{ margin: '6px 0' }}>
+                  <strong>备注：</strong>{approveTarget.description}
+                </p>
+              )}
             </div>
+
+            {/* 费用明细列表 */}
+            {approveTarget.items && approveTarget.items.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontWeight: 500, marginBottom: 8 }}>费用明细</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#fafafa', borderBottom: '1px solid #e8e8e8' }}>
+                      <th style={{ padding: '8px 6px', textAlign: 'left' }}>类别</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'right' }}>金额</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'center' }}>日期</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'left' }}>说明</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {approveTarget.items.map((item: any, idx: number) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                        <td style={{ padding: '8px 6px' }}>{item.category}</td>
+                        <td style={{ padding: '8px 6px', textAlign: 'right', color: '#f5222d', fontWeight: 500 }}>{item.amount}元</td>
+                        <td style={{ padding: '8px 6px', textAlign: 'center' }}>{item.expenseDate ? new Date(item.expenseDate).toLocaleDateString('zh-CN') : '-'}</td>
+                        <td style={{ padding: '8px 6px' }}>{item.description || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#fafafa', fontWeight: 600 }}>
+                      <td style={{ padding: '8px 6px' }}>合计</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right', color: '#f5222d' }}>
+                        {approveTarget.items.reduce((sum: number, it: any) => sum + (Number(it.amount) || 0), 0).toFixed(2)}元
+                      </td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
         )}
         {approveAction === 'approve' ? (

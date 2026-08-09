@@ -1416,15 +1416,28 @@ function Dashboard() {
                                             }}
                                           >
                                             <PaperClipOutlined />
-                                            {isPreviewableFile(file.fileName) ? (
-                                              <a onClick={() => openFilePreview(previewTaskRecordFileUrl, file.id)} style={{ color: '#0ea5e9', cursor: 'pointer' }}>
-                                                {file.fileName}
-                                              </a>
-                                            ) : (
-                                              <a href={getPreviewUrl(downloadTaskRecordFileUrl, file.id)} target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9' }}>
-                                                {file.fileName}
-                                              </a>
+                                            <span style={{ color: '#1e293b', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {file.fileName}
+                                            </span>
+                                            {isPreviewableFile(file.fileName) && (
+                                              <Button
+                                                type="text"
+                                                size="small"
+                                                icon={<EyeOutlined />}
+                                                style={{ color: '#0ea5e9', padding: '0 4px' }}
+                                                onClick={() => openFilePreview(previewTaskRecordFileUrl, file.id)}
+                                              />
                                             )}
+                                            <Button
+                                              type="text"
+                                              size="small"
+                                              icon={<DownloadOutlined />}
+                                              style={{ color: '#6366f1', padding: '0 4px' }}
+                                              onClick={() => {
+                                                const url = getPreviewUrl(downloadTaskRecordFileUrl, file.id)
+                                                window.open(url, '_blank')
+                                              }}
+                                            />
                                           </div>
                                         ))}
                                       </div>

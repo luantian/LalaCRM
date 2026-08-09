@@ -464,12 +464,12 @@ export const importExpenses = (file: File) => importFile('/expenses/import', fil
 export const importDailyReports = (file: File) => importFile('/daily-reports/import', file)
 
 /**
- * 判断文件是否可预览（图片/PDF/Word/Excel）
+ * 判断文件是否可预览（图片/PDF/Word/Excel/PPT）
  */
 export const isPreviewableFile = (fileName: string) => {
   if (!fileName) return false
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
-  return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'].includes(ext)
+  return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)
 }
 
 /**

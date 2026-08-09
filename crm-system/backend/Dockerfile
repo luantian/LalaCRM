@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install OpenSSL (for Prisma) + LibreOffice (for Office document preview)
-RUN apk add --no-cache openssl libreoffice
+# Install OpenSSL (for Prisma) + LibreOffice (for Office document preview) + Chinese fonts
+RUN apk add --no-cache openssl libreoffice font-noto-cjk
 
 WORKDIR /app
 

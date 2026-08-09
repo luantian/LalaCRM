@@ -7,6 +7,28 @@ import logger from './logger'
 
 const execFileAsync = promisify(execFile)
 
+// 查找 LibreOffice 可执行文件路径
+const findLibreOfficePath = (): string => {
+  // 常见安装路径（Windows）
+  const commonPaths = [
+    'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+    'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
+    '/usr/bin/soffice',
+    '/usr/lib/libreoffice/program/soffice'
+  ]
+  
+  for (const p of commonPaths) {
+    if (fs.existsSync(p)) {
+      return p
+    }
+  }
+  
+  // 默认返回 soffice（依赖 PATH）
+  return 'soffice'
+}
+
+const LIBREOFFICE_PATH = findLibreOfficePath()
+
 // MIME types for directly-serveable formats (images + PDF)
 const DIRECT_MIME_TYPES: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
@@ -15,7 +37,7 @@ const DIRECT_MIME_TYPES: Record<string, string> = {
 }
 
 // Office extensions supported for conversion
-const OFFICE_EXTENSIONS = ['doc', 'docx', 'xls', 'xlsx']
+const OFFICE_EXTENSIONS = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']
 
 // Track ongoing conversions to deduplicate concurrent requests for the same file
 const pendingConversions = new Map<number, Promise<boolean>>()
@@ -78,7 +100,7 @@ const convertToPdf = async (inputPath: string, outputPath: string, fileId: numbe
   const uniqueProfileDir = `/tmp/lo-profile-${fileId}-${Date.now()}`
 
   try {
-    await execFileAsync('soffice', [
+    await execFileAsync(LIBREOFFICE_PATH, [
       '--headless',
       '--norestore',
       `-env:UserProfile=file://${uniqueProfileDir}`,
@@ -175,7 +197,7 @@ export const servePreview = async (
     }
 
     // Serve the cached PDF
-    const pdfFileName = fileName.replace(/\.(doc|docx|xls|xlsx)$/i, '.pdf')
+    const pdfFileName = fileName.replace(/\.(doc|docx|xls|xlsx|ppt|pptx)$/i, '.pdf')
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(pdfFileName)}"`)
     fs.createReadStream(cachePath).pipe(res)
