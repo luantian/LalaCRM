@@ -812,9 +812,32 @@ function ExpenseList() {
       >
         {approveTarget && (
           <div style={{ marginBottom: 16 }}>
-            <p><strong>{approveTarget.title}</strong></p>
-            <p>金额：{approveTarget.amount}元 | 类别：{approveTarget.category}</p>
-            <p>申请人：{approveTarget.owner?.name}</p>
+            <p><strong style={{ fontSize: 16 }}>{approveTarget.title}</strong></p>
+            <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6 }}>
+              <p style={{ margin: '6px 0' }}>
+                <strong>总金额：</strong><span style={{ color: '#f5222d', fontWeight: 600 }}>{approveTarget.totalAmount}元</span>
+              </p>
+              <p style={{ margin: '6px 0' }}>
+                <strong>客户：</strong>{getOrganizationName(approveTarget.organizationId)}
+              </p>
+              <p style={{ margin: '6px 0' }}>
+                <strong>项目：</strong>{getProjectName(approveTarget.projectId)}
+              </p>
+              {approveTarget.trip && (
+                <p style={{ margin: '6px 0' }}>
+                  <strong>关联出差：</strong>{approveTarget.trip.title}
+                </p>
+              )}
+              <p style={{ margin: '6px 0' }}>
+                <strong>申请人：</strong>{approveTarget.owner?.name}
+              </p>
+              <p style={{ margin: '6px 0' }}>
+                <strong>申请日期：</strong>{approveTarget.createdAt ? new Date(approveTarget.createdAt).toLocaleDateString('zh-CN') : '-'}
+              </p>
+              <p style={{ margin: '6px 0' }}>
+                <strong>明细数：</strong>{approveTarget.items?.length || 0} 条
+              </p>
+            </div>
           </div>
         )}
         {approveAction === 'approve' ? (

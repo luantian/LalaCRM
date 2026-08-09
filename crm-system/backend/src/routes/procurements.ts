@@ -92,6 +92,12 @@ router.post('/', authenticateToken, checkPermission('project:procurement:edit'),
   try {
     const { title, vendor, totalAmount, expectedDate, status, projectId, assignedTo, remarks,
       purchaseContractNo, purchaseContractDate, paymentTerms, deliveryTerms, warrantyTerms } = req.body
+
+    // 必填字段校验
+    if (!title || !vendor) {
+      return res.status(400).json({ error: '采购标题和供应商名称不能为空' })
+    }
+
     const procurement = await prisma.procurement.create({
       data: {
         title,

@@ -6,14 +6,14 @@ async function seedRoleKeys() {
   
   // 定义角色映射
   const roleMappings = [
-    { name: 'SYSTEM_ADMIN', roleKey: 'admin' },
-    { name: 'SALES_MANAGER', roleKey: 'sales_manager' },
-    { name: 'SALES_REP', roleKey: 'sales_rep' },
-    { name: 'PROJECT_MANAGER', roleKey: 'project_manager' },
-    { name: 'FINANCE_SPECIALIST', roleKey: 'finance_specialist' },
-    { name: 'EMPLOYEE', roleKey: 'employee' },
-    { name: 'TECH_STAFF', roleKey: 'tech_staff' },
-    { name: 'BUSINESS_MANAGER', roleKey: 'business_manager' }
+    { name: 'SYSTEM_ADMIN', roleKey: 'ADMIN' },
+    { name: 'SALES_MANAGER', roleKey: 'SALES_MANAGER' },
+    { name: 'SALES_REP', roleKey: 'SALES_REP' },
+    { name: 'PROJECT_MANAGER', roleKey: 'PROJECT_MANAGER' },
+    { name: 'FINANCE_SPECIALIST', roleKey: 'FINANCE_SPECIALIST' },
+    { name: 'EMPLOYEE', roleKey: 'EMPLOYEE' },
+    { name: 'TECH_STAFF', roleKey: 'TECH_STAFF' },
+    { name: 'BUSINESS_MANAGER', roleKey: 'BUSINESS_MANAGER' }
   ]
   
   for (const mapping of roleMappings) {

@@ -61,15 +61,6 @@ api.interceptors.response.use(
 export const login = (data: { username: string; password: string }) =>
   api.post('/auth/login', data)
 
-// 销售
-export const getSales = (params?: any) => api.get('/sales', { params })
-export const getSaleDetail = (id: number) => api.get(`/sales/${id}`)
-export const createSale = (data: any) => api.post('/sales', data)
-export const updateSale = (id: number, data: any) => api.put(`/sales/${id}`, data)
-export const deleteSale = (id: number) => api.delete(`/sales/${id}`)
-export const getSalesStats = () => api.get('/sales/stats/overview')
-export const exportSales = () => api.get('/sales/export/csv', { responseType: 'blob' })
-
 // 项目
 export const getProjects = (params?: any) => api.get('/projects', { params })
 export const getProjectDetail = (id: number) => api.get(`/projects/${id}`)
@@ -114,20 +105,20 @@ export const deleteOrderItemFile = (itemId: number, fileId: number) => api.delet
 export const downloadOrderItemFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-order-items/files/${fileId}/download`
 export const previewOrderItemFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-order-items/files/${fileId}/preview`
 
-// 合同付款记录
-export const getPayments = (contractId: number) => api.get('/contract-payments', { params: { contractId } })
-export const createPayment = (data: any) => api.post('/contract-payments', data)
-export const updatePayment = (id: number, data: any) => api.put(`/contract-payments/${id}`, data)
-export const deletePayment = (id: number) => api.delete(`/contract-payments/${id}`)
-export const uploadPaymentFiles = (paymentId: number, files: FileList) => {
+// 合同回款记录
+export const getReceipts = (contractId: number) => api.get('/contract-receipts', { params: { contractId } })
+export const createReceipt = (data: any) => api.post('/contract-receipts', data)
+export const updateReceipt = (id: number, data: any) => api.put(`/contract-receipts/${id}`, data)
+export const deleteReceipt = (id: number) => api.delete(`/contract-receipts/${id}`)
+export const uploadReceiptFiles = (receiptId: number, files: FileList) => {
   const formData = new FormData()
   for (let i = 0; i < files.length; i++) { formData.append('files', files[i]) }
-  return api.post(`/contract-payments/${paymentId}/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  return api.post(`/contract-receipts/${receiptId}/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 }
-export const getPaymentFiles = (paymentId: number) => api.get(`/contract-payments/${paymentId}/files`)
-export const deletePaymentFile = (paymentId: number, fileId: number) => api.delete(`/contract-payments/${paymentId}/files/${fileId}`)
-export const downloadPaymentFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-payments/files/${fileId}/download`
-export const previewPaymentFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-payments/files/${fileId}/preview`
+export const getReceiptFiles = (receiptId: number) => api.get(`/contract-receipts/${receiptId}/files`)
+export const deleteReceiptFile = (receiptId: number, fileId: number) => api.delete(`/contract-receipts/${receiptId}/files/${fileId}`)
+export const downloadReceiptFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-receipts/files/${fileId}/download`
+export const previewReceiptFileUrl = (fileId: number) => `${api.defaults.baseURL}/contract-receipts/files/${fileId}/preview`
 
 // 合同发货记录
 export const getShipments = (contractId: number) => api.get('/contract-shipments', { params: { contractId } })
@@ -443,7 +434,6 @@ export const markAllNotificationsRead = () => api.put('/notifications/read-all')
 // ==================== 导出(Excel) ====================
 export const exportProjectsExcel = () => api.get('/projects/export/excel', { responseType: 'blob' })
 export const exportOpportunitiesExcel = () => api.get('/opportunities/export/excel', { responseType: 'blob' })
-export const exportSalesExcel = () => api.get('/sales/export/excel', { responseType: 'blob' })
 export const exportContractsExcel = () => api.get('/contracts/export/excel', { responseType: 'blob' })
 export const exportQuotationsExcel = () => api.get('/quotations/export/excel', { responseType: 'blob' })
 export const exportBusinessTripsExcel = () => api.get('/business-trips/export/excel', { responseType: 'blob' })

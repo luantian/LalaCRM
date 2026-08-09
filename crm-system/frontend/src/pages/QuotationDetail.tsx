@@ -134,7 +134,7 @@ const QuotationDetail: React.FC = () => {
           )},
           { key: 'files', label: `附件 (${quotation.files?.length || 0})`, children: (
             <div>
-              <Upload beforeUpload={handleFileUpload} showUploadList={false} accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.png">
+              <Upload beforeUpload={handleFileUpload} showUploadList={false}>
                 <Button icon={<UploadOutlined />} type="primary" style={{ marginBottom: 16 }}>上传附件（报价单/方案书等）</Button>
               </Upload>
               <Table columns={fileColumns} dataSource={quotation.files || []} rowKey="id" pagination={false} />

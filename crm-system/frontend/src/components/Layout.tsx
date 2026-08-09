@@ -227,7 +227,7 @@ function Layout() {
       .sort((a, b) => a.order - b.order)
       .map(menu => {
         const menuItem: any = {
-          key: menu.parentId ? `/${menu.key}` : (menu.key === 'dashboard' ? '/' : `/${menu.key}`),
+          key: menu.path || (menu.parentId ? `/${menu.key}` : (menu.key === 'dashboard' ? '/' : `/${menu.key}`)),
           icon: renderIcon(menu.icon),
           label: menu.label
         }
@@ -339,7 +339,7 @@ function Layout() {
           mode="inline"
           items={menuItems}
           onClick={handleMenuClick}
-          selectedKeys={[location.pathname === '/' ? '/' : '/' + location.pathname.split('/').filter(Boolean)[0]]}
+          selectedKeys={[location.pathname === '/' ? '/' : location.pathname]}
           defaultOpenKeys={menus.filter(m => m.parentId === null && menus.some(c => c.parentId === m.id)).map(m => `/${m.key}`)}
           style={{
             borderRight: 0,

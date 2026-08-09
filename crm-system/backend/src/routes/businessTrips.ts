@@ -168,6 +168,11 @@ router.post('/', authenticateToken, checkPermission('office:trip:add'), logOpera
       notes
     } = req.body
 
+    // 必填字段校验
+    if (!title || !destination || !startDate || !endDate || !purpose) {
+      return res.status(400).json({ error: '出差标题、目的地、开始日期、结束日期和目的不能为空' })
+    }
+
     const trip = await prisma.businessTrip.create({
       data: {
         title,

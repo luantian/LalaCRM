@@ -42,6 +42,9 @@ const fileFilter = (req: any, file: any, cb: any) => {
   // 解码文件名
   file.originalname = decodeFileName(file.originalname);
 
+  // 调试日志：打印浏览器发送的 MIME 类型
+  console.log('[Upload Debug] File:', file.originalname, 'MIME:', file.mimetype);
+
   // 允许的文件类型（扩展支持更多常见格式）
   const allowedTypes = [
     // 文档
@@ -64,8 +67,14 @@ const fileFilter = (req: any, file: any, cb: any) => {
     'application/json',
     // 压缩包
     'application/zip',
+    'application/x-zip-compressed',
+    'application/x-zip',
+    'application/x-compressed',
     'application/x-rar-compressed',
+    'application/x-rar',
+    'application/rar',
     'application/x-7z-compressed',
+    'application/x-7z',
   ];
 
   if (allowedTypes.includes(file.mimetype)) {

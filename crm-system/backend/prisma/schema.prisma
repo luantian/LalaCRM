@@ -21,7 +21,6 @@ model User {
   updatedAt DateTime @updatedAt
   deptId    Int?     // 所属部门
   dept      Department? @relation(fields: [deptId], references: [id])
-  sales     Sale[]
   // 删除旧的 Customer 关联
   projects  Project[]
   contracts Contract[]
@@ -117,7 +116,6 @@ model Organization {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   contacts    OrgContact[] // 联系人
-  sales       Sale[]       // 销售记录
   projects    Project[]    // 项目
   contracts   Contract[]   // 合同
   businessTrips BusinessTrip[] // 出差
@@ -154,7 +152,6 @@ model OrgContact {
   businessTrips   BusinessTrip[]   // 出差拜访对象
   invoices        Invoice[]        // 发票联系人
   quotations      Quotation[]      // 报价联系人
-  sales           Sale[]           // 销售对接人
   expenses        Expense[]        // 费用联系人
 
   @@index([organizationId])
@@ -163,35 +160,6 @@ model OrgContact {
 // 删除旧的 Customer 相关模型
 // Customer, CustomerContact, CustomerFollowUp 已移除
 // 所有关联已迁移到 Organization
-
-// 销售记录表（增强版）
-model Sale {
-  id             Int          @id @default(autoincrement())
-  organizationId Int?         // 暂时设为可选，用于数据迁移
-  organization   Organization? @relation(fields: [organizationId], references: [id])
-  contactId      Int?         // 交易对接人（客户联系人）
-  contact        OrgContact?  @relation(fields: [contactId], references: [id])
-  projectId      Int?         // 关联项目
-  project        Project?     @relation(fields: [projectId], references: [id])
-  contractId     Int?         // 关联合同
-  contract       Contract?    @relation(fields: [contractId], references: [id])
-  type           SaleType     // IN: 收入, OUT: 支出
-  category       String       // 分类：产品销售、服务收入、出差费、住宿费、交通费、招待费等
-  amount         Decimal      @db.Decimal(12, 2)
-  description    String?      // 描述
-  date           DateTime     // 销售日期
-  ownerId        Int          // 负责人ID
-  owner          User         @relation(fields: [ownerId], references: [id])
-  deletedAt      DateTime?    // 软删除标记
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  @@index([organizationId])
-  @@index([type])
-  @@index([date])
-  @@index([ownerId])
-  @@index([createdAt])
-}
 
 // 项目表
 model Project {
@@ -218,7 +186,6 @@ model Project {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   contracts       Contract[]
-  sales           Sale[]
   businessTrips   BusinessTrip[]
   expenses        Expense[]
   files           ProjectFile[]    // 项目文件
@@ -257,10 +224,9 @@ model Contract {
   deletedAt   DateTime? // 软删除标记
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  sales       Sale[]
   files       ContractFile[] // 合同文件
   orderItems  ContractOrderItem[]  // 订货明细
-  payments    ContractPayment[]    // 付款记录
+  receipts    ContractReceipt[]    // 回款记录
   shipments   ContractShipment[]   // 发货记录
   procurements Procurement[]       // 关联采购
   invoices     Invoice[]           // 发票
@@ -321,29 +287,29 @@ model ContractOrderItemFile {
   uploadedAt DateTime @default(now()) // 上传时间
 }
 
-// 合同付款记录表
-model ContractPayment {
+// 合同回款记录表
+model ContractReceipt {
   id          Int      @id @default(autoincrement())
   contractId  Int
   contract    Contract @relation(fields: [contractId], references: [id])
-  amount      Decimal  @db.Decimal(12, 2) // 付款金额
-  paymentDate DateTime // 付款日期
+  amount      Decimal  @db.Decimal(12, 2) // 回款金额
+  receiptDate DateTime // 回款日期
   paymentMethod String? // 付款方式（银行转账/支票/现金等）
-  paymentType PaymentType @default(PROGRESS) // 付款类型
-  status      PaymentStatus @default(PENDING) // 付款状态
+  paymentType PaymentType @default(PROGRESS) // 回款类型
+  status      PaymentStatus @default(PENDING) // 回款状态
   invoiceNo   String?  // 发票号
   remarks     String?  // 备注
   deletedAt   DateTime? // 软删除标记
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  files       ContractPaymentFile[] // 付款记录附件
+  files       ContractReceiptFile[] // 回款记录附件
 }
 
-// 付款记录附件表
-model ContractPaymentFile {
+// 回款记录附件表
+model ContractReceiptFile {
   id         Int             @id @default(autoincrement())
-  paymentId  Int
-  payment    ContractPayment @relation(fields: [paymentId], references: [id])
+  receiptId  Int
+  receipt    ContractReceipt @relation(fields: [receiptId], references: [id])
   fileName   String   // 原始文件名
   filePath   String   // 文件存储路径
   fileSize   Int      // 文件大小（字节）
@@ -1150,11 +1116,7 @@ enum Role {
 }
 
 // CustomerStatus 和 FollowUpType 已移除（旧客户系统）
-
-enum SaleType {
-  IN   // 收入
-  OUT  // 支出
-}
+// SaleType 和 Sale 模型已移除（与 ContractPayment 功能重复）
 
 enum ProjectStatus {
   IN_PROGRESS // 进行中
@@ -1688,7 +1650,7 @@ enum CheckInType {
 enum OrgType {
   GROUP       // 集团
   COMPANY     // 企业
-  BRANCH      // 个人
+  BRANCH      // 分公司
 }
 
 enum OrgStatus {

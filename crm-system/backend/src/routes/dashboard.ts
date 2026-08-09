@@ -17,34 +17,22 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
     // 统一时间基准，避免跨午夜不一致
     const now = new Date()
 
-    // 1. 基础概览统计（使用聚合查询优化性能）
+    // 1. 基础概览统计
     const [
       totalOrganizations,
       organizationStats,
-      salesAgg,
       activeProjects,
       activeContracts,
       totalOpportunities,
-      opportunityStats
+      opportunityStats,
+      // 回款统计（替代原来的Sale表）
+      receiptStats
     ] = await Promise.all([
       prisma.organization.count({ where: { deletedAt: null, status: { not: 'INACTIVE' }, ...dataScopeWhere } }),
       prisma.organization.groupBy({
         by: ['status'],
         where: { deletedAt: null, ...dataScopeWhere },
         _count: { id: true }
-      }),
-      prisma.sale.aggregate({
-        _sum: { amount: true },
-        where: { deletedAt: null, ...dataScopeWhere }
-      }).then(async agg => {
-        const [incomeAgg, expenseAgg] = await Promise.all([
-          prisma.sale.aggregate({ _sum: { amount: true }, where: { deletedAt: null, type: 'IN', ...dataScopeWhere } }),
-          prisma.sale.aggregate({ _sum: { amount: true }, where: { deletedAt: null, type: 'OUT', ...dataScopeWhere } })
-        ])
-        return {
-          totalIncome: Number(incomeAgg._sum.amount || 0),
-          totalExpense: Number(expenseAgg._sum.amount || 0)
-        }
       }),
       prisma.project.count({ where: { deletedAt: null, status: 'IN_PROGRESS', ...dataScopeWhere } }),
       prisma.contract.count({ where: { deletedAt: null, status: 'ACTIVE', ...dataScopeWhere } }),
@@ -54,6 +42,10 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
         where: { deletedAt: null, ...dataScopeWhere },
         _count: { id: true },
         _sum: { budget: true }
+      }),
+      prisma.contractReceipt.aggregate({
+        _sum: { amount: true },
+        where: { deletedAt: null, status: { in: ['CONFIRMED', 'RECEIVED'] }, contract: { deletedAt: null } }
       })
     ])
 
@@ -69,44 +61,38 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
       totalBudget += Number(s._sum.budget || 0)
     })
 
-    // 2. 销售趋势（使用groupBy优化，最近12个月）
+    // 2. 合同回款趋势（最近12个月）
     const twelveMonthsAgo = new Date(now)
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12)
 
-    const trendSales = await prisma.sale.findMany({
-      where: { deletedAt: null, date: { gte: twelveMonthsAgo }, ...dataScopeWhere },
-      select: { type: true, amount: true, date: true }
+    const recentReceipts = await prisma.contractReceipt.findMany({
+      where: { deletedAt: null, receiptDate: { gte: twelveMonthsAgo }, contract: { deletedAt: null } },
+      select: { amount: true, receiptDate: true, status: true }
     })
 
-    const salesTrend: Record<string, { income: number; expense: number }> = {}
-    trendSales.forEach(sale => {
-      const month = sale.date.toISOString().slice(0, 7)
-      if (!salesTrend[month]) salesTrend[month] = { income: 0, expense: 0 }
-      if (sale.type === 'IN') salesTrend[month].income += Number(sale.amount)
-      else salesTrend[month].expense += Number(sale.amount)
+    const receiptTrend: Record<string, number> = {}
+    recentReceipts.forEach(r => {
+      const month = r.receiptDate.toISOString().slice(0, 7)
+      if (!receiptTrend[month]) receiptTrend[month] = 0
+      receiptTrend[month] += Number(r.amount)
     })
 
-    const monthlyData = Object.entries(salesTrend)
-      .map(([month, data]) => ({
+    const monthlyData = Object.entries(receiptTrend)
+      .map(([month, amount]) => ({
         month,
-        ...data,
-        profit: data.income - data.expense
+        receiptAmount: amount
       }))
       .sort((a, b) => a.month.localeCompare(b.month))
 
-    // 3. 本月业绩
+    // 3. 本月统计
     const monthStart = new Date(now)
     monthStart.setDate(1)
     monthStart.setHours(0, 0, 0, 0)
 
-    const [monthIncome, monthExpense, monthNewOrganizations, monthNewOpportunities] = await Promise.all([
-      prisma.sale.aggregate({
+    const [monthReceiptAmount, monthNewOrganizations, monthNewOpportunities] = await Promise.all([
+      prisma.contractReceipt.aggregate({
         _sum: { amount: true },
-        where: { deletedAt: null, type: 'IN', date: { gte: monthStart }, ...dataScopeWhere }
-      }),
-      prisma.sale.aggregate({
-        _sum: { amount: true },
-        where: { deletedAt: null, type: 'OUT', date: { gte: monthStart }, ...dataScopeWhere }
+        where: { deletedAt: null, receiptDate: { gte: monthStart }, contract: { deletedAt: null } }
       }),
       prisma.organization.count({ where: { deletedAt: null, createdAt: { gte: monthStart }, ...dataScopeWhere } }),
       prisma.opportunity.count({ where: { deletedAt: null, createdAt: { gte: monthStart }, ...dataScopeWhere } })
@@ -147,13 +133,7 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
       take: 10
     })
 
-    // 6. 跟进提醒（只查自己的）
-    const today = new Date(now)
-    today.setHours(0, 0, 0, 0)
-    const threeDaysLater = new Date(now)
-    threeDaysLater.setDate(threeDaysLater.getDate() + 3)
-
-    // 6. 跟进提醒（组织跟进功能已移除）
+    // 6. 跟进提醒
     const followUpReminders: any[] = []
 
     // 7. 项目进度概览
@@ -166,18 +146,12 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
     projectStats.forEach(s => { projectStatusMap[s.status] = s._count.id })
 
     // 8. 最新数据
-    const [recentOrganizations, recentSales, recentOpportunities] = await Promise.all([
+    const [recentOrganizations, recentOpportunities] = await Promise.all([
       prisma.organization.findMany({
         where: { deletedAt: null, ...dataScopeWhere },
         take: 5,
         orderBy: { createdAt: 'desc' },
         select: { id: true, name: true, type: true, createdAt: true, status: true }
-      }),
-      prisma.sale.findMany({
-        where: { deletedAt: null, ...dataScopeWhere },
-        take: 5,
-        orderBy: { date: 'desc' },
-        select: { id: true, type: true, amount: true, date: true, organization: { select: { name: true } } }
       }),
       prisma.opportunity.findMany({
         where: { deletedAt: null, ...dataScopeWhere },
@@ -190,19 +164,14 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
     res.json({
       overview: {
         totalOrganizations,
-        totalIncome: salesAgg.totalIncome,
-        totalExpense: salesAgg.totalExpense,
-        netIncome: salesAgg.totalIncome - salesAgg.totalExpense,
+        totalReceiptAmount: Number(receiptStats._sum.amount || 0),
         activeProjects,
         activeContracts,
-        totalSales: trendSales.length,
         totalOpportunities,
         totalBudget
       },
       monthly: {
-        income: Number(monthIncome._sum.amount || 0),
-        expense: Number(monthExpense._sum.amount || 0),
-        profit: Number(monthIncome._sum.amount || 0) - Number(monthExpense._sum.amount || 0),
+        receiptAmount: Number(monthReceiptAmount._sum.amount || 0),
         newOrganizations: monthNewOrganizations,
         newOpportunities: monthNewOpportunities
       },
@@ -237,7 +206,6 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
       monthlyData,
       recent: {
         organizations: recentOrganizations,
-        sales: recentSales,
         opportunities: recentOpportunities
       }
     })

@@ -81,25 +81,17 @@ router.get('/:projectId/summary', authenticateToken, async (req: AuthRequest, re
 
     // ===== 收入项 =====
 
-    // 合同收款（客户付给我们的钱，只统计已确认收款状态：RECEIVED 或 CONFIRMED）
-    const contractPaymentResult = await prisma.contractPayment.aggregate({
+    // 合同回款（客户付给我们的钱，只统计已确认收款状态：RECEIVED 或 CONFIRMED）
+    const contractReceiptResult = await prisma.contractReceipt.aggregate({
       where: { deletedAt: null, status: { in: ['RECEIVED', 'CONFIRMED'] }, contract: { deletedAt: null, projectId: pid } },
       _sum: { amount: true },
       _count: true,
     });
 
-    // 销售收入（Sale 表中 type=IN 的记录）
-    const saleIncomeResult = await prisma.sale.aggregate({
-      where: { deletedAt: null, project: { deletedAt: null, id: pid }, type: 'IN' },
-      _sum: { amount: true },
-      _count: true,
-    });
-
-    const contractPaymentTotal = Number(contractPaymentResult._sum.amount ?? 0);
-    const saleIncomeTotal = Number(saleIncomeResult._sum.amount ?? 0);
+    const contractReceiptTotal = Number(contractReceiptResult._sum.amount ?? 0);
 
     // 收入合计
-    const totalIncome = contractPaymentTotal + saleIncomeTotal;
+    const totalIncome = contractReceiptTotal;
 
     // 项目预算
     const totalBudget = Number(project.budget ?? 0);
@@ -110,13 +102,9 @@ router.get('/:projectId/summary', authenticateToken, async (req: AuthRequest, re
       totalBudget,
       // 收入
       income: {
-        contractPayments: {
-          total: contractPaymentTotal,
-          count: contractPaymentResult._count,
-        },
-        saleIncome: {
-          total: saleIncomeTotal,
-          count: saleIncomeResult._count,
+        contractReceipts: {
+          total: contractReceiptTotal,
+          count: contractReceiptResult._count,
         },
         total: totalIncome,
       },

@@ -127,7 +127,7 @@ async function main() {
     create: {
       id: 1,
       name: 'ADMIN',
-      roleKey: 'admin',
+      roleKey: 'ADMIN',
       displayName: '管理员',
       description: '系统管理员，拥有所有权限',
       permissions: [],

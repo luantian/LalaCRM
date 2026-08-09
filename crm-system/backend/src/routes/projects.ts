@@ -37,7 +37,7 @@ async function getProjectScopeWhere(userId: number, userRole: string): Promise<a
 }
 
 // 获取所有项目（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('project:project:list'), sortValidation(['name', 'status', 'budget', 'startDate', 'endDate', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('project:project:list'), sortValidation(['name', 'status', 'budget', 'startDate', 'endDate', 'createdAt', 'updatedAt', 'archivedAt']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -107,7 +107,7 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), sort
             where: { deletedAt: null },
             select: {
               amount: true,
-              payments: { where: { deletedAt: null }, select: { amount: true, status: true } }
+              receipts: { where: { deletedAt: null }, select: { amount: true, status: true } }
             }
           },
           _count: { select: { contracts: { where: { deletedAt: null } } } }
@@ -117,11 +117,11 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), sort
 
       const paidProjects = allProjects.filter(p => {
         if (!p.contracts.length) return false
-        const totalContractAmount = p.contracts.reduce((sum, c) => sum + Number(c.amount), 0)
-        const totalReceived = p.contracts.reduce((sum, c) => {
-          const received = c.payments
-            .filter(pay => pay.status === 'RECEIVED' || pay.status === 'CONFIRMED')
-            .reduce((s, pay) => s + Number(pay.amount), 0)
+        const totalContractAmount = p.contracts.reduce((sum: number, c: any) => sum + Number(c.amount), 0)
+        const totalReceived = p.contracts.reduce((sum: number, c: any) => {
+          const received = c.receipts
+            .filter((pay: any) => pay.status === 'RECEIVED' || pay.status === 'CONFIRMED')
+            .reduce((s: number, pay: any) => s + Number(pay.amount), 0)
           return sum + received
         }, 0)
         return totalReceived >= totalContractAmount && totalContractAmount > 0
@@ -241,7 +241,7 @@ router.get('/:id', authenticateToken, checkPermission('project:project:list'), a
                 }
               }
             },
-            payments: {
+            receipts: {
               where: { deletedAt: null },
               include: {
                 files: {
@@ -329,6 +329,15 @@ router.put('/:id', authenticateToken, checkPermission('project:project:edit'), l
     const id = req.params.id as string
     const { name, projectNo, organizationId, contactId, status, budget, startDate, endDate, description } = req.body
 
+    // 归档保护检查：已归档项目不能编辑
+    const currentProject = await prisma.project.findFirst({ where: { id: parseInt(id), deletedAt: null } })
+    if (!currentProject) {
+      return res.status(404).json({ error: '项目不存在' })
+    }
+    if (currentProject.isArchived) {
+      return res.status(403).json({ error: '已归档项目不能编辑' })
+    }
+
     // 项目状态流转规则
     const validTransitions: Record<string, string[]> = {
       'IN_PROGRESS': ['COMPLETED', 'CANCELLED'],
@@ -338,11 +347,6 @@ router.put('/:id', authenticateToken, checkPermission('project:project:edit'), l
 
     // 如果请求中包含状态变更，验证状态流转是否合法
     if (status) {
-      const currentProject = await prisma.project.findFirst({ where: { id: parseInt(id), deletedAt: null } })
-      if (!currentProject) {
-        return res.status(404).json({ error: '项目不存在' })
-      }
-
       if (status !== currentProject.status) {
         const allowedNext = validTransitions[currentProject.status] || []
         if (!allowedNext.includes(status)) {
@@ -488,7 +492,6 @@ router.delete('/:id', authenticateToken, checkPermission('project:project:edit')
     await prisma.dailyReport.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
     await prisma.dailyReportItem.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
     await prisma.dailyReportTimeEntry.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
-    await prisma.sale.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
 
     res.json({ message: '删除成功' })
   } catch (error) {
@@ -693,12 +696,34 @@ router.get('/:id/team', authenticateToken, checkPermission('project:project:list
     const members = await prisma.projectTeamMember.findMany({
       where: { projectId, deletedAt: null },
       include: {
-        user: { select: { id: true, name: true, email: true, role: true } }
+        user: {
+          select: {
+            id: true, name: true, email: true, role: true,
+            userRoles: {
+              include: { role: { select: { id: true, name: true, displayName: true, roleKey: true } } }
+            }
+          }
+        }
       },
       orderBy: { joinDate: 'desc' }
     })
 
-    res.json(members)
+    // 将用户角色信息附加到返回数据中
+    const result = members.map((m: any) => {
+      const userRoles = m.user?.userRoles || []
+      return {
+        ...m,
+        user: {
+          id: m.user.id,
+          name: m.user.name,
+          email: m.user.email,
+          role: m.user.role,
+          roles: userRoles.map((ur: any) => ur.role)
+        }
+      }
+    })
+
+    res.json(result)
   } catch (error) {
     logger.error('Get project team error:', error)
     res.status(500).json({ error: '获取团队成员失败' })

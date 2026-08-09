@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Empty, Popconfirm, Dropdown, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getOrganizationsSimple, exportProjectsCsv, exportProjectsExcel, importProjects } from '../services/api'
@@ -9,6 +9,8 @@ import { OrgContactSelector } from '../components/OrgContactSelector'
 
 function ProjectList() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const isArchivePage = location.pathname === '/projects/archived'
   const [projects, setProjects] = useState<any[]>([])
   const [organizations, setOrganizations] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -26,7 +28,7 @@ function ProjectList() {
   const [searchText, setSearchText] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('')
   const [filterOrgId, setFilterOrgId] = useState<number | null>(null)
-  const [filterArchived, setFilterArchived] = useState<string>('false')
+  const [filterArchived, setFilterArchived] = useState<string>(isArchivePage ? 'true' : 'false')
   const [filterFullyPaid, setFilterFullyPaid] = useState<string>('')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [importModalVisible, setImportModalVisible] = useState(false)
@@ -52,7 +54,12 @@ function ProjectList() {
         pageSize, 
         sortBy: 'createdAt', 
         sortOrder: 'desc',
-        statusNot: 'COMPLETED' // 默认排除已完成的项目，已完成的在项目归档中显示
+      }
+      // 归档页面：显示所有已归档项目（包含已完成）；普通页面：默认排除已完成
+      if (isArchivePage) {
+        params.isArchived = 'true'
+      } else {
+        params.statusNot = 'COMPLETED'
       }
       if (searchTextRef.current.trim()) {
         params.search = searchTextRef.current.trim()
@@ -62,7 +69,7 @@ function ProjectList() {
         delete params.statusNot // 用户手动选择了状态，取消默认排除
       }
       if (filterOrgIdRef.current) params.organizationId = String(filterOrgIdRef.current)
-      if (filterArchivedRef.current) params.isArchived = filterArchivedRef.current
+      if (!isArchivePage && filterArchivedRef.current) params.isArchived = filterArchivedRef.current
       if (filterFullyPaidRef.current) params.fullyPaid = filterFullyPaidRef.current
       const response: any = await getProjects(params)
       setProjects(response.data || [])
@@ -121,7 +128,7 @@ function ProjectList() {
     setSearchText('')
     setFilterStatus('')
     setFilterOrgId(null)
-    setFilterArchived('false')
+    setFilterArchived(isArchivePage ? 'true' : 'false')
     setFilterFullyPaid('')
     setRefreshTrigger(prev => prev + 1)
   }
@@ -295,7 +302,9 @@ function ProjectList() {
     <div>
       {/* 标题 */}
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e293b', margin: 0 }}>项目管理</h2>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e293b', margin: 0 }}>
+          {isArchivePage ? '项目归档' : '项目管理'}
+        </h2>
       </div>
 
       {/* 统计信息 */}

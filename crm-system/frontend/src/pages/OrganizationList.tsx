@@ -763,20 +763,7 @@ function OrganizationList() {
             </Col>
             <Col span={12}>
               <Form.Item name="department" label="部门">
-                <Select placeholder="请选择部门" allowClear showSearch optionFilterProp="children">
-                  <Select.Option value="销售部">销售部</Select.Option>
-                  <Select.Option value="市场部">市场部</Select.Option>
-                  <Select.Option value="技术部">技术部</Select.Option>
-                  <Select.Option value="财务部">财务部</Select.Option>
-                  <Select.Option value="人事部">人事部</Select.Option>
-                  <Select.Option value="采购部">采购部</Select.Option>
-                  <Select.Option value="生产部">生产部</Select.Option>
-                  <Select.Option value="质量部">质量部</Select.Option>
-                  <Select.Option value="物流部">物流部</Select.Option>
-                  <Select.Option value="客服部">客服部</Select.Option>
-                  <Select.Option value="总经理办公室">总经理办公室</Select.Option>
-                  <Select.Option value="其他">其他</Select.Option>
-                </Select>
+                <Input placeholder="请输入部门" />
               </Form.Item>
             </Col>
           </Row>

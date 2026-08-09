@@ -11,11 +11,10 @@ import authRoutes from './routes/auth'
 import userRoutes from './routes/users'
 import roleRoutes from './routes/roles'
 import menuRoutes from './routes/menus'
-import saleRoutes from './routes/sales'
 import projectRoutes from './routes/projects'
 import contractRoutes from './routes/contracts'
 import contractOrderItemRoutes from './routes/contractOrderItems'
-import contractPaymentRoutes from './routes/contractPayments'
+import contractReceiptRoutes from './routes/contractReceipts'
 import contractShipmentRoutes from './routes/contractShipments'
 import expenseFileRoutes from './routes/expenseFiles'
 import businessTripRoutes from './routes/businessTrips'
@@ -99,11 +98,10 @@ app.use('/api/auth', authRoutes)
 app.use('/api/users', userRoutes)
 app.use('/api/roles', roleRoutes)
 app.use('/api/menus', menuRoutes)
-app.use('/api/sales', saleRoutes)
 app.use('/api/projects', projectRoutes)
 app.use('/api/contracts', contractRoutes)
 app.use('/api/contract-order-items', contractOrderItemRoutes)
-app.use('/api/contract-payments', contractPaymentRoutes)
+app.use('/api/contract-receipts', contractReceiptRoutes)
 app.use('/api/contract-shipments', contractShipmentRoutes)
 app.use('/api/expense-files', expenseFileRoutes)
 app.use('/api/business-trips', businessTripRoutes)

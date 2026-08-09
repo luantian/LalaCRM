@@ -13,7 +13,7 @@ import { checkContractProjectArchived } from '../utils/archive'
 const router = Router()
 const prisma = new PrismaClient()
 
-// 获取合同付款记录列表
+// 获取合同回款记录列表
 router.get('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const contractId = parseInt(req.query.contractId as string)
@@ -21,38 +21,38 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: '缺少合同ID' })
     }
 
-    const payments = await prisma.contractPayment.findMany({
+    const receipts = await prisma.contractReceipt.findMany({
       where: { contractId, deletedAt: null },
       include: {
         files: { where: { deletedAt: null }, orderBy: { uploadedAt: 'desc' } }
       },
-      orderBy: { paymentDate: 'desc' }
+      orderBy: { receiptDate: 'desc' }
     })
 
     // 计算汇总
-    const totalPaid = payments
-      .filter(p => p.status === 'RECEIVED' || p.status === 'CONFIRMED')
-      .reduce((sum, p) => sum + Number(p.amount), 0)
+    const totalReceived = receipts
+      .filter(r => r.status === 'RECEIVED' || r.status === 'CONFIRMED')
+      .reduce((sum, r) => sum + Number(r.amount), 0)
 
     res.json({
-      data: payments,
+      data: receipts,
       summary: {
-        totalPaid,
-        paymentCount: payments.length
+        totalReceived,
+        receiptCount: receipts.length
       }
     })
   } catch (error) {
-    logger.error('Get payments error:', error)
-    res.status(500).json({ error: '获取付款记录失败' })
+    logger.error('Get receipts error:', error)
+    res.status(500).json({ error: '获取回款记录失败' })
   }
 })
 
-// 创建付款记录
-router.post('/', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同付款', 'CREATE'), async (req: AuthRequest, res) => {
+// 创建回款记录
+router.post('/', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同回款', 'CREATE'), async (req: AuthRequest, res) => {
   try {
-    const { contractId, amount, paymentDate, paymentMethod, paymentType, status, invoiceNo, remarks } = req.body
+    const { contractId, amount, receiptDate, paymentMethod, paymentType, status, invoiceNo, remarks } = req.body
 
-    if (!contractId || !amount || !paymentDate) {
+    if (!contractId || !amount || !receiptDate) {
       return res.status(400).json({ error: '缺少必填字段' })
     }
 
@@ -62,22 +62,22 @@ router.post('/', authenticateToken, checkPermission('project:contract:edit'), lo
       return res.status(404).json({ error: '合同不存在' })
     }
     if (contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
-      return res.status(403).json({ error: '无权操作此合同的付款记录' })
+      return res.status(403).json({ error: '无权操作此合同的回款记录' })
     }
 
     // 检查项目是否已归档
     if (contract.projectId) {
       const isArchived = await checkContractProjectArchived(contractId)
       if (isArchived) {
-        return res.status(403).json({ error: '项目已归档，无法创建付款记录' })
+        return res.status(403).json({ error: '项目已归档，无法创建回款记录' })
       }
     }
 
-    const payment = await prisma.contractPayment.create({
+    const receipt = await prisma.contractReceipt.create({
       data: {
         contractId,
         amount,
-        paymentDate: new Date(paymentDate),
+        receiptDate: new Date(receiptDate),
         paymentMethod,
         paymentType: paymentType || 'PROGRESS',
         status: status || 'PENDING',
@@ -86,43 +86,43 @@ router.post('/', authenticateToken, checkPermission('project:contract:edit'), lo
       }
     })
 
-    res.status(201).json(payment)
+    res.status(201).json(receipt)
   } catch (error) {
-    logger.error('Create payment error:', error)
-    res.status(500).json({ error: '创建付款记录失败' })
+    logger.error('Create receipt error:', error)
+    res.status(500).json({ error: '创建回款记录失败' })
   }
 })
 
-// 更新付款记录
-router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同付款', 'UPDATE'), async (req: AuthRequest, res) => {
+// 更新回款记录
+router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同回款', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
-    const { amount, paymentDate, paymentMethod, paymentType, status, invoiceNo, remarks } = req.body
+    const { amount, receiptDate, paymentMethod, paymentType, status, invoiceNo, remarks } = req.body
 
-    const existing = await prisma.contractPayment.findFirst({
+    const existing = await prisma.contractReceipt.findFirst({
       where: { id, deletedAt: null },
       include: { contract: { select: { ownerId: true, projectId: true } } }
     })
     if (!existing) {
-      return res.status(404).json({ error: '付款记录不存在' })
+      return res.status(404).json({ error: '回款记录不存在' })
     }
     if (existing.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
-      return res.status(403).json({ error: '无权操作此付款记录' })
+      return res.status(403).json({ error: '无权操作此回款记录' })
     }
 
     // 检查项目是否已归档
     if (existing.contract.projectId) {
       const isArchived = await checkContractProjectArchived(existing.contractId)
       if (isArchived) {
-        return res.status(403).json({ error: '项目已归档，无法更新付款记录' })
+        return res.status(403).json({ error: '项目已归档，无法更新回款记录' })
       }
     }
 
-    const payment = await prisma.contractPayment.update({
+    const receipt = await prisma.contractReceipt.update({
       where: { id },
       data: {
         amount,
-        paymentDate: paymentDate ? new Date(paymentDate) : undefined,
+        receiptDate: receiptDate ? new Date(receiptDate) : undefined,
         paymentMethod,
         paymentType,
         status,
@@ -131,34 +131,34 @@ router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), 
       }
     })
 
-    res.json(payment)
+    res.json(receipt)
   } catch (error) {
-    logger.error('Update payment error:', error)
-    res.status(500).json({ error: '更新付款记录失败' })
+    logger.error('Update receipt error:', error)
+    res.status(500).json({ error: '更新回款记录失败' })
   }
 })
 
-// 上传付款记录附件
-router.post('/:id/files', authenticateToken, checkPermission('project:contract:edit'), upload.array('files', 10), logOperation('合同付款', 'UPLOAD'), async (req: AuthRequest, res) => {
+// 上传回款记录附件
+router.post('/:id/files', authenticateToken, checkPermission('project:contract:edit'), upload.array('files', 10), logOperation('合同回款', 'UPLOAD'), async (req: AuthRequest, res) => {
   try {
-    const paymentId = parseInt(req.params.id as string)
+    const receiptId = parseInt(req.params.id as string)
     const files = req.files as Express.Multer.File[]
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: '请选择文件' })
     }
 
-    const payment = await prisma.contractPayment.findFirst({ 
-      where: { id: paymentId, deletedAt: null },
+    const receipt = await prisma.contractReceipt.findFirst({ 
+      where: { id: receiptId, deletedAt: null },
       include: { contract: { select: { projectId: true } } }
     })
-    if (!payment) {
-      return res.status(404).json({ error: '付款记录不存在' })
+    if (!receipt) {
+      return res.status(404).json({ error: '回款记录不存在' })
     }
 
     // 检查项目是否已归档
-    if (payment.contract.projectId) {
-      const isArchived = await checkContractProjectArchived(payment.contractId)
+    if (receipt.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(receipt.contractId)
       if (isArchived) {
         return res.status(403).json({ error: '项目已归档，无法上传附件' })
       }
@@ -166,9 +166,9 @@ router.post('/:id/files', authenticateToken, checkPermission('project:contract:e
 
     const createdFiles = await Promise.all(
       files.map(file =>
-        prisma.contractPaymentFile.create({
+        prisma.contractReceiptFile.create({
           data: {
-            paymentId,
+            receiptId,
             fileName: file.originalname,
             filePath: file.filename,
             fileSize: file.size,
@@ -181,31 +181,31 @@ router.post('/:id/files', authenticateToken, checkPermission('project:contract:e
 
     res.json({ message: '上传成功', files: createdFiles })
   } catch (error) {
-    logger.error('Upload payment files error:', error)
+    logger.error('Upload receipt files error:', error)
     res.status(500).json({ error: '上传附件失败' })
   }
 })
 
-// 获取付款记录附件列表
+// 获取回款记录附件列表
 router.get('/:id/files', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    const paymentId = parseInt(req.params.id as string)
-    const files = await prisma.contractPaymentFile.findMany({
-      where: { paymentId, deletedAt: null },
+    const receiptId = parseInt(req.params.id as string)
+    const files = await prisma.contractReceiptFile.findMany({
+      where: { receiptId, deletedAt: null },
       orderBy: { uploadedAt: 'desc' }
     })
     res.json(files)
   } catch (error) {
-    logger.error('Get payment files error:', error)
+    logger.error('Get receipt files error:', error)
     res.status(500).json({ error: '获取附件列表失败' })
   }
 })
 
-// 下载付款记录附件
+// 下载回款记录附件
 router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.contractPaymentFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.contractReceiptFile.findFirst({ where: { id: fileId, deletedAt: null } })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
@@ -215,16 +215,16 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
     }
     res.download(filePath, file.fileName)
   } catch (error) {
-    logger.error('Download payment file error:', error)
+    logger.error('Download receipt file error:', error)
     res.status(500).json({ error: '下载附件失败' })
   }
 })
 
-// 预览付款记录附件（图片/PDF/Word/Excel）
+// 预览回款记录附件（图片/PDF/Word/Excel）
 router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.contractPaymentFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.contractReceiptFile.findFirst({ where: { id: fileId, deletedAt: null } })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
@@ -235,26 +235,26 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
 
     await servePreview(res, fileId, file.fileName, filePath)
   } catch (error) {
-    logger.error('Preview payment file error:', error)
+    logger.error('Preview receipt file error:', error)
     res.status(500).json({ error: '预览附件失败' })
   }
 })
 
-// 删除付款记录附件
-router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同付款', 'DELETE_FILE'), async (req: AuthRequest, res) => {
+// 删除回款记录附件
+router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同回款', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.contractPaymentFile.findFirst({ 
+    const file = await prisma.contractReceiptFile.findFirst({ 
       where: { id: fileId, deletedAt: null },
-      include: { payment: { include: { contract: { select: { projectId: true } } } } }
+      include: { receipt: { include: { contract: { select: { projectId: true } } } } }
     })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
 
     // 检查项目是否已归档
-    if (file.payment.contract.projectId) {
-      const isArchived = await checkContractProjectArchived(file.payment.contractId)
+    if (file.receipt.contract.projectId) {
+      const isArchived = await checkContractProjectArchived(file.receipt.contractId)
       if (isArchived) {
         return res.status(403).json({ error: '项目已归档，无法删除附件' })
       }
@@ -264,45 +264,45 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)
     }
-    await prisma.contractPaymentFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
+    await prisma.contractReceiptFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
     cleanupPreviewCache(fileId)
     res.json({ message: '删除成功' })
   } catch (error) {
-    logger.error('Delete payment file error:', error)
+    logger.error('Delete receipt file error:', error)
     res.status(500).json({ error: '删除附件失败' })
   }
 })
 
-// 删除付款记录
-router.delete('/:id', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同付款', 'DELETE'), async (req: AuthRequest, res) => {
+// 删除回款记录
+router.delete('/:id', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同回款', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
-    const existing = await prisma.contractPayment.findFirst({
+    const existing = await prisma.contractReceipt.findFirst({
       where: { id, deletedAt: null },
       include: { contract: { select: { ownerId: true, projectId: true } } }
     })
     if (!existing) {
-      return res.status(404).json({ error: '付款记录不存在' })
+      return res.status(404).json({ error: '回款记录不存在' })
     }
     if (existing.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
-      return res.status(403).json({ error: '无权操作此付款记录' })
+      return res.status(403).json({ error: '无权操作此回款记录' })
     }
 
     // 检查项目是否已归档
     if (existing.contract.projectId) {
       const isArchived = await checkContractProjectArchived(existing.contractId)
       if (isArchived) {
-        return res.status(403).json({ error: '项目已归档，无法删除付款记录' })
+        return res.status(403).json({ error: '项目已归档，无法删除回款记录' })
       }
     }
 
-    await prisma.contractPayment.update({ where: { id }, data: { deletedAt: new Date() } })
+    await prisma.contractReceipt.update({ where: { id }, data: { deletedAt: new Date() } })
     // 级联软删除关联文件
-    await prisma.contractPaymentFile.updateMany({ where: { paymentId: id }, data: { deletedAt: new Date() } })
+    await prisma.contractReceiptFile.updateMany({ where: { receiptId: id }, data: { deletedAt: new Date() } })
     res.json({ message: '删除成功' })
   } catch (error) {
-    logger.error('Delete payment error:', error)
-    res.status(500).json({ error: '删除付款记录失败' })
+    logger.error('Delete receipt error:', error)
+    res.status(500).json({ error: '删除回款记录失败' })
   }
 })
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Avatar, Empty, Spin, Result, Switch } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, EyeOutlined } from '@ant-design/icons'
-import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizationsSimple, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getPayments, createPayment, updatePayment, deletePayment, uploadPaymentFiles, deletePaymentFile, downloadPaymentFileUrl, previewPaymentFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
+import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizationsSimple, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getReceipts, createReceipt, updateReceipt, deleteReceipt, uploadReceiptFiles, deleteReceiptFile, downloadReceiptFileUrl, previewReceiptFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import { checkPermission } from '../utils/permission'
@@ -32,14 +32,14 @@ function ProjectDetail() {
   const [orderContractId, setOrderContractId] = useState<number | null>(null)
   const [orderUploading, setOrderUploading] = useState<Record<number, boolean>>({})
 
-  // 付款记录状态
-  const [payments, setPayments] = useState<any[]>([])
-  const [paymentSummary, setPaymentSummary] = useState<any>({ totalPaid: 0, paymentCount: 0 })
-  const [paymentModalVisible, setPaymentModalVisible] = useState(false)
-  const [editingPayment, setEditingPayment] = useState<any>(null)
-  const [paymentForm] = Form.useForm()
-  const [paymentContractId, setPaymentContractId] = useState<number | null>(null)
-  const [paymentUploading, setPaymentUploading] = useState<Record<number, boolean>>({})
+  // 回款记录状态
+  const [receipts, setReceipts] = useState<any[]>([])
+  const [receiptSummary, setReceiptSummary] = useState<any>({ totalReceived: 0, receiptCount: 0 })
+  const [receiptModalVisible, setReceiptModalVisible] = useState(false)
+  const [editingReceipt, setEditingReceipt] = useState<any>(null)
+  const [receiptForm] = Form.useForm()
+  const [receiptContractId, setReceiptContractId] = useState<number | null>(null)
+  const [receiptUploading, setReceiptUploading] = useState<Record<number, boolean>>({})
 
   // 发货记录状态
   const [shipments, setShipments] = useState<any[]>([])
@@ -278,25 +278,25 @@ function ProjectDetail() {
   }
 
   // ===== 付款记录 =====
-  const fetchPayments = async (contractId: number) => {
-    try { const res: any = await getPayments(contractId); setPayments(res.data || []); setPaymentSummary(res.summary || {}) } catch (e) { console.error(e) }
+  const fetchReceipts = async (contractId: number) => {
+    try { const res: any = await getReceipts(contractId); setReceipts(res.data || []); setReceiptSummary(res.summary || {}) } catch (e) { console.error(e) }
   }
-  const handlePaymentSubmit = async () => {
+  const handleReceiptSubmit = async () => {
     try {
-      const values = await paymentForm.validateFields()
-      const data = { ...values, contractId: paymentContractId, amount: Number(values.amount), paymentDate: values.paymentDate.toDate() }
-      if (editingPayment) { await updatePayment(editingPayment.id, data); message.success('更新成功') }
-      else { await createPayment(data); message.success('添加成功') }
-      setPaymentModalVisible(false); if (paymentContractId) fetchPayments(paymentContractId)
+      const values = await receiptForm.validateFields()
+      const data = { ...values, contractId: receiptContractId, amount: Number(values.amount), receiptDate: values.receiptDate.toDate() }
+      if (editingReceipt) { await updateReceipt(editingReceipt.id, data); message.success('更新成功') }
+      else { await createReceipt(data); message.success('添加成功') }
+      setReceiptModalVisible(false); if (receiptContractId) fetchReceipts(receiptContractId)
     } catch (error: any) { message.error(error?.error || '操作失败') }
   }
-  const handlePaymentFileUpload = async (paymentId: number, fileList: FileList) => {
-    setPaymentUploading(prev => ({ ...prev, [paymentId]: true }))
-    try { await uploadPaymentFiles(paymentId, fileList); message.success('上传成功'); if (paymentContractId) fetchPayments(paymentContractId) }
-    catch (e: any) { message.error(e?.error || e?.message || '上传失败') } finally { setPaymentUploading(prev => ({ ...prev, [paymentId]: false })) }
+  const handleReceiptFileUpload = async (receiptId: number, fileList: FileList) => {
+    setReceiptUploading(prev => ({ ...prev, [receiptId]: true }))
+    try { await uploadReceiptFiles(receiptId, fileList); message.success('上传成功'); if (receiptContractId) fetchReceipts(receiptContractId) }
+    catch (e: any) { message.error(e?.error || e?.message || '上传失败') } finally { setReceiptUploading(prev => ({ ...prev, [receiptId]: false })) }
   }
-  const handlePaymentFileDelete = async (paymentId: number, fileId: number) => {
-    try { await deletePaymentFile(paymentId, fileId); message.success('删除成功'); if (paymentContractId) fetchPayments(paymentContractId) }
+  const handleReceiptFileDelete = async (receiptId: number, fileId: number) => {
+    try { await deleteReceiptFile(receiptId, fileId); message.success('删除成功'); if (receiptContractId) fetchReceipts(receiptContractId) }
     catch (e: any) { message.error(e?.error || '删除失败') }
   }
 
@@ -447,12 +447,12 @@ function ProjectDetail() {
     ) }
   ]
 
-  const paymentColumns = [
+  const receiptColumns = [
     { title: '金额', dataIndex: 'amount', key: 'amount', render: (v: number) => <span style={{ color: '#52c41a', fontWeight: 'bold' }}>{Number(v)}元</span> },
-    { title: '付款类型', dataIndex: 'paymentType', key: 'paymentType', render: (t: string) => ({ ADVANCE: '预付款', PROGRESS: '进度款', FINAL: '尾款', FULL: '全款' }[t] || t) },
-    { title: '付款方式', dataIndex: 'paymentMethod', key: 'paymentMethod', render: (v: string) => v || '-' },
-    { title: '付款日期', dataIndex: 'paymentDate', key: 'paymentDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
-    { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={s === 'RECEIVED' ? 'success' : s === 'CONFIRMED' ? 'processing' : 'default'}>{{ PENDING: '待付款', CONFIRMED: '已确认', RECEIVED: '已到账' }[s] || s}</Tag> },
+    { title: '回款类型', dataIndex: 'paymentType', key: 'paymentType', render: (t: string) => ({ ADVANCE: '预付款', PROGRESS: '进度款', FINAL: '尾款', FULL: '全款' }[t] || t) },
+    { title: '回款方式', dataIndex: 'paymentMethod', key: 'paymentMethod', render: (v: string) => v || '-' },
+    { title: '回款日期', dataIndex: 'receiptDate', key: 'receiptDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
+    { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={s === 'RECEIVED' ? 'success' : s === 'CONFIRMED' ? 'processing' : 'default'}>{{ PENDING: '待回款', CONFIRMED: '已确认', RECEIVED: '已到账' }[s] || s}</Tag> },
     { title: '发票号', dataIndex: 'invoiceNo', key: 'invoiceNo', render: (v: string) => v || '-' },
     {
       title: '附件',
@@ -468,8 +468,8 @@ function ProjectDetail() {
     },
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingPayment(r); paymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setPaymentModalVisible(true) }} disabled={isArchived}>编辑</Button>
-        <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deletePayment(r.id); if (paymentContractId) fetchPayments(paymentContractId) }}>
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingReceipt(r); receiptForm.setFieldsValue({ ...r, amount: Number(r.amount), receiptDate: dayjs(r.receiptDate) }); setReceiptModalVisible(true) }} disabled={isArchived}>编辑</Button>
+        <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteReceipt(r.id); if (receiptContractId) fetchReceipts(receiptContractId) }}>
           <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
         </Popconfirm>
       </Space>
@@ -947,30 +947,30 @@ function ProjectDetail() {
                       />
                     </div>
                   )},
-                  { key: 'payments', label: '付款记录', children: (
+                  { key: 'receipts', label: '回款记录', children: (
                     <div>
                       <div style={{ marginBottom: 12 }}>
-                        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentForm.resetFields(); paymentForm.setFieldsValue({ paymentType: 'PROGRESS', status: 'PENDING' }); setPaymentModalVisible(true) }} disabled={isArchived}>添加付款</Button>
-                        {paymentSummary.totalPaid > 0 && <span style={{ marginLeft: 16 }}><Statistic title="已付款总额" value={paymentSummary.totalPaid} precision={2} suffix="元" valueStyle={{ color: '#52c41a' }} /></span>}
+                        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingReceipt(null); receiptForm.resetFields(); receiptForm.setFieldsValue({ paymentType: 'PROGRESS', status: 'PENDING' }); setReceiptModalVisible(true) }} disabled={isArchived}>添加回款</Button>
+                        {receiptSummary.totalReceived > 0 && <span style={{ marginLeft: 16 }}><Statistic title="已回款总额" value={receiptSummary.totalReceived} precision={2} suffix="元" valueStyle={{ color: '#52c41a' }} /></span>}
                       </div>
-                      <Table columns={paymentColumns} dataSource={payments} rowKey="id" pagination={false} size="small" locale={{ emptyText: '暂无付款记录' }}
+                      <Table columns={receiptColumns} dataSource={receipts} rowKey="id" pagination={false} size="small" locale={{ emptyText: '暂无回款记录' }}
                         expandable={{
-                          expandedRowRender: (payment: any) => {
+                          expandedRowRender: (receipt: any) => {
                             const fileInputRef = { current: null as HTMLInputElement | null }
                             return (
                               <div style={{ padding: '8px 0' }}>
                                 <div style={{ marginBottom: 12 }}>
-                                  <input type="file" multiple ref={el => { fileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handlePaymentFileUpload(payment.id, e.target.files); e.target.value = '' } }} />
-                                  <Button icon={<UploadOutlined />} loading={paymentUploading[payment.id]} size="small" onClick={() => fileInputRef.current?.click()} disabled={isArchived}>上传附件</Button>
+                                  <input type="file" multiple ref={el => { fileInputRef.current = el }} style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) { handleReceiptFileUpload(receipt.id, e.target.files); e.target.value = '' } }} />
+                                  <Button icon={<UploadOutlined />} loading={receiptUploading[receipt.id]} size="small" onClick={() => fileInputRef.current?.click()} disabled={isArchived}>上传附件</Button>
                                 </div>
-                                {payment.files && payment.files.length > 0 ? (
-                                  <List size="small" dataSource={payment.files} renderItem={(file: any) => (
+                                {receipt.files && receipt.files.length > 0 ? (
+                                  <List size="small" dataSource={receipt.files} renderItem={(file: any) => (
                                     <List.Item actions={[
                                       isPreviewableFile(file.fileName) && (
-                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewPaymentFileUrl, file.id)} />
+                                        <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewReceiptFileUrl, file.id)} />
                                       ),
-                                      <a key="dl" href={downloadPaymentFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
-                                      <Popconfirm key="del" title="确定删除？" onConfirm={() => handlePaymentFileDelete(payment.id, file.id)}>
+                                      <a key="dl" href={downloadReceiptFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                      <Popconfirm key="del" title="确定删除？" onConfirm={() => handleReceiptFileDelete(receipt.id, file.id)}>
                                         <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                       </Popconfirm>
                                     ].filter(Boolean)}>
@@ -1080,11 +1080,11 @@ function ProjectDetail() {
             onExpand: (expanded: boolean, record: any) => {
               if (expanded) {
                 setOrderContractId(record.id)
-                setPaymentContractId(record.id)
+                setReceiptContractId(record.id)
                 setShipmentContractId(record.id)
                 setInvoiceContractId(record.id)
                 fetchOrderItems(record.id)
-                fetchPayments(record.id)
+                fetchReceipts(record.id)
                 fetchShipments(record.id)
                 fetchInvoices(record.id)
                 fetchContractFiles(record.id)
@@ -1340,10 +1340,14 @@ function ProjectDetail() {
             { title: '姓名', key: 'name', render: (_: any, r: any) => r.user?.name || '-' },
             { title: '邮箱', key: 'email', render: (_: any, r: any) => r.user?.email || '-' },
             { title: '系统角色', key: 'role', render: (_: any, r: any) => {
-              const roleMap: Record<string, string> = { ADMIN: '管理员', USER: '普通员工', PROJECT_MANAGER: '项目经理', SALES_MANAGER: '销售经理', GENERAL_MANAGER: '总经理' }
-              return roleMap[r.user?.role] || r.user?.role || '-'
+              const roles = r.user?.roles || []
+              if (roles.length > 0) {
+                return roles.map((role: any) => role.displayName || role.name).join('、')
+              }
+              return '-'
             }},
-            { title: '职责', dataIndex: 'responsibility', key: 'responsibility', ellipsis: true },
+            // 职责列暂时隐藏
+            // { title: '职责', dataIndex: 'responsibility', key: 'responsibility', ellipsis: true },
             { title: '加入时间', dataIndex: 'joinDate', key: 'joinDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
             { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
               <Space size={0}>
@@ -1451,12 +1455,12 @@ function ProjectDetail() {
         </Form>
       </Modal>
 
-      {/* 付款记录 Modal */}
-      <Modal title={editingPayment ? '编辑付款' : '添加付款记录'} open={paymentModalVisible} onOk={handlePaymentSubmit} onCancel={() => setPaymentModalVisible(false)} width={600}>
-        <Form form={paymentForm} layout="vertical">
-          <Row gutter={16}><Col span={12}><Form.Item name="amount" label="付款金额" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} precision={2} /></Form.Item></Col><Col span={12}><Form.Item name="paymentDate" label="付款日期" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item></Col></Row>
-          <Row gutter={16}><Col span={12}><Form.Item name="paymentType" label="付款类型"><Select><Select.Option value="ADVANCE">预付款</Select.Option><Select.Option value="PROGRESS">进度款</Select.Option><Select.Option value="FINAL">尾款</Select.Option><Select.Option value="FULL">全款</Select.Option></Select></Form.Item></Col><Col span={12}><Form.Item name="paymentMethod" label="付款方式"><Input placeholder="银行转账/支票/现金" /></Form.Item></Col></Row>
-          <Row gutter={16}><Col span={12}><Form.Item name="status" label="状态"><Select><Select.Option value="PENDING">待付款</Select.Option><Select.Option value="CONFIRMED">已确认</Select.Option><Select.Option value="RECEIVED">已到账</Select.Option></Select></Form.Item></Col><Col span={12}><Form.Item name="invoiceNo" label="发票号"><Input /></Form.Item></Col></Row>
+      {/* 回款记录 Modal */}
+      <Modal title={editingReceipt ? '编辑回款' : '添加回款记录'} open={receiptModalVisible} onOk={handleReceiptSubmit} onCancel={() => setReceiptModalVisible(false)} width={600}>
+        <Form form={receiptForm} layout="vertical">
+          <Row gutter={16}><Col span={12}><Form.Item name="amount" label="回款金额" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} precision={2} /></Form.Item></Col><Col span={12}><Form.Item name="receiptDate" label="回款日期" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item></Col></Row>
+          <Row gutter={16}><Col span={12}><Form.Item name="paymentType" label="回款类型"><Select><Select.Option value="ADVANCE">预付款</Select.Option><Select.Option value="PROGRESS">进度款</Select.Option><Select.Option value="FINAL">尾款</Select.Option><Select.Option value="FULL">全款</Select.Option></Select></Form.Item></Col><Col span={12}><Form.Item name="paymentMethod" label="回款方式"><Input placeholder="银行转账/支票/现金" /></Form.Item></Col></Row>
+          <Row gutter={16}><Col span={12}><Form.Item name="status" label="状态"><Select><Select.Option value="PENDING">待回款</Select.Option><Select.Option value="CONFIRMED">已确认</Select.Option><Select.Option value="RECEIVED">已到账</Select.Option></Select></Form.Item></Col><Col span={12}><Form.Item name="invoiceNo" label="发票号"><Input /></Form.Item></Col></Row>
           <Form.Item name="remarks" label="备注"><TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
@@ -1665,7 +1669,7 @@ function ProjectDetail() {
               ))}
             </Select>
           </Form.Item>
-          <Form.Item name="responsibility" label="职责描述"><TextArea rows={2} placeholder="描述该成员在项目中的职责" /></Form.Item>
+          <Form.Item name="responsibility" label="职责描述" style={{ display: 'none' }}><TextArea rows={2} placeholder="描述该成员在项目中的职责" /></Form.Item>
         </Form>
       </Modal>
     </div>

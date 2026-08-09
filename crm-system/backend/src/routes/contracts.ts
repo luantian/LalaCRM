@@ -434,13 +434,13 @@ router.delete('/:id', authenticateToken, checkPermission('project:contract:delet
       where: { orderItem: { contractId: numericId } },
       data: { deletedAt: new Date() }
     })
-    // 级联软删除 ContractPayment 及其附件 ContractPaymentFile
-    const payments = await prisma.contractPayment.findMany({ where: { contractId: numericId }, select: { id: true } })
-    const paymentIds = payments.map(p => p.id)
-    if (paymentIds.length > 0) {
-      await prisma.contractPaymentFile.updateMany({ where: { paymentId: { in: paymentIds } }, data: { deletedAt: new Date() } })
+    // 级联软删除 ContractReceipt 及其附件 ContractReceiptFile
+    const receipts = await prisma.contractReceipt.findMany({ where: { contractId: numericId }, select: { id: true } })
+    const receiptIds = receipts.map(r => r.id)
+    if (receiptIds.length > 0) {
+      await prisma.contractReceiptFile.updateMany({ where: { receiptId: { in: receiptIds } }, data: { deletedAt: new Date() } })
     }
-    await prisma.contractPayment.updateMany({ where: { contractId: numericId }, data: { deletedAt: new Date() } })
+    await prisma.contractReceipt.updateMany({ where: { contractId: numericId }, data: { deletedAt: new Date() } })
     // 级联软删除 ContractShipment 及其附件 ContractShipmentFile
     const shipments = await prisma.contractShipment.findMany({ where: { contractId: numericId }, select: { id: true } })
     const shipmentIds = shipments.map(s => s.id)
