@@ -1,23 +1,38 @@
-FROM node:20-alpine
+# Build stage
+FROM node:20-alpine AS builder
 
-# Install OpenSSL (for Prisma) + LibreOffice (for Office document preview) + Chinese fonts
-RUN apk add --no-cache openssl libreoffice font-noto-cjk
-
+# 设置工作目录
 WORKDIR /app
 
+# 复制 package 文件
 COPY package*.json ./
 
-RUN npm install
+# 安装依赖
+RUN npm ci
 
+# 复制源代码
 COPY . .
 
-RUN npx prisma generate
-
+# 构建应用
 RUN npm run build
 
-# Create previews cache directory
-RUN mkdir -p /app/uploads/previews
+# Production stage
+FROM node:20-alpine
 
+# 设置工作目录
+WORKDIR /app
+
+# 复制构建产物和依赖文件
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/prisma ./prisma
+
+# 生成 Prisma Client
+RUN npx prisma generate
+
+# 暴露端口
 EXPOSE 5000
 
-CMD ["npm", "start"]
+# 启动应用
+CMD ["npm", "run", "start"]

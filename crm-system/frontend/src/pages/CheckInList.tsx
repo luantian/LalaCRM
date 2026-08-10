@@ -58,6 +58,7 @@ function CheckInList() {
   const [currentMonth, setCurrentMonth] = useState<Dayjs>(dayjs())
   const [makeupModalVisible, setMakeupModalVisible] = useState(false)
   const [makeupDate, setMakeupDate] = useState<Dayjs | null>(null)
+  const [checkingIn, setCheckingIn] = useState(false)
   const [makeupNotes, setMakeupNotes] = useState('')
 
   useEffect(() => {
@@ -89,6 +90,7 @@ function CheckInList() {
   }
 
   const handleCheckIn = async () => {
+    setCheckingIn(true)
     try {
       console.log('[打卡] 发送请求, 当前时间:', dayjs().format('HH:mm:ss'))
       const result: any = await checkIn({})
@@ -101,6 +103,8 @@ function CheckInList() {
     } catch (error: any) {
       console.error('[打卡] 失败:', error)
       message.error(error?.error || error?.message || '打卡失败')
+    } finally {
+      setCheckingIn(false)
     }
   }
 
@@ -112,6 +116,17 @@ function CheckInList() {
 
   const handleMakeupSubmit = async () => {
     if (!makeupDate) return
+    
+    // 检查是否为节假日或周末
+    const dayOfWeek = makeupDate.day()
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+    const isHoliday = HOLIDAYS_2026[makeupDate.format('YYYY-MM-DD')]
+    
+    if (isWeekend || isHoliday) {
+      message.error('节假日和周末不能补卡')
+      return
+    }
+    
     try {
       const res: any = await makeupCheckIn({
         date: makeupDate.format('YYYY-MM-DD'),
@@ -175,8 +190,10 @@ function CheckInList() {
             <div style={{ textAlign: 'center' }}>
               <Button
                 size="large"
+                loading={checkingIn}
                 icon={todayCheckedCount >= 2 ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
                 onClick={handleCheckIn}
+                disabled={todayCheckedCount >= 2}
                 style={{
                   height: 72,
                   fontSize: 20,
@@ -191,11 +208,80 @@ function CheckInList() {
                   boxShadow: todayCheckedCount >= 2 ? 'none' : '0 4px 16px rgba(0,0,0,0.15)',
                 }}
               >
-                {todayCheckedCount >= 2 ? '✓ 今日已打卡' : (dayjs().hour() < 12 ? '上班打卡' : '下班打卡')}
+                {checkingIn ? '打卡中...' : (todayCheckedCount >= 2 ? '✓ 今日已打卡' : (dayjs().hour() < 12 ? '上班打卡' : '下班打卡'))}
               </Button>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 8 }}>
                 {todayCheckedCount >= 2 ? '上下班均已打卡' : `当前为${dayjs().hour() < 12 ? '上班' : '下班'}时段`}
               </div>
+              
+              {/* 迟到/早退标记和建议下班时间 */}
+              {todayStatus?.morningRecord && (
+                <div style={{ marginTop: 12 }}>
+                  {/* 判断是否迟到 */}
+                  {(() => {
+                    const morningTime = dayjs.utc(todayStatus.morningRecord.checkInTime).local()
+                    const isLate = morningTime.hour() > 9 || (morningTime.hour() === 9 && morningTime.minute() > 0)
+                    
+                    if (isLate) {
+                      return (
+                        <Tag
+                          color="orange"
+                          style={{
+                            background: 'rgba(251, 146, 60, 0.2)',
+                            border: '1px solid rgba(251, 146, 60, 0.5)',
+                            color: '#fed7aa',
+                            fontSize: 12,
+                            padding: '2px 8px',
+                            marginBottom: 8
+                          }}
+                        >
+                          迟到 {morningTime.format('HH:mm')}
+                        </Tag>
+                      )
+                    }
+                    return null
+                  })()}
+                  
+                  {/* 建议下班时间 */}
+                  {(() => {
+                    const morningTime = dayjs.utc(todayStatus.morningRecord.checkInTime).local()
+                    const suggestedEveningTime = morningTime.add(9, 'hour')
+                    
+                    return (
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>
+                        建议 {suggestedEveningTime.format('HH:mm')} 后下班打卡
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
+              
+              {/* 早退标记 */}
+              {todayStatus?.eveningRecord && todayStatus?.morningRecord && (() => {
+                const morningTime = dayjs.utc(todayStatus.morningRecord.checkInTime).local()
+                const eveningTime = dayjs.utc(todayStatus.eveningRecord.checkInTime).local()
+                const requiredTime = morningTime.add(9, 'hour')
+                const isEarlyLeave = eveningTime.isBefore(requiredTime)
+                
+                if (isEarlyLeave) {
+                  return (
+                    <Tag
+                      color="red"
+                      style={{
+                        background: 'rgba(248, 113, 113, 0.2)',
+                        border: '1px solid rgba(248, 113, 113, 0.5)',
+                        color: '#fecaca',
+                        fontSize: 12,
+                        padding: '2px 8px',
+                        marginTop: 8
+                      }}
+                    >
+                      早退（需工作至 {requiredTime.format('HH:mm')}）
+                    </Tag>
+                  )
+                }
+                return null
+              })()}
             </div>
           </Col>
         </Row>
@@ -327,7 +413,7 @@ function CheckInList() {
                 <div style={{ fontSize: 13, color: '#999', marginBottom: 4 }}>补卡剩余</div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: (stats?.makeupRemaining ?? 3) > 0 ? '#f59e0b' : '#ff4d4f' }}>
                   {stats?.makeupRemaining ?? 3}
-                  <span style={{ fontSize: 14, color: '#999', marginLeft: 4 }}>/ 3 次</span>
+                  <span style={{ fontSize: 14, color: '#999', marginLeft: 4 }}>/ 1 次</span>
                 </div>
               </div>
             </div>
@@ -436,8 +522,8 @@ function CheckInList() {
             for (let day = 1; day <= daysInMonth; day++) {
               const date = currentMonth.date(day)
               const dateStr = date.format('YYYY-MM-DD')
-              // 直接用 UTC 日期比较（后端存储的是 UTC 午夜）
-              const dayRecords = records.filter(r => r.checkInDate?.substring(0, 10) === dateStr)
+              // 使用 dayjs 进行日期比较（更可靠）
+              const dayRecords = records.filter(r => dayjs(r.checkInDate).isSame(date, 'day'))
                 .sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime())
               const isToday = date.isSame(dayjs(), 'day')
               const isPast = date.isBefore(dayjs(), 'day')
@@ -497,7 +583,12 @@ function CheckInList() {
                 <div
                   key={day}
                   onClick={() => {
-                    if (!hasCheckedIn && isPast && (stats?.makeupRemaining ?? 0) > 0) {
+                    // 排除节假日和周末的补卡
+                    const dayOfWeek = date.day()
+                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+                    const isHoliday = HOLIDAYS_2026[dateStr]
+                    
+                    if (!hasCheckedIn && isPast && (stats?.makeupRemaining ?? 0) > 0 && !isWeekend && !isHoliday) {
                       handleOpenMakeup(date)
                     }
                   }}
@@ -509,7 +600,7 @@ function CheckInList() {
                     borderRadius: 12,
                     padding: '12px 8px',
                     minHeight: 90,
-                    cursor: !hasCheckedIn && isPast ? 'pointer' : 'default',
+                    cursor: !hasCheckedIn && isPast && !holiday && date.day() !== 0 && date.day() !== 6 ? 'pointer' : 'default',
                     transition: 'all 0.2s ease',
                     position: 'relative',
                     ...(isToday && {
@@ -518,13 +609,13 @@ function CheckInList() {
                     })
                   }}
                   onMouseEnter={(e) => {
-                    if (!hasCheckedIn && isPast) {
+                    if (!hasCheckedIn && isPast && !holiday && date.day() !== 0 && date.day() !== 6) {
                       e.currentTarget.style.transform = 'translateY(-2px)'
                       e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (!hasCheckedIn && isPast) {
+                    if (!hasCheckedIn && isPast && !holiday && date.day() !== 0 && date.day() !== 6) {
                       e.currentTarget.style.transform = 'translateY(0)'
                       e.currentTarget.style.boxShadow = isToday ? '0 0 0 3px rgba(102, 126, 234, 0.3)' : 'none'
                     }
@@ -692,7 +783,7 @@ function CheckInList() {
             }} />
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>补卡</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>每月限3次</div>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>每月限1次</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -705,7 +796,7 @@ function CheckInList() {
             }} />
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>迟到</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>9:00后打卡</div>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>9:00后上班打卡</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -718,7 +809,7 @@ function CheckInList() {
             }} />
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>早退</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>17:30前打卡</div>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>工作时长不满9小时</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -798,7 +889,7 @@ function CheckInList() {
           }}>
             <div style={{ fontSize: 13, color: '#92400e', marginBottom: 4 }}>本月剩余补卡次数</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: '#f59e0b' }}>
-              {stats?.makeupRemaining ?? 3} <span style={{ fontSize: 14, color: '#92400e' }}>/ 3 次</span>
+              {stats?.makeupRemaining ?? 1} <span style={{ fontSize: 14, color: '#92400e' }}>/ 1 次</span>
             </div>
           </div>
         </div>

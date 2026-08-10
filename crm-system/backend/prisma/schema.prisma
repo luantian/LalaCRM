@@ -1451,6 +1451,23 @@ model ProjectVersion {
 
 // ==================== 每日打卡 ====================
 
+// ==================== 节假日管理 ====================
+
+// 节假日表（用于排除法定节假日和调休工作日）
+model Holiday {
+  id        Int      @id @default(autoincrement())
+  date      DateTime @db.Date // 节假日日期
+  name      String   @db.VarChar(50) // 节假日名称
+  year      Int // 年份
+  isWorkday Boolean  @default(false) // 是否为调休工作日
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([year])
+  @@unique([date])
+}
+
 // 打卡时段
 enum CheckInPeriod {
   MORNING   // 上班打卡
@@ -1470,6 +1487,12 @@ model DailyCheckIn {
   trip          BusinessTrip? @relation(fields: [tripId], references: [id])
   location      String?       // 打卡地点
   notes         String?       // 备注（补卡时填写原因）
+  
+  // 加班相关字段
+  overtimeStartTime   DateTime?  // 加班开始时间
+  overtimeEndTime     DateTime?  // 加班结束时间
+  isOvernightOvertime Boolean    @default(false) // 是否通宵加班（加班到凌晨2点后）
+  
   deletedAt     DateTime?     // 软删除标记
   createdAt     DateTime      @default(now())
 
@@ -1641,6 +1664,7 @@ enum CheckInType {
   NORMAL        // 正常打卡
   LATE          // 迟到
   EARLY_LEAVE   // 早退
+  LATE_AND_EARLY // 迟到+早退
   AUTO          // 出差自动打卡
   MAKEUP        // 补卡
 }

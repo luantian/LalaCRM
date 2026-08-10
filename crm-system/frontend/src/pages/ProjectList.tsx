@@ -28,7 +28,6 @@ function ProjectList() {
   const [searchText, setSearchText] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('')
   const [filterOrgId, setFilterOrgId] = useState<number | null>(null)
-  const [filterArchived, setFilterArchived] = useState<string>(isArchivePage ? 'true' : 'false')
   const [filterFullyPaid, setFilterFullyPaid] = useState<string>('')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [importModalVisible, setImportModalVisible] = useState(false)
@@ -39,11 +38,9 @@ function ProjectList() {
   // 用 ref 存储筛选条件，避免 fetchProjects 引用频繁变化导致 useEffect 重复触发
   const filterStatusRef = useRef(filterStatus)
   const filterOrgIdRef = useRef(filterOrgId)
-  const filterArchivedRef = useRef(filterArchived)
   const filterFullyPaidRef = useRef(filterFullyPaid)
   useEffect(() => { filterStatusRef.current = filterStatus }, [filterStatus])
   useEffect(() => { filterOrgIdRef.current = filterOrgId }, [filterOrgId])
-  useEffect(() => { filterArchivedRef.current = filterArchived }, [filterArchived])
   useEffect(() => { filterFullyPaidRef.current = filterFullyPaid }, [filterFullyPaid])
 
   const fetchProjects = useCallback(async (page = 1, pageSize = 10) => {
@@ -69,7 +66,6 @@ function ProjectList() {
         delete params.statusNot // 用户手动选择了状态，取消默认排除
       }
       if (filterOrgIdRef.current) params.organizationId = String(filterOrgIdRef.current)
-      if (!isArchivePage && filterArchivedRef.current) params.isArchived = filterArchivedRef.current
       if (filterFullyPaidRef.current) params.fullyPaid = filterFullyPaidRef.current
       const response: any = await getProjects(params)
       setProjects(response.data || [])
@@ -128,7 +124,6 @@ function ProjectList() {
     setSearchText('')
     setFilterStatus('')
     setFilterOrgId(null)
-    setFilterArchived(isArchivePage ? 'true' : 'false')
     setFilterFullyPaid('')
     setRefreshTrigger(prev => prev + 1)
   }
@@ -362,18 +357,6 @@ function ProjectList() {
             >
               <Select.Option value="true">已全额收款</Select.Option>
               <Select.Option value="false">未全额收款</Select.Option>
-            </Select>
-          </Col>
-          <Col xs={12} sm={4}>
-            <Select
-              placeholder="归档状态"
-              value={filterArchived || undefined}
-              onChange={(v) => setFilterArchived(v || 'false')}
-              allowClear
-              style={{ width: '100%' }}
-            >
-              <Select.Option value="false">未归档</Select.Option>
-              <Select.Option value="true">已归档</Select.Option>
             </Select>
           </Col>
         </Row>
