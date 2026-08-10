@@ -43,6 +43,7 @@ export const routeComponents: Record<string, React.LazyExoticComponent<any>> = {
   '/menus': lazy(() => import('../pages/MenuManagement')),
   '/departments': lazy(() => import('../pages/DepartmentManagement')),
   '/dicts': lazy(() => import('../pages/DictManagement')),
+  '/database-backup': lazy(() => import('../pages/DatabaseBackup')),
   
   // 日志审计
   '/operation-logs': lazy(() => import('../pages/OperationLogList')),
@@ -66,6 +67,7 @@ export const routePermissionMap: Record<string, string> = {
   '/menus': 'system:menu:list',
   '/departments': 'system:dept:list',
   '/dicts': 'system:dict:list',
+  '/database-backup': 'system:backup:list',
   '/operation-logs': 'monitor:operlog:list',
   '/login-logs': 'monitor:loginlog:list',
 }

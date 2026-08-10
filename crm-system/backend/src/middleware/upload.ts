@@ -65,7 +65,7 @@ const fileFilter = (req: any, file: any, cb: any) => {
     'text/plain',
     'text/csv',
     'application/json',
-    // 压缩包
+    // 压缩包（不同系统/浏览器可能发送不同的 MIME type）
     'application/zip',
     'application/x-zip-compressed',
     'application/x-zip',
@@ -73,11 +73,23 @@ const fileFilter = (req: any, file: any, cb: any) => {
     'application/x-rar-compressed',
     'application/x-rar',
     'application/rar',
+    'application/vnd.rar',
     'application/x-7z-compressed',
     'application/x-7z',
+    // 通用二进制流（某些浏览器对压缩包会发送这个）
+    'application/octet-stream',
   ];
 
-  if (allowedTypes.includes(file.mimetype)) {
+  // 按扩展名兜底：不同系统/浏览器对同一扩展名可能发送不同 MIME type
+  const allowedExtensions = [
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
+    '.txt', '.csv', '.json',
+    '.zip', '.rar', '.7z',
+  ];
+  const ext = path.extname(file.originalname).toLowerCase();
+
+  if (allowedTypes.includes(file.mimetype) || allowedExtensions.includes(ext)) {
     cb(null, true);
   } else {
     const err: any = new Error('FILE_TYPE_REJECTED')

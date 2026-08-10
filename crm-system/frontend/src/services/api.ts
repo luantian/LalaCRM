@@ -493,10 +493,13 @@ export const openFilePreview = (previewUrlFn: (fileId: number) => string, fileId
 export const downloadFile = async (downloadUrlFn: (fileId: number) => string, fileId: number, fileName: string) => {
   try {
     const url = downloadUrlFn(fileId)
-    const response = await api.get(url, { responseType: 'blob' })
+    const token = localStorage.getItem('token') || ''
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
     
     // 创建 blob URL 并触发下载
-    const blob = new Blob([response.data])
+    const blob = await response.blob()
     const downloadUrl = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = downloadUrl

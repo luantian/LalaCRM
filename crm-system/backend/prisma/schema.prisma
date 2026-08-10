@@ -1703,3 +1703,18 @@ model SystemConfig {
   
   @@index([key])
 }
+
+// ==================== 数据库备份 ====================
+
+model DatabaseBackup {
+  id           Int      @id @default(autoincrement())
+  fileName     String   // 备份文件名
+  filePath     String   // 备份文件完整路径
+  fileSize     Int      // 文件大小（字节）
+  remark       String?  // 备注
+  status       String   @default("SUCCESS") // SUCCESS/FAILED
+  errorMessage String?  // 错误信息
+  createdAt    DateTime @default(now())
+  
+  @@index([createdAt])
+}
