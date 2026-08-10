@@ -88,7 +88,7 @@ router.get('/missing-dates', authenticateToken, async (req: AuthRequest, res) =>
 
     // 提取已提交日报的日期
     const reportedDates = new Set(
-      reports.map(r => r.reportDate.toISOString().split('T')[0])
+      reports.map((r: any) => r.reportDate.toISOString().split('T')[0])
     )
 
     // 找出未提交日报的日期

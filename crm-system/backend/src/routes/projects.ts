@@ -136,7 +136,7 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), sort
       const processedProjects = canSeeAmount ? projects : projects.map(filterProjectAmount)
 
       return res.json({
-        data: processedProjects.map(p => ({ ...p, contracts: undefined, _count: undefined })),
+        data: processedProjects.map((p: any) => ({ ...p, contracts: undefined, _count: undefined })),
         pagination: {
           total,
           page: parseInt(page as string),
@@ -198,7 +198,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('project:projec
     // 检查当前用户是否有项目金额查看权限
     const canSeeAmount = await hasAmountPermission(req.user!.id)
 
-    let totalBudget = null
+    let totalBudget: number | null = null
     if (canSeeAmount) {
       const projects = await prisma.project.findMany({
         where,
@@ -495,7 +495,7 @@ router.delete('/:id', authenticateToken, checkPermission('project:project:edit')
     await prisma.projectVersion.updateMany({ where: { projectId: numericId }, data: { deletedAt: new Date() } })
     // 级联软删除 ProjectNoteFile（notes 的子实体）
     const notes = await prisma.projectNote.findMany({ where: { projectId: numericId }, select: { id: true } })
-    const noteIds = notes.map(n => n.id)
+    const noteIds = notes.map((n: any) => n.id)
     if (noteIds.length > 0) {
       await prisma.projectNoteFile.updateMany({ where: { noteId: { in: noteIds } }, data: { deletedAt: new Date() } })
     }

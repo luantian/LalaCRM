@@ -487,4 +487,28 @@ export const openFilePreview = (previewUrlFn: (fileId: number) => string, fileId
   window.open(getPreviewUrl(previewUrlFn, fileId), '_blank')
 }
 
+/**
+ * 下载文件（使用 fetch + blob，避免 Chrome 安全拦截）
+ */
+export const downloadFile = async (downloadUrlFn: (fileId: number) => string, fileId: number, fileName: string) => {
+  try {
+    const url = downloadUrlFn(fileId)
+    const response = await api.get(url, { responseType: 'blob' })
+    
+    // 创建 blob URL 并触发下载
+    const blob = new Blob([response.data])
+    const downloadUrl = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = downloadUrl
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(downloadUrl)
+  } catch (error) {
+    console.error('下载失败:', error)
+    throw error
+  }
+}
+
 export default api

@@ -452,14 +452,14 @@ router.delete('/:id', authenticateToken, checkPermission('project:contract:delet
     })
     // 级联软删除 ContractReceipt 及其附件 ContractReceiptFile
     const receipts = await prisma.contractReceipt.findMany({ where: { contractId: numericId }, select: { id: true } })
-    const receiptIds = receipts.map(r => r.id)
+    const receiptIds = receipts.map((r: any) => r.id)
     if (receiptIds.length > 0) {
       await prisma.contractReceiptFile.updateMany({ where: { receiptId: { in: receiptIds } }, data: { deletedAt: new Date() } })
     }
     await prisma.contractReceipt.updateMany({ where: { contractId: numericId }, data: { deletedAt: new Date() } })
     // 级联软删除 ContractShipment 及其附件 ContractShipmentFile
     const shipments = await prisma.contractShipment.findMany({ where: { contractId: numericId }, select: { id: true } })
-    const shipmentIds = shipments.map(s => s.id)
+    const shipmentIds = shipments.map((s: any) => s.id)
     if (shipmentIds.length > 0) {
       await prisma.contractShipmentFile.updateMany({ where: { shipmentId: { in: shipmentIds } }, data: { deletedAt: new Date() } })
     }

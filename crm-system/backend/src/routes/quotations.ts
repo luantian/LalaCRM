@@ -104,7 +104,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('crm:quotation:
     
     // 检查当前用户是否有项目金额查看权限
     const canSeeAmount = await hasAmountPermission(req.user!.id)
-    let totalAmount = null
+    let totalAmount: number | null = null
     if (canSeeAmount) {
       totalAmount = quotations.reduce((sum, q) => sum + Number(q.totalAmount), 0)
     }

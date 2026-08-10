@@ -134,7 +134,7 @@ router.get('/check-project-amount-permission', authenticateToken, async (req: Au
       select: { roleId: true }
     })
     
-    const roleIds = userRoles.map(ur => ur.roleId)
+    const roleIds = userRoles.map((ur: any) => ur.roleId)
     
     // 获取配置
     const config = await prisma.systemConfig.findUnique({

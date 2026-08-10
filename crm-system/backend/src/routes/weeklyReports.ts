@@ -110,7 +110,7 @@ router.post('/', authenticateToken, checkPermission('office:dailyreport:add'), l
       }
     })
 
-    const totalHours = dailyReports.reduce((sum, r) => sum + Number(r.hours || 0), 0)
+    const totalHours = dailyReports.reduce((sum: number, r: any) => sum + Number(r.hours || 0), 0)
 
     const report = await prisma.weeklyReport.create({
       data: {

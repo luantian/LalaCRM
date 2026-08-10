@@ -216,7 +216,7 @@ router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport
     }
 
     const header = '日期,姓名,项目,类型,工作内容,明日计划,问题,时长'
-    const rows = reports.map(r =>
+    const rows = reports.map((r: any) =>
       [
         escape(r.reportDate.toISOString().slice(0, 10)),
         escape(r.user?.name || ''),
@@ -685,7 +685,7 @@ router.get('/stats/quality', authenticateToken, checkPermission('office:dailyrep
     })
 
     const total = reports.length
-    const ratings = reports.map(r => r.rating as number)
+    const ratings = reports.map((r: any) => r.rating as number)
     const avgRating = total > 0 ? (ratings.reduce((a, b) => a + b, 0) / total).toFixed(2) : '0.00'
     const maxRating = total > 0 ? Math.max(...ratings) : 0
     const minRating = total > 0 ? Math.min(...ratings) : 0

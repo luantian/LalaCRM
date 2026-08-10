@@ -107,7 +107,7 @@ export async function getUserPerms(userId: number): Promise<string[]> {
       return []
     }
 
-    const roleIds = userRoles.map(ur => ur.roleId)
+    const roleIds = userRoles.map((ur: any) => ur.roleId)
 
     // 3. 查询所有角色的 RoleMenu -> MenuItem.perm
     const roleMenus = await prisma.roleMenu.findMany({
@@ -222,7 +222,7 @@ export async function hasAnyRole(userId: number, roles: string[]): Promise<boole
     })
 
     // 检查用户的角色标识是否在指定列表中（过滤掉 roleKey 为 null 的角色）
-    return userRoles.some(ur => ur.role.roleKey != null && roles.includes(ur.role.roleKey))
+    return userRoles.some((ur: any) => ur.role.roleKey != null && roles.includes(ur.role.roleKey))
   } catch (error) {
     logger.error('Error checking user roles:', error)
     return false

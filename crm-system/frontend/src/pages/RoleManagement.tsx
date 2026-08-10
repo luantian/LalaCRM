@@ -204,6 +204,7 @@ function RoleManagement() {
   const { message } = App.useApp()
   const [roles, setRoles] = useState<Role[]>([])
   const [allMenus, setAllMenus] = useState<MenuItem[]>([])
+  const [loading, setLoading] = useState<boolean>(false)
 
   // 编辑弹窗内的菜单权限状态
   const [checkedMenuIds, setCheckedMenuIds] = useState<number[]>([])

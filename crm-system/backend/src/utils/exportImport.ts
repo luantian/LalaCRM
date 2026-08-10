@@ -6,7 +6,7 @@ import logger from './logger'
  * 导出为 CSV
  */
 export function exportCSV(res: Response, filename: string, columns: { key: string; label: string }[], data: any[]) {
-  const headers = columns.map(c => c.label)
+  const headers = columns.map((c: any) => c.label)
   const rows = data.map(item =>
     columns.map(col => {
       const val = getNestedValue(item, col.key)

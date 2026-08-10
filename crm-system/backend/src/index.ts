@@ -162,7 +162,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   // Multer 文件上传错误处理
   if (err.name === 'MulterError') {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: '文件大小超过限制（最大10MB）' })
+      return res.status(400).json({ error: '文件大小超过限制（最大50MB）' })
     }
     return res.status(400).json({ error: `文件上传失败: ${err.message}` })
   }

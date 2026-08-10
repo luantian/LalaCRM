@@ -13,7 +13,7 @@ export async function hasAmountPermission(userId: number): Promise<boolean> {
       select: { roleId: true }
     })
 
-    const userRoleIds = userRoles.map(ur => ur.roleId)
+    const userRoleIds = userRoles.map((ur: any) => ur.roleId)
 
     // 获取配置的可查看角色
     const config = await prisma.systemConfig.findUnique({
@@ -26,7 +26,7 @@ export async function hasAmountPermission(userId: number): Promise<boolean> {
     if (userRoleIds.includes(1)) return true
 
     // 检查用户角色是否在允许列表中
-    return userRoleIds.some(roleId => allowedRoleIds.includes(roleId))
+    return userRoleIds.some((roleId: any) => allowedRoleIds.includes(roleId))
   } catch (error) {
     console.error('Check amount permission error:', error)
     return false

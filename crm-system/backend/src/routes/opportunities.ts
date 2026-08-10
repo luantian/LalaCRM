@@ -134,7 +134,7 @@ router.get('/stats/overview', authenticateToken, checkAnyPermission(['crm:opport
     // 检查当前用户是否有项目金额查看权限
     const canSeeAmount = await hasAmountPermission(req.user!.id)
 
-    let totalBudget = null
+    let totalBudget: number | null = null
     if (canSeeAmount) {
       const opportunities = await prisma.opportunity.findMany({
         where,
@@ -357,7 +357,7 @@ router.delete('/:id', authenticateToken, checkPermission('crm:opportunity:edit')
     await prisma.opportunityFile.updateMany({ where: { opportunityId: numericId }, data: { deletedAt: new Date() } })
     // 级联软删除 OpportunityRecord 和 OpportunityRecordFile
     const records = await prisma.opportunityRecord.findMany({ where: { opportunityId: numericId }, select: { id: true } })
-    const recordIds = records.map(r => r.id)
+    const recordIds = records.map((r: any) => r.id)
     if (recordIds.length > 0) {
       await prisma.opportunityRecordFile.updateMany({ where: { recordId: { in: recordIds } }, data: { deletedAt: new Date() } })
     }

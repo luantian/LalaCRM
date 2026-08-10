@@ -1,38 +1,25 @@
-# Build stage
-FROM node:20-alpine AS builder
+FROM node:20-bookworm
 
-# 设置工作目录
 WORKDIR /app
 
-# 复制 package 文件
+# 使用阿里云镜像源加速
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
+
+# 只安装 LibreOffice 核心模块（Writer + Calc）和轻量中文字体
+# --no-install-recommends 避免安装推荐包，减小体积
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libreoffice-writer \
+    libreoffice-calc \
+    fonts-wqy-zenhei \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/cache/*
+
 COPY package*.json ./
+RUN npm install --registry=https://registry.npmmirror.com
 
-# 安装依赖
-RUN npm ci
-
-# 复制源代码
 COPY . .
-
-# 构建应用
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine
+EXPOSE 3001
 
-# 设置工作目录
-WORKDIR /app
-
-# 复制构建产物和依赖文件
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/prisma ./prisma
-
-# 生成 Prisma Client
-RUN npx prisma generate
-
-# 暴露端口
-EXPOSE 5000
-
-# 启动应用
-CMD ["npm", "run", "start"]
+CMD ["node", "dist/index.js"]

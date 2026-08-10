@@ -75,13 +75,13 @@ router.get('/', authenticateToken, checkPermission('finance:expense:list'), appl
     })
 
     // 批量查询审批人信息
-    const approverIds = [...new Set(expenses.filter(e => e.approvedBy).map(e => e.approvedBy!))]
+    const approverIds = [...new Set(expenses.filter(e => e.approvedBy).map((e: any) => e.approvedBy!))]
     const approvers = approverIds.length > 0
       ? await prisma.user.findMany({ where: { id: { in: approverIds } }, select: { id: true, name: true } })
       : []
-    const approverMap = Object.fromEntries(approvers.map(a => [a.id, a]))
+    const approverMap = Object.fromEntries(approvers.map((a: any) => [a.id, a]))
 
-    const dataWithApprover = expenses.map(e => ({
+    const dataWithApprover = expenses.map((e: any) => ({
       ...e,
       approver: e.approvedBy ? approverMap[e.approvedBy] || null : null
     }))
@@ -607,7 +607,7 @@ router.get('/export/excel', authenticateToken, checkPermission('finance:expense:
       },
       orderBy: { createdAt: 'desc' }
     })
-    const exportData = data.map(e => ({
+    const exportData = data.map((e: any) => ({
       ...e,
       itemCount: e.items.length
     }))

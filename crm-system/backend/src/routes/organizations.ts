@@ -325,7 +325,7 @@ router.get(
         orderBy: { name: 'asc' }
       })
 
-      const result = contacts.map(c => ({
+      const result = contacts.map((c: any) => ({
         id: c.id,
         name: c.name,
         title: c.title,
@@ -358,7 +358,7 @@ router.get(
         orderBy: { name: 'asc' }
       })
 
-      const result = contacts.map(c => ({
+      const result = contacts.map((c: any) => ({
         id: c.id,
         name: c.name,
         title: c.title,
@@ -448,7 +448,7 @@ router.get(
         orgData.email = maskEmail(orgData.email)
         // 联系人的 phone/email/wechat 脱敏
         if (orgData.contacts) {
-          orgData.contacts = orgData.contacts.map(c => ({
+          orgData.contacts = orgData.contacts.map((c: any) => ({
             ...c,
             phone: maskPhone(c.phone),
             email: maskEmail(c.email),
@@ -719,7 +719,7 @@ router.get(
       })
 
       // 对联系方式进行脱敏处理
-      const result = canView ? contacts : contacts.map(c => ({
+      const result = canView ? contacts : contacts.map((c: any) => ({
         ...c,
         phone: maskPhone(c.phone),
         email: maskEmail(c.email),

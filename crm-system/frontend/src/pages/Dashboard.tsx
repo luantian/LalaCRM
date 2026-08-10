@@ -11,7 +11,7 @@ import {
   ProjectOutlined, TeamOutlined, CheckSquareOutlined,
   EllipsisOutlined, UserOutlined
 } from '@ant-design/icons'
-import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse, getTaskRecords, createTaskRecord, updateTaskRecord, uploadTaskFiles, uploadTaskRecordFiles, downloadTaskRecordFileUrl, downloadTaskFileUrl, previewTaskFileUrl, previewTaskRecordFileUrl, openFilePreview, isPreviewableFile, getPreviewUrl, getProjects, getMyInProgressProjects } from '../services/api'
+import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse, getTaskRecords, createTaskRecord, updateTaskRecord, uploadTaskFiles, uploadTaskRecordFiles, downloadTaskRecordFileUrl, downloadTaskFileUrl, previewTaskFileUrl, previewTaskRecordFileUrl, openFilePreview, isPreviewableFile, getPreviewUrl, downloadFile, getProjects, getMyInProgressProjects } from '../services/api'
 import dayjs from 'dayjs'
 
 const { TextArea } = Input
@@ -1277,9 +1277,12 @@ function Dashboard() {
                               onMouseLeave={(e) => {
                                 e.currentTarget.style.background = '#f9fafb'
                               }}
-                              onClick={() => {
-                                const url = getPreviewUrl(downloadTaskFileUrl, file.id)
-                                window.open(url, '_blank')
+                              onClick={async () => {
+                                try {
+                                  await downloadFile(downloadTaskFileUrl, file.id, file.fileName)
+                                } catch {
+                                  message.error('下载失败')
+                                }
                               }}
                             >
                               <PaperClipOutlined style={{ color: '#6366f1', fontSize: 14 }} />
@@ -1315,10 +1318,13 @@ function Dashboard() {
                                 size="small"
                                 icon={<DownloadOutlined />}
                                 style={{ color: '#6366f1' }}
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation()
-                                  const url = getPreviewUrl(downloadTaskFileUrl, file.id)
-                                  window.open(url, '_blank')
+                                  try {
+                                    await downloadFile(downloadTaskFileUrl, file.id, file.fileName)
+                                  } catch {
+                                    message.error('下载失败')
+                                  }
                                 }}
                               />
                             </div>
@@ -1433,9 +1439,12 @@ function Dashboard() {
                                               size="small"
                                               icon={<DownloadOutlined />}
                                               style={{ color: '#6366f1', padding: '0 4px' }}
-                                              onClick={() => {
-                                                const url = getPreviewUrl(downloadTaskRecordFileUrl, file.id)
-                                                window.open(url, '_blank')
+                                              onClick={async () => {
+                                                try {
+                                                  await downloadFile(downloadTaskRecordFileUrl, file.id, file.fileName)
+                                                } catch {
+                                                  message.error('下载失败')
+                                                }
                                               }}
                                             />
                                           </div>

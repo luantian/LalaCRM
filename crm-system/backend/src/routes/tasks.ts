@@ -384,7 +384,7 @@ router.delete('/:id', authenticateToken, logOperation('任务管理', 'DELETE'),
     // 级联软删除子实体
     await prisma.taskFile.updateMany({ where: { taskId: id }, data: { deletedAt: new Date() } })
     const records = await prisma.taskRecord.findMany({ where: { taskId: id }, select: { id: true } })
-    const recordIds = records.map(r => r.id)
+    const recordIds = records.map((r: any) => r.id)
     if (recordIds.length > 0) {
       await prisma.taskRecordFile.updateMany({ where: { recordId: { in: recordIds } }, data: { deletedAt: new Date() } })
     }

@@ -93,7 +93,7 @@ async function getWorkdaysCount(month: dayjs.Dayjs): Promise<number> {
     }
   })
   
-  const holidayDates = new Set(holidays.map(h => dayjs(h.date).format('YYYY-MM-DD')))
+  const holidayDates = new Set(holidays.map((h: any) => dayjs(h.date).format('YYYY-MM-DD')))
   
   let count = 0
   let current = start
@@ -252,7 +252,7 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
 
     // 判断是否通宵加班(加班结束时间超过凌晨2点)
     let isOvernightOvertime = false
-    let flexibleCheckInTime = null
+    let flexibleCheckInTime: Date | null = null
     if (yesterdayRecords.length > 0) {
       const overtimeRecord = yesterdayRecords[0]
       if (overtimeRecord.overtimeEndTime) {
@@ -692,7 +692,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
     })
 
     // 按日期分组统计出勤天数（每天有任意打卡记录即算出勤）
-    const uniqueDates = new Set(records.map(r => dayjs(r.checkInDate).format('YYYY-MM-DD')))
+    const uniqueDates = new Set(records.map((r: any) => dayjs(r.checkInDate).format('YYYY-MM-DD')))
     const attendance = uniqueDates.size
 
     const normal = records.filter(r => r.type === 'NORMAL').length
@@ -732,7 +732,7 @@ router.get('/holidays', authenticateToken, async (req: AuthRequest, res) => {
     })
 
     res.json({
-      holidays: holidays.map(h => ({
+      holidays: holidays.map((h: any) => ({
         date: dayjs(h.date).format('YYYY-MM-DD'),
         name: h.name,
         isWorkday: h.isWorkday

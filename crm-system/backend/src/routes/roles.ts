@@ -15,7 +15,7 @@ router.get('/', authenticateToken, checkPermission('system:role:list'), async (r
     })
 
     // 为每个角色从 RoleMenu -> MenuItem 动态获取三段式权限
-    const rolesWithPerms = await Promise.all(roles.map(async (role) => {
+    const rolesWithPerms = await Promise.all(roles.map(async (role: any) => {
       // 管理员特殊处理：返回通配符
       if (role.name === 'ADMIN') {
         return { ...role, permissions: ['*'] }
@@ -28,8 +28,8 @@ router.get('/', authenticateToken, checkPermission('system:role:list'), async (r
       })
 
       const perms = roleMenus
-        .map(rm => rm.menu?.perm)
-        .filter((perm): perm is string => !!perm)
+        .map((rm: any) => rm.menu?.perm)
+        .filter((perm: any): perm is string => !!perm)
 
       return { ...role, permissions: [...new Set(perms)] }
     }))

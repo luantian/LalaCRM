@@ -74,7 +74,7 @@ export async function getDataScopeWhere(
     const deptUserIds = await prisma.user.findMany({
       where: { deptId: user.deptId },
       select: { id: true }
-    }).then(users => users.map(u => u.id))
+    }).then(users => users.map((u: any) => u.id))
     if (deptUserIds.length > 0) {
       conditions.push({ [ownerField]: { in: deptUserIds } })
     } else {
@@ -89,7 +89,7 @@ export async function getDataScopeWhere(
     const deptUserIds = await prisma.user.findMany({
       where: { deptId: { in: deptIds } },
       select: { id: true }
-    }).then(users => users.map(u => u.id))
+    }).then(users => users.map((u: any) => u.id))
     if (deptUserIds.length > 0) {
       conditions.push({ [ownerField]: { in: deptUserIds } })
     } else {
@@ -112,7 +112,7 @@ export async function getDataScopeWhere(
       const customDeptUserIds = await prisma.user.findMany({
         where: { deptId: { in: customDeptIds } },
         select: { id: true }
-      }).then(users => users.map(u => u.id))
+      }).then(users => users.map((u: any) => u.id))
       if (customDeptUserIds.length > 0) {
         conditions.push({ [ownerField]: { in: customDeptUserIds } })
       }

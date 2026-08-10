@@ -251,14 +251,14 @@ router.delete('/:id', authenticateToken, checkPermission('project:procurement:ed
 
     // 级联软删除采购明细及其附件
     const items = await prisma.procurementItem.findMany({ where: { procurementId: id }, select: { id: true } })
-    const itemIds = items.map(i => i.id)
+    const itemIds = items.map((i: any) => i.id)
     if (itemIds.length > 0) {
       await prisma.procurementItemFile.updateMany({ where: { procurementItemId: { in: itemIds } }, data: { deletedAt: new Date() } })
     }
     await prisma.procurementItem.updateMany({ where: { procurementId: id }, data: { deletedAt: new Date() } })
     // 级联软删除采购付款及其附件
     const payments = await prisma.procurementPayment.findMany({ where: { procurementId: id }, select: { id: true } })
-    const paymentIds = payments.map(p => p.id)
+    const paymentIds = payments.map((p: any) => p.id)
     if (paymentIds.length > 0) {
       await prisma.procurementPaymentFile.updateMany({ where: { procurementPaymentId: { in: paymentIds } }, data: { deletedAt: new Date() } })
     }
