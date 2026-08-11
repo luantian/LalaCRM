@@ -258,6 +258,7 @@ export const deleteProcurementPayment = (id: number) => api.delete(`/procurement
 export const uploadProcurementFiles = (procId: number, files: FormData) => api.post(`/procurements/${procId}/files`, files, { headers: { 'Content-Type': 'multipart/form-data' } })
 export const getProcurementFiles = (procId: number) => api.get(`/procurements/${procId}/files`)
 export const downloadProcurementFile = (fileId: number) => api.get(`/procurements/files/${fileId}/download`, { responseType: 'blob' })
+export const downloadProcurementFileUrl = (fileId: number) => `${api.defaults.baseURL}/procurements/files/${fileId}/download`
 export const previewProcurementFileUrl = (fileId: number) => `${api.defaults.baseURL}/procurements/files/${fileId}/preview`
 export const deleteProcurementFile = (fileId: number) => api.delete(`/procurements/files/${fileId}`)
 
@@ -265,6 +266,7 @@ export const deleteProcurementFile = (fileId: number) => api.delete(`/procuremen
 export const uploadProcurementItemFiles = (itemId: number, files: FormData) => api.post(`/procurements/items/${itemId}/files`, files, { headers: { 'Content-Type': 'multipart/form-data' } })
 export const getProcurementItemFiles = (itemId: number) => api.get(`/procurements/items/${itemId}/files`)
 export const downloadProcurementItemFile = (fileId: number) => api.get(`/procurements/item-files/${fileId}/download`, { responseType: 'blob' })
+export const downloadProcurementItemFileUrl = (fileId: number) => `${api.defaults.baseURL}/procurements/item-files/${fileId}/download`
 export const previewProcurementItemFileUrl = (fileId: number) => `${api.defaults.baseURL}/procurements/item-files/${fileId}/preview`
 export const deleteProcurementItemFile = (fileId: number) => api.delete(`/procurements/item-files/${fileId}`)
 
@@ -272,6 +274,7 @@ export const deleteProcurementItemFile = (fileId: number) => api.delete(`/procur
 export const uploadProcurementPaymentFiles = (paymentId: number, files: FormData) => api.post(`/procurements/payments/${paymentId}/files`, files, { headers: { 'Content-Type': 'multipart/form-data' } })
 export const getProcurementPaymentFiles = (paymentId: number) => api.get(`/procurements/payments/${paymentId}/files`)
 export const downloadProcurementPaymentFile = (fileId: number) => api.get(`/procurements/payment-files/${fileId}/download`, { responseType: 'blob' })
+export const downloadProcurementPaymentFileUrl = (fileId: number) => `${api.defaults.baseURL}/procurements/payment-files/${fileId}/download`
 export const previewProcurementPaymentFileUrl = (fileId: number) => `${api.defaults.baseURL}/procurements/payment-files/${fileId}/preview`
 export const deleteProcurementPaymentFile = (fileId: number) => api.delete(`/procurements/payment-files/${fileId}`)
 

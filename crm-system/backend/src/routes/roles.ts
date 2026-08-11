@@ -44,25 +44,15 @@ router.get('/', authenticateToken, checkPermission('system:role:list'), async (r
 // 创建角色（仅admin）
 router.post('/', authenticateToken, checkPermission('system:role:add'), logOperation('角色管理', 'CREATE'), async (req: Request, res: Response) => {
   try {
-    const { name, displayName, description } = req.body
+    const { displayName, description } = req.body
 
     // 验证必填字段
-    if (!name || !displayName || !description) {
-      return res.status(400).json({ error: '请填写所有必填字段' })
+    if (!displayName || !description) {
+      return res.status(400).json({ error: '请填写角色名称和角色说明' })
     }
 
-    // 验证角色名称格式
-    if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
-      return res.status(400).json({ error: '角色名称只能包含大写字母、数字和下划线，且必须以大写字母开头' })
-    }
-
-    // 检查角色名称是否已存在
-    const existingRole = await prisma.roleModel.findUnique({
-      where: { name }
-    })
-    if (existingRole) {
-      return res.status(400).json({ error: '角色名称已存在' })
-    }
+    // 自动生成角色标识（基于时间戳，确保唯一）
+    const name = `ROLE_${Date.now()}`
 
     // 创建角色
     const role = await prisma.roleModel.create({

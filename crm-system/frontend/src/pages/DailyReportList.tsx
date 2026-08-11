@@ -192,8 +192,8 @@ function DailyReportList() {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
-      // 从工作记录汇总时长
-      const totalHours = formItems.reduce((sum, item) => sum + (Number(item.hours) || 0), 0)
+      // 从工作记录汇总时长（处理浮点数精度）
+      const totalHours = Number(formItems.reduce((sum, item) => sum + (Number(item.hours) || 0), 0).toFixed(1))
       const data = {
         ...values,
         reportDate: values.reportDate.toDate(),
@@ -368,7 +368,7 @@ function DailyReportList() {
       // 重新计算总工时并更新日报主表
       setTimeout(async () => {
         const updatedItems: any[] = (await getDailyReportItems(viewingReport.id)) as any
-        const totalHours = (updatedItems || []).reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0)
+        const totalHours = Number((updatedItems || []).reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0).toFixed(1))
         
         // 只传递后端需要的字段
         await updateDailyReport(viewingReport.id, {
@@ -414,7 +414,7 @@ function DailyReportList() {
       // 重新计算总工时并更新日报主表
       setTimeout(async () => {
         const updatedItems: any[] = (await getDailyReportItems(viewingReport.id)) as any
-        const totalHours = (updatedItems || []).reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0)
+        const totalHours = Number((updatedItems || []).reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0).toFixed(1))
         
         // 只传递后端需要的字段
         await updateDailyReport(viewingReport.id, {
@@ -540,10 +540,10 @@ function DailyReportList() {
       <Card size="small" style={{ marginBottom: 16 }}>
         <Row gutter={16}>
           <Col span={8}>
-            <Statistic title="本月日报数" value={stats?.monthReportCount || 0} suffix="条" />
+            <Statistic title="本月日报数" value={stats?.totalReports || 0} suffix="条" />
           </Col>
           <Col span={8}>
-            <Statistic title="本月总工时" value={stats?.monthTotalHours || 0} precision={1} suffix="小时" />
+            <Statistic title="本月总工时" value={Number((stats?.totalHours || 0).toFixed(1))} precision={1} suffix="小时" />
           </Col>
           <Col span={8}>
             <Statistic title="待提交" value={stats?.pending || 0} suffix="条" valueStyle={{ color: '#faad14' }} />

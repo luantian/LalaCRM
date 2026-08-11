@@ -455,8 +455,7 @@ function RoleManagement() {
         <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e293b', margin: 0 }}>角色管理</h2>
       </div>
 
-      <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1e293b', margin: 0 }}>角色列表</h2>
+      <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
         <Space>
           <Button icon={<BarChartOutlined />} onClick={() => setPermMatrixModalVisible(true)}>权限对照表</Button>
           <Button icon={<SettingOutlined />} onClick={handleOpenContactInfoModal}>联系方式权限配置</Button>

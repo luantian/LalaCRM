@@ -8,9 +8,10 @@ import { HasPermission } from '../components/Permission'
 interface BackupRecord {
   id: number
   fileName: string
+  filePath: string
   fileSize: number
-  remark: string | null
   status: 'SUCCESS' | 'FAILED'
+  remark: string | null
   errorMessage: string | null
   createdAt: string
 }
@@ -119,10 +120,10 @@ const DatabaseBackup: React.FC = () => {
   const handleRestore = async (id: number, fileName: string) => {
     setLoading(true)
     try {
-      const res = await api.post(`/database/backups/${id}/restore`)
-      message.success(res.data.message)
+      const res = await api.post(`/database/backups/${id}/restore`) as any
+      message.success(res.message || '恢复成功')
     } catch (error: any) {
-      message.error(error.response?.data?.error || '恢复失败')
+      message.error(error?.error || '恢复失败')
     } finally {
       setLoading(false)
     }
@@ -130,12 +131,12 @@ const DatabaseBackup: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     try {
-      const res = await api.delete(`/database/backups/${id}`)
-      message.success(res.data.message)
+      const res = await api.delete(`/database/backups/${id}`) as any
+      message.success(res.message || '删除成功')
       loadBackups()
       loadBackupStats()
     } catch (error: any) {
-      message.error(error.response?.data?.error || '删除失败')
+      message.error(error?.error || '删除失败')
     }
   }
 
@@ -145,11 +146,11 @@ const DatabaseBackup: React.FC = () => {
         enabled: scheduleEnabled,
         time: scheduleTime.format('HH:mm:ss'),
         retentionDays
-      })
-      message.success(res.data.message)
+      }) as any
+      message.success(res.message || '保存成功')
       loadBackupSchedule()
     } catch (error: any) {
-      message.error(error.response?.data?.error || '保存失败')
+      message.error(error?.error || '保存失败')
     }
   }
 
@@ -166,20 +167,29 @@ const DatabaseBackup: React.FC = () => {
       title: '文件名',
       dataIndex: 'fileName',
       key: 'fileName',
-      width: 300
+      width: 250
+    },
+    {
+      title: '保存路径',
+      dataIndex: 'filePath',
+      key: 'filePath',
+      width: 400,
+      render: (path: string) => (
+        <span style={{ fontSize: 12, color: '#666', wordBreak: 'break-all' }}>{path}</span>
+      )
     },
     {
       title: '大小',
       dataIndex: 'fileSize',
       key: 'fileSize',
-      width: 120,
+      width: 100,
       render: (size: number) => formatFileSize(size)
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 100,
+      width: 80,
       render: (status: string) => (
         <Tag color={status === 'SUCCESS' ? 'green' : 'red'}>
           {status === 'SUCCESS' ? '成功' : '失败'}
@@ -190,13 +200,13 @@ const DatabaseBackup: React.FC = () => {
       title: '备注',
       dataIndex: 'remark',
       key: 'remark',
-      width: 200
+      width: 150
     },
     {
       title: '备份时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      width: 180,
+      width: 160,
       render: (time: string) => dayjs(time).format('YYYY-MM-DD HH:mm:ss')
     },
     {

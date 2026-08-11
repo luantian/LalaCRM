@@ -31,7 +31,7 @@ export async function autoWriteDailyReport(params: AutoDailyReportParams): Promi
       projectId = null,
       opportunityId = null,
       taskId = null,
-      hours = 0.5,
+      hours = 0,
       type = 'WORK'
     } = params
 
@@ -129,7 +129,7 @@ export async function autoWriteTaskCompletion(
       content: lines.join('\n'),
       projectId: task?.projectId || null,
       taskId,
-      hours: 0.5,
+      hours: 0,
       type: 'WORK'
     })
   } catch (error) {
@@ -178,7 +178,7 @@ export async function autoWriteTaskFlow(
       content: lines.join('\n'),
       projectId: task.projectId || null,
       taskId,
-      hours: 0.25,
+      hours: 0,
       type: 'WORK'
     })
   } catch (error) {
@@ -227,7 +227,7 @@ export async function autoWriteTaskRecord(
       content: lines.join('\n'),
       projectId: task?.projectId || null,
       taskId,
-      hours: 0.25,
+      hours: 0,
       type: 'WORK'
     })
   } catch (error) {
@@ -265,7 +265,7 @@ export async function autoWriteProjectNote(
       title: `${projectName} - ${noteTitle}`,
       content: lines.join('\n'),
       projectId,
-      hours: 0.25,
+      hours: 0,
       type: 'PROJECT'
     })
   } catch (error) {
@@ -298,7 +298,7 @@ export async function autoWriteOpportunityRecord(
       title: opportunityName,
       content: lines.join('\n'),
       opportunityId,
-      hours: 0.25,
+      hours: 0,
       type: 'PRE_SALES'
     })
   } catch (error) {
@@ -330,7 +330,7 @@ export async function autoWriteProjectRecord(
       title: `${projectName} - 项目${actionText}`,
       content: lines.join('\n'),
       projectId,
-      hours: 0.25,
+      hours: 0,
       type: 'PROJECT'
     })
   } catch (error) {
@@ -361,7 +361,7 @@ export async function autoWriteOrganizationRecord(
       userId,
       title: `${organizationName} - 客户${actionText}`,
       content: lines.join('\n'),
-      hours: 0.25,
+      hours: 0,
       type: 'WORK'
     })
   } catch (error) {
@@ -397,7 +397,7 @@ export async function autoWriteQuotationRecord(
       title: `报价单 - ${quotationTitle}`,
       content: lines.join('\n'),
       projectId,
-      hours: 0.25,
+      hours: 0,
       type: 'PRE_SALES'
     })
   } catch (error) {
@@ -433,7 +433,7 @@ export async function autoWriteExpenseRecord(
       title: `费用报销 - ${expenseTitle}`,
       content: lines.join('\n'),
       projectId,
-      hours: 0.25,
+      hours: 0,
       type: 'WORK'
     })
   } catch (error) {
@@ -469,7 +469,7 @@ export async function autoWriteContractRecord(
       title: `合同 - ${contractTitle}`,
       content: lines.join('\n'),
       projectId,
-      hours: 0.5,
+      hours: 0,
       type: 'PROJECT'
     })
   } catch (error) {
@@ -505,7 +505,7 @@ export async function autoWriteProcurementRecord(
       title: `采购 - ${procurementTitle}`,
       content: lines.join('\n'),
       projectId,
-      hours: 0.25,
+      hours: 0,
       type: 'PROJECT'
     })
   } catch (error) {
@@ -546,7 +546,7 @@ export async function autoWriteBusinessTripRecord(
       userId,
       title: `出差 - ${tripTitle}`,
       content: lines.join('\n'),
-      hours: 0.25,
+      hours: 0,
       type: 'WORK'
     })
   } catch (error) {
@@ -584,7 +584,7 @@ export async function autoWriteOpportunityStageChange(
       content: lines.join('\n'),
       opportunityId,
       projectId,
-      hours: 0.25,
+      hours: 0,
       type: 'PRE_SALES'
     })
   } catch (error) {

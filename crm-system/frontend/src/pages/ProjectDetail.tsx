@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Avatar, Empty, Spin, Result, Switch } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, EyeOutlined } from '@ant-design/icons'
-import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizationsSimple, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getReceipts, createReceipt, updateReceipt, deleteReceipt, uploadReceiptFiles, deleteReceiptFile, downloadReceiptFileUrl, previewReceiptFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
+import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizationsSimple, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getReceipts, createReceipt, updateReceipt, deleteReceipt, uploadReceiptFiles, deleteReceiptFile, downloadReceiptFileUrl, previewReceiptFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, downloadProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, downloadProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, downloadProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, openFilePreview, isPreviewableFile, downloadFile } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import { checkPermission } from '../utils/permission'
@@ -847,7 +847,7 @@ function ProjectDetail() {
                                     <EyeOutlined style={{ marginLeft: 4 }} />
                                   </a>
                                 )}
-                                <a href={downloadProjectNoteFileUrl(file.id)} download={file.fileName} style={{ color: '#1890ff', marginLeft: isPreviewableFile(file.fileName) ? 8 : 0 }}>
+                                <a onClick={async (e) => { e.preventDefault(); try { await downloadFile(downloadProjectNoteFileUrl, file.id, file.fileName) } catch { message.error('下载失败') } }} style={{ color: '#1890ff', marginLeft: isPreviewableFile(file.fileName) ? 8 : 0, cursor: 'pointer' }}>
                                   {isPreviewableFile(file.fileName) ? '' : file.fileName}
                                   <DownloadOutlined style={{ marginLeft: 4 }} />
                                 </a>
@@ -894,7 +894,7 @@ function ProjectDetail() {
                           isPreviewableFile(file.fileName) && (
                             <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewContractFileUrl, file.id)} />
                           ),
-                          <a key="dl" href={downloadContractFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                          <Button key="dl" type="text" size="small" icon={<DownloadOutlined />} onClick={() => downloadFile(downloadContractFileUrl, file.id, file.fileName).catch(() => message.error('下载失败'))} />,
                           <Popconfirm key="del" title="确定删除？" onConfirm={() => handleContractFileDelete(record.id, file.id)}>
                             <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                           </Popconfirm>
@@ -929,7 +929,7 @@ function ProjectDetail() {
                                       isPreviewableFile(file.fileName) && (
                                         <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewOrderItemFileUrl, file.id)} />
                                       ),
-                                      <a key="dl" href={downloadOrderItemFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                      <Button key="dl" type="text" size="small" icon={<DownloadOutlined />} onClick={() => downloadFile(downloadOrderItemFileUrl, file.id, file.fileName).catch(() => message.error('下载失败'))} />,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handleOrderFileDelete(or.id, file.id)}>
                                         <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                       </Popconfirm>
@@ -968,7 +968,7 @@ function ProjectDetail() {
                                       isPreviewableFile(file.fileName) && (
                                         <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewReceiptFileUrl, file.id)} />
                                       ),
-                                      <a key="dl" href={downloadReceiptFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                      <Button key="dl" type="text" size="small" icon={<DownloadOutlined />} onClick={() => downloadFile(downloadReceiptFileUrl, file.id, file.fileName).catch(() => message.error('下载失败'))} />,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handleReceiptFileDelete(receipt.id, file.id)}>
                                         <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                       </Popconfirm>
@@ -1006,7 +1006,7 @@ function ProjectDetail() {
                                       isPreviewableFile(file.fileName) && (
                                         <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewShipmentFileUrl, file.id)} />
                                       ),
-                                      <a key="dl" href={downloadShipmentFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                      <Button key="dl" type="text" size="small" icon={<DownloadOutlined />} onClick={() => downloadFile(downloadShipmentFileUrl, file.id, file.fileName).catch(() => message.error('下载失败'))} />,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handleShipmentFileDelete(shipment.id, file.id)}>
                                         <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                       </Popconfirm>
@@ -1054,7 +1054,7 @@ function ProjectDetail() {
                                       isPreviewableFile(file.fileName) && (
                                         <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewInvoiceFileUrl, file.id)} />
                                       ),
-                                      <a key="dl" href={downloadInvoiceFileUrl(file.id)} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                      <Button key="dl" type="text" size="small" icon={<DownloadOutlined />} onClick={() => downloadFile(downloadInvoiceFileUrl, file.id, file.fileName).catch(() => message.error('下载失败'))} />,
                                       <Popconfirm key="del" title="确定删除？" onConfirm={() => handleInvoiceFileDelete(invoice.id, file.id)}>
                                         <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                       </Popconfirm>
@@ -1121,7 +1121,7 @@ function ProjectDetail() {
                           ...(isPreviewableFile(file.fileName) ? [
                             <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewProcurementFileUrl, file.id)} />
                           ] : []),
-                          <a key="dl" href={`/api/procurements/files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                          <Button key="dl" type="text" size="small" icon={<DownloadOutlined />} onClick={() => downloadFile(downloadProcurementFileUrl, file.id, file.fileName)} />,
                           <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcFileDelete(record.id, file.id)}>
                             <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                           </Popconfirm>
@@ -1160,7 +1160,7 @@ function ProjectDetail() {
                                     ...(isPreviewableFile(file.fileName) ? [
                                       <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewProcurementItemFileUrl, file.id)} />
                                     ] : []),
-                                    <a key="dl" href={`/api/procurements/item-files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                    <Button key="dl" type="text" size="small" icon={<DownloadOutlined />} onClick={() => downloadFile(downloadProcurementItemFileUrl, file.id, file.fileName)} />,
                                     <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcItemFileDelete(item.id, file.id)}>
                                       <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                     </Popconfirm>
@@ -1243,7 +1243,7 @@ function ProjectDetail() {
                                     ...(isPreviewableFile(file.fileName) ? [
                                       <Button key="preview" type="text" size="small" icon={<EyeOutlined />} onClick={() => openFilePreview(previewProcurementPaymentFileUrl, file.id)} />
                                     ] : []),
-                                    <a key="dl" href={`/api/procurements/payment-files/${file.id}/download`} target="_blank" rel="noreferrer"><Button type="text" size="small" icon={<DownloadOutlined />} /></a>,
+                                    <Button key="dl" type="text" size="small" icon={<DownloadOutlined />} onClick={() => downloadFile(downloadProcurementPaymentFileUrl, file.id, file.fileName)} />,
                                     <Popconfirm key="del" title="确定删除？" onConfirm={() => handleProcPaymentFileDelete(payment.id, file.id)}>
                                       <Button type="text" size="small" icon={<DeleteOutlined />} danger disabled={isArchived} />
                                     </Popconfirm>
@@ -1530,7 +1530,7 @@ function ProjectDetail() {
         <Form form={procurementForm} layout="vertical">
           <Form.Item name="title" label="采购标题" rules={[{ required: true }]}><Input /></Form.Item>
           <Row gutter={16}>
-            <Col span={12}><Form.Item name="vendor" label="供应商"><Input /></Form.Item></Col>
+            <Col span={12}><Form.Item name="vendor" label="供应商" rules={[{ required: true, message: '请选择供应商名称' }]}><Input /></Form.Item></Col>
             <Col span={12}><Form.Item name="expectedDate" label="预计到货日期"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
           </Row>
           <Form.Item name="status" label="状态" initialValue="PLANNED">
@@ -1598,7 +1598,7 @@ function ProjectDetail() {
                       {file.fileName}
                       <EyeOutlined style={{ marginLeft: 4 }} />
                     </a>
-                    <a href={downloadProjectNoteFileUrl(file.id)} download={file.fileName} style={{ color: '#1890ff', flex: 1 }}>
+                    <a onClick={async (e) => { e.preventDefault(); try { await downloadFile(downloadProjectNoteFileUrl, file.id, file.fileName) } catch { message.error('下载失败') } }} style={{ color: '#1890ff', flex: 1, cursor: 'pointer' }}>
                       {file.fileName}
                       <DownloadOutlined style={{ marginLeft: 4 }} />
                     </a>

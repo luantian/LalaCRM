@@ -94,8 +94,12 @@ router.post('/', authenticateToken, checkPermission('project:procurement:edit'),
       purchaseContractNo, purchaseContractDate, paymentTerms, deliveryTerms, warrantyTerms } = req.body
 
     // 必填字段校验
-    if (!title || !vendor) {
-      return res.status(400).json({ error: '采购标题和供应商名称不能为空' })
+    const missingFields: string[] = []
+    if (!title) missingFields.push('采购标题')
+    if (!vendor) missingFields.push('供应商名称')
+    
+    if (missingFields.length > 0) {
+      return res.status(400).json({ error: `以下字段不能为空：${missingFields.join('、')}` })
     }
 
     const procurement = await prisma.procurement.create({

@@ -124,7 +124,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('office:dailyre
     const reports = await prisma.dailyReport.findMany({ where })
 
     const totalReports = reports.length
-    const totalHours = reports.reduce((sum, r) => sum + Number(r.hours), 0)
+    const totalHours = Number(reports.reduce((sum, r) => sum + Number(r.hours), 0).toFixed(1))
 
     const typeCount = reports.reduce((acc, r) => {
       acc[r.type] = (acc[r.type] || 0) + 1

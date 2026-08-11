@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Spin, Result } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, FileTextOutlined, ScheduleOutlined, CheckOutlined, EyeOutlined, CloseOutlined } from '@ant-design/icons'
-import { getOpportunityDetail, updateOpportunity, convertOpportunity, closeOpportunityProject, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getOrganizationsSimple, getUserDropdown, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, openFilePreview, isPreviewableFile, safeJsonParse } from '../services/api'
+import { getOpportunityDetail, updateOpportunity, convertOpportunity, closeOpportunityProject, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getOrganizationsSimple, getUserDropdown, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, openFilePreview, isPreviewableFile, safeJsonParse, downloadFile } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import { usePermission } from '../hooks/usePermission'
@@ -409,7 +409,7 @@ function OpportunityDetail() {
                                         <EyeOutlined style={{ marginLeft: 4 }} />
                                       </a>
                                     )}
-                                    <a href={downloadOpportunityRecordFileUrl(file.id)} download={file.fileName} style={{ color: '#1890ff', marginLeft: isPreviewableFile(file.fileName) ? 8 : 0 }}>
+                                    <a onClick={async (e) => { e.preventDefault(); try { await downloadFile(downloadOpportunityRecordFileUrl, file.id, file.fileName) } catch { message.error('下载失败') } }} style={{ color: '#1890ff', marginLeft: isPreviewableFile(file.fileName) ? 8 : 0, cursor: 'pointer' }}>
                                       {isPreviewableFile(file.fileName) ? '' : file.fileName}
                                       <DownloadOutlined style={{ marginLeft: 4 }} />
                                     </a>
@@ -688,7 +688,7 @@ function OpportunityDetail() {
                         <EyeOutlined style={{ marginLeft: 4 }} />
                       </a>
                     )}
-                    <a href={downloadOpportunityRecordFileUrl(file.id)} download={file.fileName} style={{ color: '#1890ff', flex: 1 }}>
+                    <a onClick={async (e) => { e.preventDefault(); try { await downloadFile(downloadOpportunityRecordFileUrl, file.id, file.fileName) } catch { message.error('下载失败') } }} style={{ color: '#1890ff', flex: 1, cursor: 'pointer' }}>
                       {file.fileName}
                       <DownloadOutlined style={{ marginLeft: 4 }} />
                     </a>

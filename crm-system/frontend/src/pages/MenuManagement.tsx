@@ -43,18 +43,11 @@ const iconList = [
   'SwapOutlined', 'UploadOutlined', 'DownloadOutlined', 'DesktopOutlined',
 ]
 
-// 角色名称映射
-const roleNames: Record<string, string> = {
-  'SYSTEM_ADMIN': '系统管理员',
-  'SALES_MANAGER': '销售经理',
-  'SALES_REP': '销售专员',
-  'PROJECT_MANAGER': '项目经理',
-  'FINANCE_SPECIALIST': '财务专员',
-  'EMPLOYEE': '普通员工',
-  'TECH_STAFF': '技术人员',
-  'BUSINESS_MANAGER': '商务经理'
+// 从 roles 状态查角色中文名
+const getRoleDisplayName = (roleKey: string, rolesList: any[]): string => {
+  const role = rolesList.find(r => r.name === roleKey || r.roleKey === roleKey)
+  return role ? role.displayName : roleKey
 }
-
 
 const IconCell = ({ name, selected, onClick }: { name: string; selected: boolean; onClick: () => void }) => {
   const IconComp = (Icons as any)[name]
@@ -301,7 +294,7 @@ function MenuManagement() {
         if (!roles || roles.length === 0) {
           return <span style={{ color: '#999' }}>未分配</span>
         }
-        return roles.map(r => roleNames[r] || r).join(', ')
+        return roles.map(r => getRoleDisplayName(r, roles)).join(', ')
       }
     },
     {
@@ -473,7 +466,7 @@ function MenuManagement() {
             <Descriptions.Item label="是否显示">{viewingMenu.isVisible ? '是' : '否'}</Descriptions.Item>
             <Descriptions.Item label="所需角色">
               {viewingMenu.assignedRoles && viewingMenu.assignedRoles.length > 0 
-                ? viewingMenu.assignedRoles.map(r => roleNames[r] || r).join(', ') 
+                ? viewingMenu.assignedRoles.map(r => getRoleDisplayName(r, roles)).join(', ') 
                 : <span style={{ color: '#999' }}>未分配</span>}
             </Descriptions.Item>
           </Descriptions>
