@@ -45,12 +45,7 @@ function Login() {
         </div>
         <div className="login-branding">
           <div className="login-logo-icon">
-            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="20" stroke="white" strokeWidth="2" opacity="0.3" />
-              <circle cx="24" cy="24" r="12" fill="white" opacity="0.2" />
-              <path d="M16 20C16 17.79 17.79 16 20 16H28C30.21 16 32 17.79 32 20V28C32 30.21 30.21 32 28 32H20C17.79 32 16 30.21 16 28V20Z" fill="white" opacity="0.9" />
-              <path d="M22 22H26V26H22V22Z" fill="#4f46e5" />
-            </svg>
+            <img src="/logo.png" alt="logo" style={{ width: 48, height: 48, borderRadius: 8 }} />
           </div>
           <h1 className="login-title">CRM客户管理系统</h1>
           <p className="login-tagline">高效管理客户关系，驱动业务增长</p>

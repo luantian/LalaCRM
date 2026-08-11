@@ -1,11 +1,10 @@
+import prisma from '../lib/prisma'
 import { Router, Response } from 'express'
 import { isAdmin } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 import logger from '../utils/logger'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取我的通知
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {

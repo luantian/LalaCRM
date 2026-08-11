@@ -1,6 +1,6 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { isAdmin } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
@@ -11,7 +11,6 @@ import path from 'path'
 import { checkContractProjectArchived } from '../utils/archive'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取合同回款记录列表
 router.get('/', authenticateToken, async (req: AuthRequest, res) => {

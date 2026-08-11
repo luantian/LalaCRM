@@ -1,5 +1,5 @@
+import prisma from '../lib/prisma'
 import { Router, Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { body, param, query } from 'express-validator'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { validate } from '../middleware/validation'
@@ -9,7 +9,6 @@ import logger from '../utils/logger'
 import { autoWriteOrganizationRecord } from '../utils/autoDailyReport'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // ─── Validation rules ────────────────────────────────────────────────────────
 
@@ -513,7 +512,7 @@ router.post(
 
       logger.info(`Organization created: ${org.name} by user ${req.user?.username}`)
       if (req.user?.id) {
-        autoWriteOrganizationRecord(req.user.id, org.name, 'CREATE', org.id).catch(() => {})
+        autoWriteOrganizationRecord(req.user.id, org.name, 'CREATE', org.id).catch((err) => logger.warn('Auto daily report failed:', err.message))
       }
       res.status(201).json(org)
     } catch (error) {
@@ -588,7 +587,7 @@ router.put(
 
       logger.info(`Organization updated: ${updated.name} by user ${req.user?.username}`)
       if (req.user?.id) {
-        autoWriteOrganizationRecord(req.user.id, updated.name, 'UPDATE', updated.id).catch(() => {})
+        autoWriteOrganizationRecord(req.user.id, updated.name, 'UPDATE', updated.id).catch((err) => logger.warn('Auto daily report failed:', err.message))
       }
       res.json(updated)
     } catch (error) {

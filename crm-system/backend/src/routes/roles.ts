@@ -1,11 +1,10 @@
+import prisma from '../lib/prisma'
 import { Router, Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取所有角色
 router.get('/', authenticateToken, checkPermission('system:role:list'), async (req: Request, res: Response) => {
@@ -61,7 +60,7 @@ router.post('/', authenticateToken, checkPermission('system:role:add'), logOpera
         displayName,
         roleKey: name, // 使用角色名称作为 roleKey
         description,
-        dataScope: req.body.dataScope || 'ALL'
+        dataScope: req.body.dataScope || 'SELF'
       }
     })
 

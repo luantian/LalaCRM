@@ -1,11 +1,10 @@
+import prisma from '../lib/prisma'
 import { Router, Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取所有菜单
 router.get('/', authenticateToken, checkPermission('system:menu:list'), async (req: Request, res: Response) => {

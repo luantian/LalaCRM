@@ -1,6 +1,6 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { isAdmin } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
@@ -11,7 +11,6 @@ import path from 'path'
 import fs from 'fs'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // GET /stats/overview - Stats (before /:id)
 router.get('/stats/overview', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
@@ -120,7 +119,7 @@ router.post('/', authenticateToken, checkPermission('project:procurement:edit'),
       }
     })
     if (req.user?.id) {
-      autoWriteProcurementRecord(req.user.id, procurement.title, 'CREATE', procurement.id, procurement.projectId, procurement.totalAmount?.toNumber()).catch(() => {})
+      autoWriteProcurementRecord(req.user.id, procurement.title, 'CREATE', procurement.id, procurement.projectId, procurement.totalAmount?.toNumber()).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
     res.status(201).json(procurement)
   } catch (error) {
@@ -180,7 +179,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('project:procurem
     // 根据状态判断是 APPROVE 还是 REJECT
     const reportAction = (status === 'CANCELLED' || status === 'REJECTED') ? 'REJECT' : 'APPROVE'
     if (req.user?.id) {
-      autoWriteProcurementRecord(req.user.id, procurement.title, reportAction, id, procurement.projectId, procurement.totalAmount?.toNumber()).catch(() => {})
+      autoWriteProcurementRecord(req.user.id, procurement.title, reportAction, id, procurement.projectId, procurement.totalAmount?.toNumber()).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
     res.json(updated)
   } catch (error) {
@@ -222,7 +221,7 @@ router.put('/:id', authenticateToken, checkPermission('project:procurement:edit'
       }
     })
     if (req.user?.id) {
-      autoWriteProcurementRecord(req.user.id, procurement.title, 'UPDATE', procurement.id, procurement.projectId, procurement.totalAmount?.toNumber()).catch(() => {})
+      autoWriteProcurementRecord(req.user.id, procurement.title, 'UPDATE', procurement.id, procurement.projectId, procurement.totalAmount?.toNumber()).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
     res.json(procurement)
   } catch (error) {

@@ -466,7 +466,7 @@ function MenuManagement() {
             <Descriptions.Item label="是否显示">{viewingMenu.isVisible ? '是' : '否'}</Descriptions.Item>
             <Descriptions.Item label="所需角色">
               {viewingMenu.assignedRoles && viewingMenu.assignedRoles.length > 0 
-                ? viewingMenu.assignedRoles.map(r => getRoleDisplayName(r, roles)).join(', ') 
+                ? viewingMenu.assignedRoles.map((r: any) => getRoleDisplayName(String(r), roles)).join(', ') 
                 : <span style={{ color: '#999' }}>未分配</span>}
             </Descriptions.Item>
           </Descriptions>

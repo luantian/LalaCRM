@@ -1,5 +1,5 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
@@ -11,7 +11,6 @@ import { upload } from '../middleware/upload'
 import { isAdmin } from '../utils/permission'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取所有出差记录
 router.get('/', authenticateToken, applyDataScope('ownerId'), clampPagination(), async (req: AuthRequest, res) => {
@@ -195,7 +194,7 @@ router.post('/', authenticateToken, checkPermission('office:trip:add'), logOpera
     })
 
     if (req.user?.id) {
-      autoWriteBusinessTripRecord(req.user.id, trip.title, 'CREATE', trip.id, trip.destination, new Date(trip.startDate), new Date(trip.endDate)).catch(() => {})
+      autoWriteBusinessTripRecord(req.user.id, trip.title, 'CREATE', trip.id, trip.destination, new Date(trip.startDate), new Date(trip.endDate)).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.status(201).json(trip)
@@ -271,7 +270,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('office:trip:appr
     })
 
     if (req.user?.id) {
-      autoWriteBusinessTripRecord(req.user.id, updated.title, 'APPROVE', id, updated.destination, new Date(updated.startDate), new Date(updated.endDate)).catch(() => {})
+      autoWriteBusinessTripRecord(req.user.id, updated.title, 'APPROVE', id, updated.destination, new Date(updated.startDate), new Date(updated.endDate)).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.json(updated)
@@ -321,7 +320,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('office:trip:appro
     })
 
     if (req.user?.id) {
-      autoWriteBusinessTripRecord(req.user.id, updated.title, 'REJECT', id, updated.destination, new Date(updated.startDate), new Date(updated.endDate)).catch(() => {})
+      autoWriteBusinessTripRecord(req.user.id, updated.title, 'REJECT', id, updated.destination, new Date(updated.startDate), new Date(updated.endDate)).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.json(updated)
@@ -393,7 +392,7 @@ router.post('/:id/complete', authenticateToken, checkPermission('office:trip:add
     })
 
     if (req.user?.id) {
-      autoWriteBusinessTripRecord(req.user.id, updated.title, 'COMPLETE', id, updated.destination, new Date(updated.startDate), new Date(updated.endDate)).catch(() => {})
+      autoWriteBusinessTripRecord(req.user.id, updated.title, 'COMPLETE', id, updated.destination, new Date(updated.startDate), new Date(updated.endDate)).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.json(updated)
@@ -453,7 +452,7 @@ router.put('/:id', authenticateToken, checkPermission('office:trip:add'), logOpe
     })
 
     if (req.user?.id) {
-      autoWriteBusinessTripRecord(req.user.id, trip.title, 'UPDATE', trip.id, trip.destination, new Date(trip.startDate), new Date(trip.endDate)).catch(() => {})
+      autoWriteBusinessTripRecord(req.user.id, trip.title, 'UPDATE', trip.id, trip.destination, new Date(trip.startDate), new Date(trip.endDate)).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.json(trip)

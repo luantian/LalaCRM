@@ -1,6 +1,6 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { isAdmin } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
 import { logOperation } from '../middleware/logOperation'
@@ -10,7 +10,6 @@ import fs from 'fs'
 import path from 'path'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 上传报销附件
 router.post('/:id/files', authenticateToken, checkPermission('finance:expense:add'), upload.array('files', 10), logOperation('报销附件', 'UPLOAD'), async (req: AuthRequest, res) => {

@@ -25,7 +25,7 @@ interface BackupSchedule {
 const DatabaseBackup: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [backups, setBackups] = useState<BackupRecord[]>([])
-  const [backupSchedule, setBackupSchedule] = useState<BackupSchedule>({
+  const [_backupSchedule, setBackupSchedule] = useState<BackupSchedule>({
     enabled: false,
     time: '02:00:00',
     retentionDays: 30
@@ -49,7 +49,7 @@ const DatabaseBackup: React.FC = () => {
   const loadBackups = async () => {
     setLoading(true)
     try {
-      const res = await api.get('/database/backups')
+      const res = await api.get('/database/backups') as any
       setBackups(res)
     } catch (error) {
       message.error('加载备份记录失败')
@@ -60,7 +60,7 @@ const DatabaseBackup: React.FC = () => {
 
   const loadBackupSchedule = async () => {
     try {
-      const res = await api.get('/database/backup-schedule')
+      const res = await api.get('/database/backup-schedule') as any
       if (res) {
         setBackupSchedule(res)
         setScheduleEnabled(res.enabled)
@@ -74,7 +74,7 @@ const DatabaseBackup: React.FC = () => {
 
   const loadBackupStats = async () => {
     try {
-      const res = await api.get('/database/backup-stats')
+      const res = await api.get('/database/backup-stats') as any
       setBackupStats(res)
     } catch (error) {
       console.error('加载备份统计失败', error)
@@ -86,7 +86,7 @@ const DatabaseBackup: React.FC = () => {
     try {
       const res = await api.post('/database/backup', {
         remark: '手动备份'
-      })
+      }) as any
       message.success(res.message || '备份成功')
       loadBackups()
       loadBackupStats()
@@ -117,7 +117,7 @@ const DatabaseBackup: React.FC = () => {
     }
   }
 
-  const handleRestore = async (id: number, fileName: string) => {
+  const handleRestore = async (id: number, _fileName: string) => {
     setLoading(true)
     try {
       const res = await api.post(`/database/backups/${id}/restore`) as any

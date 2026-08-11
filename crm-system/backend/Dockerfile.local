@@ -1,0 +1,14 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 复制构建好的文件
+COPY dist ./dist
+COPY package*.json ./
+
+# 只安装生产依赖
+RUN npm install --omit=dev --registry=https://registry.npmmirror.com
+
+EXPOSE 3001
+
+CMD ["node", "dist/index.js"]

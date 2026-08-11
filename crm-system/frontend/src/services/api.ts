@@ -34,9 +34,27 @@ api.interceptors.request.use(
 // 响应拦截器 - 返回response.data
 api.interceptors.response.use(
   (response) => response.data as any,
-  (error) => {
+  async (error) => {
     const status = error.response?.status
-    const msg = error.response?.data?.error || ''
+    let msg = error.response?.data?.error || ''
+    
+    // 处理 blob 响应的错误
+    if (error.config?.responseType === 'blob' && error.response?.data instanceof Blob) {
+      try {
+        const text = await error.response.data.text()
+        try {
+          const json = JSON.parse(text)
+          msg = json.error || json.message || msg
+        } catch {
+          // 不是 JSON，尝试提取纯文本错误信息
+          if (text && text.length < 200) {
+            msg = text
+          }
+        }
+      } catch {
+        // 读取失败，保持原 msg
+      }
+    }
 
     // 401 或 403（令牌无效/过期）→ 清除登录信息并跳转登录页
     if (status === 401 || (status === 403 && (msg.includes('认证令牌') || msg.includes('登录')))) {
@@ -68,7 +86,7 @@ export const createProject = (data: any) => api.post('/projects', data)
 export const updateProject = (id: number, data: any) => api.put(`/projects/${id}`, data)
 export const deleteProject = (id: number) => api.delete(`/projects/${id}`)
 export const archiveProject = (id: number, isArchived: boolean) => api.put(`/projects/${id}/archive`, { isArchived })
-export const getProjectStats = () => api.get('/projects/stats/overview')
+export const getProjectStats = (params?: { statusNot?: string }) => api.get('/projects/stats/overview', { params })
 export const uploadProjectFiles = (projectId: number, files: FileList, phase?: string) => {
   const formData = new FormData()
   for (let i = 0; i < files.length; i++) {
@@ -500,6 +518,22 @@ export const downloadFile = async (downloadUrlFn: (fileId: number) => string, fi
     const response = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
+    
+    // 检查响应状态
+    if (!response.ok) {
+      // 401 或 403 表示认证失败
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        localStorage.removeItem('menus')
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login'
+        }
+        throw new Error('认证已过期，请重新登录')
+      }
+      // 其他错误状态码
+      throw new Error(`下载失败: ${response.status} ${response.statusText}`)
+    }
     
     // 创建 blob URL 并触发下载
     const blob = await response.blob()

@@ -1,9 +1,8 @@
+import prisma from '../lib/prisma'
 import { Response, NextFunction } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { AuthRequest } from './auth'
 import logger from '../utils/logger'
 
-const prisma = new PrismaClient()
 
 /**
  * 获取用户的数据权限范围

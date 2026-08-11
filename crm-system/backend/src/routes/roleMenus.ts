@@ -1,12 +1,11 @@
+import prisma from '../lib/prisma'
 import { Router, Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 import { clearPermissionCache } from '../utils/permission'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取角色的所有菜单（树形结构）
 router.get('/:roleId', authenticateToken, checkPermission('system:menu:list'), async (req: Request, res: Response) => {

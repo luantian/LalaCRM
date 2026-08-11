@@ -1,9 +1,8 @@
+import prisma from '../lib/prisma'
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { isAdmin, getUserPerms } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient()
 
 interface AuthRequest extends Request {
   user?: {

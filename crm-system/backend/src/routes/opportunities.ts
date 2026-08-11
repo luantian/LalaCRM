@@ -1,6 +1,6 @@
+import prisma from '../lib/prisma'
 import { Router, Request } from 'express'
 import { isAdmin } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission, checkAnyPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
 import { applyDataScope } from '../middleware/dataScope'
@@ -15,7 +15,6 @@ import fs from 'fs'
 import path from 'path'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取所有商机（支持分页、筛选）
 router.get('/', authenticateToken, checkAnyPermission(['crm:opportunity:list', 'project:archive:list']), sortValidation(['name', 'budget', 'status', 'winRate', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {

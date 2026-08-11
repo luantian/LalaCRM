@@ -1,6 +1,6 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { isAdmin, hasAnyRole } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
@@ -10,7 +10,6 @@ import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/
 import { upload } from '../middleware/upload'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取工作日报列表（分页，支持筛选）—— 所有人可查看
 router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope('userId'), clampPagination(), async (req: AuthRequest, res) => {

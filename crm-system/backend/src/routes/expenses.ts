@@ -1,6 +1,6 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { isAdmin } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
@@ -11,7 +11,6 @@ import { upload } from '../middleware/upload'
 import { autoWriteExpenseRecord } from '../utils/autoDailyReport'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取所有费用报销记录
 router.get('/', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), clampPagination(), async (req: AuthRequest, res) => {
@@ -241,7 +240,7 @@ router.post('/', authenticateToken, checkPermission('finance:expense:add'), logO
     })
 
     if (req.user?.id) {
-      autoWriteExpenseRecord(req.user.id, expense.title, 'CREATE', expense.id, expense.projectId, typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)).catch(() => {})
+      autoWriteExpenseRecord(req.user.id, expense.title, 'CREATE', expense.id, expense.projectId, typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.status(201).json(expense)
@@ -322,7 +321,7 @@ router.put('/:id', authenticateToken, checkPermission('finance:expense:add'), lo
     })
 
     if (req.user?.id) {
-      autoWriteExpenseRecord(req.user.id, expense.title, 'UPDATE', expense.id, expense.projectId, typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)).catch(() => {})
+      autoWriteExpenseRecord(req.user.id, expense.title, 'UPDATE', expense.id, expense.projectId, typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.json(expense)
@@ -438,7 +437,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('finance:expense:
 
     if (req.user?.id) {
       const amt = typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)
-      autoWriteExpenseRecord(req.user.id, expense.title, 'APPROVE', expense.id, expense.projectId, amt).catch(() => {})
+      autoWriteExpenseRecord(req.user.id, expense.title, 'APPROVE', expense.id, expense.projectId, amt).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.json(updated)
@@ -492,7 +491,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('finance:expense:a
 
     if (req.user?.id) {
       const amt = typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)
-      autoWriteExpenseRecord(req.user.id, expense.title, 'REJECT', expense.id, expense.projectId, amt).catch(() => {})
+      autoWriteExpenseRecord(req.user.id, expense.title, 'REJECT', expense.id, expense.projectId, amt).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.json(updated)
@@ -568,7 +567,7 @@ router.post('/:id/pay', authenticateToken, checkPermission('finance:expense:appr
 
     if (req.user?.id) {
       const amt = typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)
-      autoWriteExpenseRecord(req.user.id, expense.title, 'PAY', expense.id, expense.projectId, amt).catch(() => {})
+      autoWriteExpenseRecord(req.user.id, expense.title, 'PAY', expense.id, expense.projectId, amt).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.json(updated)

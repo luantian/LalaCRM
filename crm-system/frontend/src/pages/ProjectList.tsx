@@ -92,7 +92,9 @@ function ProjectList() {
 
   const fetchStats = async () => {
     try {
-      const data = await getProjectStats()
+      // 归档页面不过滤状态，普通页面排除已完成
+      const params = isArchivePage ? {} : { statusNot: 'COMPLETED' }
+      const data = await getProjectStats(params)
       setStats(data)
     } catch (error) {
       console.error('获取统计失败:', error)

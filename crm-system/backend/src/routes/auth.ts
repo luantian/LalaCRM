@@ -1,13 +1,13 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import rateLimit from 'express-rate-limit'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import logger from '../utils/logger'
+import { isAdmin } from '../utils/permission'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 登录接口限速：每个IP每分钟最多5次登录尝试
 const loginLimiter = rateLimit({
@@ -58,13 +58,9 @@ function cleanIp(req: any): string {
 }
 
 // Helper: fetch menus for a given user
-async function getUserMenus(userId: number, roleString?: string) {
-  // If ADMIN role, return all menus
-  if (roleString === 'ADMIN') {
-    return await prisma.menuItem.findMany()
-  }
-
-  // 统一从 UserRole 表获取角色（不再回退到旧的 User.roleId）
+// 所有用户（包括管理员）统一按 RoleMenu 配置返回菜单
+async function getUserMenus(userId: number) {
+  // 统一从 UserRole 表获取角色
   const userRoles = await prisma.userRole.findMany({
     where: { userId },
     select: { roleId: true }
@@ -72,8 +68,11 @@ async function getUserMenus(userId: number, roleString?: string) {
 
   const roleIds = userRoles.map(ur => ur.roleId)
 
-  // If no roles assigned, return empty array
+  // 管理员特殊处理：如果没有通过 UserRole 分配角色，回退返回所有菜单
   if (roleIds.length === 0) {
+    if (await isAdmin(userId)) {
+      return await prisma.menuItem.findMany()
+    }
     return []
   }
 
@@ -107,7 +106,7 @@ router.post('/login', async (req, res) => {
       // 记录失败登录日志
       await prisma.loginLog.create({
         data: { username, status: 'FAILED', message: '用户不存在', ip: cleanIp(req), userAgent: req.headers['user-agent'] || '', os: parseUserAgent(req.headers['user-agent'] || '').os, browser: parseUserAgent(req.headers['user-agent'] || '').browser }
-      }).catch(() => {})
+      }).catch((err) => logger.warn('Failed to log login attempt:', err.message))
       return res.status(401).json({ error: '用户名或密码错误' })
     }
 
@@ -116,7 +115,7 @@ router.post('/login', async (req, res) => {
       // 记录失败登录日志
       await prisma.loginLog.create({
         data: { userId: user.id, username, status: 'FAILED', message: '密码错误', ip: cleanIp(req), userAgent: req.headers['user-agent'] || '', os: parseUserAgent(req.headers['user-agent'] || '').os, browser: parseUserAgent(req.headers['user-agent'] || '').browser }
-      }).catch(() => {})
+      }).catch((err) => logger.warn('Failed to log login attempt:', err.message))
       return res.status(401).json({ error: '用户名或密码错误' })
     }
 
@@ -129,8 +128,8 @@ router.post('/login', async (req, res) => {
     const roleIds = userRolesList.map(ur => ur.roleId)
     const permissionSet = new Set<string>()
     
-    // 如果是管理员，返回通配符权限
-    if (user.role === 'ADMIN') {
+    // 统一使用 isAdmin() 函数判断管理员，不再直接检查 User.role
+    if (await isAdmin(user.id)) {
       permissionSet.add('*')
     } else if (roleIds.length > 0) {
       // 从 RoleMenu → MenuItem 获取三段式权限标识
@@ -149,7 +148,7 @@ router.post('/login', async (req, res) => {
     const permissions = Array.from(permissionSet)
 
     // 获取用户菜单
-    const menus = await getUserMenus(user.id, user.role)
+    const menus = await getUserMenus(user.id)
 
     const secret = process.env.JWT_SECRET
     if (!secret) {
@@ -158,7 +157,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role, permissions },
       secret,
-      { expiresIn: '7d' }
+      { expiresIn: '24h' }
     )
 
     // 记录成功登录日志
@@ -167,7 +166,7 @@ router.post('/login', async (req, res) => {
     const { os, browser } = parseUserAgent(ua)
     await prisma.loginLog.create({
       data: { userId: user.id, username, status: 'SUCCESS', ip, userAgent: ua, os, browser, message: '登录成功' }
-    }).catch(() => {})
+    }).catch((err) => logger.warn('Failed to log successful login:', err.message))
 
     // 获取用户部门信息
     const dept = user.deptId ? await prisma.department.findUnique({ where: { id: user.deptId }, select: { id: true, name: true } }) : null
@@ -216,7 +215,7 @@ router.get('/me', async (req, res) => {
       return res.status(404).json({ error: '用户不存在' })
     }
 
-    // 从 RoleMenu → MenuItem.perm 获取三段式权限标识（统一从 UserRole 表读取）
+    // 从 RoleMenu → MenuItem.perm 获取三段式权限标识(统一从 UserRole 表读取)
     const userRolesList = await prisma.userRole.findMany({
       where: { userId: user.id },
       select: { roleId: true }
@@ -225,8 +224,8 @@ router.get('/me', async (req, res) => {
     const roleIds = userRolesList.map(ur => ur.roleId)
     const permissionSet = new Set<string>()
     
-    // 如果是管理员，返回通配符权限
-    if (user.role === 'ADMIN') {
+    // 统一使用 isAdmin() 函数判断管理员,不再直接检查 User.role
+    if (await isAdmin(user.id)) {
       permissionSet.add('*')
     } else if (roleIds.length > 0) {
       // 从 RoleMenu → MenuItem 获取三段式权限标识
@@ -244,7 +243,7 @@ router.get('/me', async (req, res) => {
 
     const permissions = Array.from(permissionSet)
 
-    const menus = await getUserMenus(user.id, user.role)
+    const menus = await getUserMenus(user.id)
 
     res.json({
       id: user.id,
@@ -281,7 +280,7 @@ router.get('/menus', async (req, res) => {
       return res.status(404).json({ error: '用户不存在' })
     }
 
-    const menus = await getUserMenus(user.id, user.role)
+    const menus = await getUserMenus(user.id)
     res.json({ menus })
   } catch (error) {
     res.status(401).json({ error: '无效的认证令牌' })

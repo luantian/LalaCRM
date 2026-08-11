@@ -1,11 +1,10 @@
+import prisma from '../lib/prisma'
 import { Router, Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // ========== 字典类型 ==========
 

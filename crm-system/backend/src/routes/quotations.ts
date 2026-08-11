@@ -1,6 +1,6 @@
+import prisma from '../lib/prisma'
 import { Router, Request } from 'express'
 import { isAdmin } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
 import { applyDataScope } from '../middleware/dataScope'
@@ -15,7 +15,6 @@ import fs from 'fs'
 import path from 'path'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取报价单列表（支持分页、筛选）
 router.get('/', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope('ownerId'), sortValidation(['name', 'version', 'totalAmount', 'status', 'validUntil', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
@@ -234,7 +233,7 @@ router.post('/', authenticateToken, checkPermission('crm:quotation:edit'), logOp
     })
 
     if (req.user?.id) {
-      autoWriteQuotationRecord(req.user.id, quotation.name, 'CREATE', quotation.id, quotation.opportunityId).catch(() => {})
+      autoWriteQuotationRecord(req.user.id, quotation.name, 'CREATE', quotation.id, quotation.opportunityId).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
     res.status(201).json(quotation)
   } catch (error) {
@@ -294,7 +293,7 @@ router.put('/:id', authenticateToken, checkPermission('crm:quotation:edit'), log
         include: { items: true }
       })
       if (req.user?.id) {
-        autoWriteQuotationRecord(req.user.id, quotation.name, 'UPDATE', quotation.id, quotation.opportunityId).catch(() => {})
+        autoWriteQuotationRecord(req.user.id, quotation.name, 'UPDATE', quotation.id, quotation.opportunityId).catch((err) => logger.warn('Auto daily report failed:', err.message))
       }
       return res.json(quotation)
     }
@@ -304,7 +303,7 @@ router.put('/:id', authenticateToken, checkPermission('crm:quotation:edit'), log
       data: { name, validUntil: validUntil ? new Date(validUntil) : null, notes }
     })
     if (req.user?.id) {
-      autoWriteQuotationRecord(req.user.id, quotation.name, 'UPDATE', quotation.id, quotation.opportunityId).catch(() => {})
+      autoWriteQuotationRecord(req.user.id, quotation.name, 'UPDATE', quotation.id, quotation.opportunityId).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
     res.json(quotation)
   } catch (error) {
@@ -387,7 +386,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('crm:quotation:ap
       data: { status: 'APPROVED' }
     })
     if (req.user?.id) {
-      autoWriteQuotationRecord(req.user.id, quotation.name, 'APPROVE', quotation.id, quotation.opportunityId).catch(() => {})
+      autoWriteQuotationRecord(req.user.id, quotation.name, 'APPROVE', quotation.id, quotation.opportunityId).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
     res.json(quotation)
   } catch (error) {
@@ -411,7 +410,7 @@ router.post('/:id/reject', authenticateToken, checkPermission('crm:quotation:app
       data: { status: 'REJECTED' }
     })
     if (req.user?.id) {
-      autoWriteQuotationRecord(req.user.id, quotation.name, 'REJECT', quotation.id, quotation.opportunityId).catch(() => {})
+      autoWriteQuotationRecord(req.user.id, quotation.name, 'REJECT', quotation.id, quotation.opportunityId).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
     res.json(quotation)
   } catch (error) {

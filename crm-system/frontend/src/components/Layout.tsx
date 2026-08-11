@@ -5,7 +5,6 @@ import {
   LogoutOutlined,
   SafetyOutlined,
   TeamOutlined,
-  BarChartOutlined,
   BellOutlined,
   CheckOutlined,
   StopOutlined,
@@ -227,7 +226,7 @@ function Layout() {
       .sort((a, b) => a.order - b.order)
       .map(menu => {
         const menuItem: any = {
-          key: menu.path || (menu.parentId ? `/${menu.key}` : (menu.key === 'dashboard' ? '/' : `/${menu.key}`)),
+          key: (menu as any).path || (menu.parentId ? `/${menu.key}` : (menu.key === 'dashboard' ? '/' : `/${menu.key}`)),
           icon: renderIcon(menu.icon),
           label: menu.label
         }
@@ -330,7 +329,7 @@ function Layout() {
       >
         {/* Logo Area */}
         <div className="ly-logo-area">
-          <BarChartOutlined style={{ marginRight: 10, fontSize: 20 }} />
+          <img src="/logo.png" alt="logo" style={{ width: 24, height: 24, marginRight: 10 }} />
           <span style={{ position: 'relative', zIndex: 1 }}>CRM 管理系统</span>
         </div>
 

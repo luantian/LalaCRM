@@ -1,5 +1,5 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
@@ -11,7 +11,6 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 序列化打卡记录：确保时间字段带有明确的 UTC 标记（"Z"后缀），
 // 避免前端因缺少时区信息而把 UTC 时间误当本地时间显示
@@ -172,11 +171,13 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     const auto = records.filter(r => r.type === 'AUTO').length
     const makeup = records.filter(r => r.type === 'MAKEUP').length
 
+    // 统计补卡次数：只统计MORNING记录，因为每次补卡创建早+晚两条记录
     const makeupCount = await prisma.dailyCheckIn.count({
       where: {
         userId,
         deletedAt: null,
         type: 'MAKEUP',
+        period: 'MORNING', // 只统计早上的，避免重复计数
         checkInDate: { gte: startDate, lte: endDate }
       }
     })
@@ -274,6 +275,7 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
       where: {
         ownerId: userId,
         status: 'APPROVED',
+        deletedAt: null,
         startDate: { lte: range.checkInDate },
         endDate: { gte: range.checkInDate }
       },
@@ -307,7 +309,7 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 打卡（自动判断上下班，前端不需要传 period）
-router.post('/', authenticateToken, checkPermission('attendance:checkin:write'), logOperation('打卡管理', 'CHECKIN'), async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, checkPermission('office:checkin:add'), logOperation('打卡管理', 'CHECKIN'), async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id
     const now = dayjs()
@@ -325,6 +327,7 @@ router.post('/', authenticateToken, checkPermission('attendance:checkin:write'),
       where: {
         ownerId: userId,
         status: 'APPROVED',
+        deletedAt: null,
         startDate: { lte: range.checkInDate },
         endDate: { gte: range.checkInDate }
       },
@@ -385,6 +388,17 @@ router.post('/', authenticateToken, checkPermission('attendance:checkin:write'),
       }
     }
 
+    // 检查是否已存在同时段的打卡记录，软删除所有未删除的旧记录
+    await prisma.dailyCheckIn.updateMany({
+      where: {
+        userId,
+        deletedAt: null,
+        checkInDate: range.checkInDate,
+        period: period as any
+      },
+      data: { deletedAt: now.toDate() }
+    })
+
     const record = await prisma.dailyCheckIn.create({
       data: {
         userId,
@@ -402,7 +416,7 @@ router.post('/', authenticateToken, checkPermission('attendance:checkin:write'),
       where: {
         userId,
         deletedAt: null,
-        checkInTime: { gte: range.start, lt: range.end },
+        checkInDate: range.checkInDate,
         period: period as any
       },
       orderBy: { checkInTime: 'asc' }
@@ -442,7 +456,7 @@ router.post('/', authenticateToken, checkPermission('attendance:checkin:write'),
 })
 
 // 加班打卡：开始加班
-router.post('/overtime/start', authenticateToken, checkPermission('attendance:checkin:write'), logOperation('打卡管理', 'OVERTIME_START'), async (req: AuthRequest, res) => {
+router.post('/overtime/start', authenticateToken, checkPermission('office:checkin:add'), logOperation('打卡管理', 'OVERTIME_START'), async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id
     const now = dayjs()
@@ -497,7 +511,7 @@ router.post('/overtime/start', authenticateToken, checkPermission('attendance:ch
 })
 
 // 加班打卡：结束加班
-router.post('/overtime/end', authenticateToken, checkPermission('attendance:checkin:write'), logOperation('打卡管理', 'OVERTIME_END'), async (req: AuthRequest, res) => {
+router.post('/overtime/end', authenticateToken, checkPermission('office:checkin:add'), logOperation('打卡管理', 'OVERTIME_END'), async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id
     const now = dayjs()
@@ -594,7 +608,7 @@ router.post('/overtime/end', authenticateToken, checkPermission('attendance:chec
 })
 
 // 补卡
-router.post('/makeup', authenticateToken, checkPermission('attendance:checkin:write'), logOperation('打卡管理', 'MAKEUP'), async (req: AuthRequest, res) => {
+router.post('/makeup', authenticateToken, checkPermission('office:checkin:add'), logOperation('打卡管理', 'MAKEUP'), async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id
     const { date, notes } = req.body
@@ -617,7 +631,7 @@ router.post('/makeup', authenticateToken, checkPermission('attendance:checkin:wr
       return res.status(400).json({ error: '节假日和周末不能补卡' })
     }
 
-    // 检查本月补卡次数
+    // 检查本月补卡次数：只统计MORNING记录，避免重复计数
     const monthStart = targetDate.startOf('month').toDate()
     const monthEnd = targetDate.endOf('month').toDate()
     const makeupCount = await prisma.dailyCheckIn.count({
@@ -625,6 +639,7 @@ router.post('/makeup', authenticateToken, checkPermission('attendance:checkin:wr
         userId,
         deletedAt: null,
         type: 'MAKEUP',
+        period: 'MORNING', // 只统计早上的，因为每次补卡创建早+晚两条记录
         checkInDate: { gte: monthStart, lte: monthEnd }
       }
     })
@@ -697,7 +712,8 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
 
     const normal = records.filter(r => r.type === 'NORMAL').length
     const auto = records.filter(r => r.type === 'AUTO').length
-    const makeup = records.filter(r => r.type === 'MAKEUP').length
+    // 只统计MORNING的MAKEUP记录，避免重复计数（每次补卡创建早+晚两条）
+    const makeup = records.filter(r => r.type === 'MAKEUP' && r.period === 'MORNING').length
     const workdays = await getWorkdaysCount(targetMonth)
 
     res.json({
@@ -745,7 +761,7 @@ router.get('/holidays', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 添加节假日（仅管理员）
-router.post('/holidays', authenticateToken, checkPermission('attendance:holidays:write'), logOperation('打卡管理', 'HOLIDAY'), async (req: AuthRequest, res) => {
+router.post('/holidays', authenticateToken, checkPermission('office:checkin:add'), logOperation('打卡管理', 'HOLIDAY'), async (req: AuthRequest, res) => {
   try {
     const { date, name, isWorkday } = req.body
 
@@ -781,7 +797,7 @@ router.post('/holidays', authenticateToken, checkPermission('attendance:holidays
 })
 
 // 删除节假日（仅管理员）
-router.delete('/holidays/:id', authenticateToken, checkPermission('attendance:holidays:write'), logOperation('打卡管理', 'HOLIDAY'), async (req: AuthRequest, res) => {
+router.delete('/holidays/:id', authenticateToken, checkPermission('office:checkin:add'), logOperation('打卡管理', 'HOLIDAY'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
 

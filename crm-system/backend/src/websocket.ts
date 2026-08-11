@@ -10,6 +10,7 @@ const clients = new Map<number, WebSocket[]>()
 const MAX_CONNECTIONS_PER_USER = 5
 
 let wss: WebSocketServer | null = null
+let heartbeatInterval: NodeJS.Timeout | null = null
 
 // 获取 JWT 密钥
 function getJwtSecret(): string {
@@ -110,7 +111,7 @@ export function initWebSocket(server: Server) {
   })
 
   // 心跳检测定时器（每 30 秒）
-  const interval = setInterval(() => {
+  heartbeatInterval = setInterval(() => {
     if (!wss) return
     wss.clients.forEach((ws) => {
       if ((ws as any).isAlive === false) {
@@ -121,11 +122,21 @@ export function initWebSocket(server: Server) {
     })
   }, 30000)
 
-  wss.on('close', () => {
-    clearInterval(interval)
-  })
-
   logger.info('WebSocket server initialized on /ws')
+}
+
+// 清理 WebSocket 资源（用于优雅关闭）
+export function cleanupWebSocket() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval)
+    heartbeatInterval = null
+  }
+  if (wss) {
+    wss.close()
+    wss = null
+  }
+  clients.clear()
+  logger.info('WebSocket server cleaned up')
 }
 
 // 向指定用户推送消息

@@ -1,13 +1,12 @@
+import prisma from '../lib/prisma'
 /**
  * 权限工具模块
  * 基于若依 RBAC 模型：用户 -> 角色 -> 菜单(权限)
  */
 
-import { PrismaClient } from '@prisma/client'
 import logger from './logger'
 import { ROLE_ADMIN } from './constants'
 
-const prisma = new PrismaClient()
 
 // 内存缓存，减少对数据库的频繁查询
 const adminCache = new Map<number, { value: boolean; ts: number }>()

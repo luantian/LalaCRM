@@ -1,6 +1,6 @@
+import prisma from '../lib/prisma'
 import { Router, Request } from 'express'
 import { isAdmin } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
@@ -15,7 +15,6 @@ import { checkProjectArchived, checkContractProjectArchived } from '../utils/arc
 import { hasAmountPermission, filterContractAmount } from '../utils/amountPermission'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取所有合同（支持分页、筛选）
 router.get('/', authenticateToken, checkPermission('project:contract:list'), sortValidation(['name', 'amount', 'signDate', 'startDate', 'endDate', 'status', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
@@ -45,6 +44,29 @@ router.get('/', authenticateToken, checkPermission('project:contract:list'), sor
 
     if (search) {
       where.name = { contains: search as string, mode: 'insensitive' }
+    }
+
+    // 数据权限过滤：非管理员只能看自己创建的 + 自己是项目团队成员的合同
+    const userRole = (req.user as any)?.role
+    const isAdminUser = userRole === 'ADMIN' || await isAdmin(req.user!.id)
+    
+    if (!isAdminUser) {
+      const userId = req.user!.id
+      where.OR = [
+        { ownerId: userId }, // 自己创建的合同
+        {
+          project: {
+            OR: [
+              { ownerId: userId }, // 项目创建者
+              {
+                teamMembers: {
+                  some: { userId: userId } // 项目团队成员
+                }
+              }
+            ]
+          }
+        }
+      ]
     }
 
     const total = await prisma.contract.count({ where })
@@ -249,7 +271,7 @@ router.post('/', authenticateToken, checkPermission('project:contract:add'), log
     })
 
     if (req.user?.id) {
-      autoWriteContractRecord(req.user.id, contract.name, 'CREATE', contract.id, contract.projectId, contract.amount?.toNumber()).catch(() => {})
+      autoWriteContractRecord(req.user.id, contract.name, 'CREATE', contract.id, contract.projectId, contract.amount?.toNumber()).catch((error) => logger.warn('自动日报写入失败:', error.message))
     }
 
     res.status(201).json(contract)
@@ -351,7 +373,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('project:contract
 
     if (req.user?.id) {
       const action = status === 'CANCELLED' ? 'REJECT' : 'APPROVE'
-      autoWriteContractRecord(req.user.id, contract.name, action, contract.id, contract.projectId, contract.amount?.toNumber()).catch(() => {})
+      autoWriteContractRecord(req.user.id, contract.name, action, contract.id, contract.projectId, contract.amount?.toNumber()).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.json(updatedContract)
@@ -405,7 +427,7 @@ router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), 
     })
 
     if (req.user?.id) {
-      autoWriteContractRecord(req.user.id, contract.name, 'UPDATE', contract.id, contract.projectId, contract.amount?.toNumber()).catch(() => {})
+      autoWriteContractRecord(req.user.id, contract.name, 'UPDATE', contract.id, contract.projectId, contract.amount?.toNumber()).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.json(contract)

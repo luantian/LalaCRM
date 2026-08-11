@@ -1,6 +1,6 @@
+import prisma from '../lib/prisma'
 import { Router, Request } from 'express'
 import { isAdmin } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
 import { logOperation } from '../middleware/logOperation'
@@ -15,7 +15,6 @@ import fs from 'fs'
 import path from 'path'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 /**
  * 获取项目的数据权限条件
@@ -96,47 +95,136 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), sort
       where.AND = conditions
     }
 
-    // 付款完结过滤：需要查出后计算
+    // 付款完结过滤：使用原生 SQL 在数据库层面过滤和分页
     if (fullyPaid === 'true') {
-      const allProjects = await prisma.project.findMany({
-        where,
+      // 构建基础 WHERE 条件
+      const baseConditions = ['p."deletedAt" IS NULL']
+      const params: any[] = []
+      let paramIndex = 1
+
+      if (where.ownerId) {
+        baseConditions.push(`p."ownerId" = $${paramIndex++}`)
+        params.push(where.ownerId)
+      }
+
+      if (where.id?.in?.length) {
+        baseConditions.push(`p.id IN (${where.id.in.map(() => `$${paramIndex++}`).join(',')})`)
+        params.push(...where.id.in)
+      }
+
+      if (search) {
+        baseConditions.push(`(p.name ILIKE $${paramIndex} OR p."projectNo" ILIKE $${paramIndex})`)
+        params.push(`%${search}%`)
+        paramIndex++
+      }
+
+      if (status) {
+        baseConditions.push(`p.status = $${paramIndex++}`)
+        params.push(status)
+      }
+
+      if (organizationId) {
+        baseConditions.push(`p."organizationId" = $${paramIndex++}`)
+        params.push(parseInt(organizationId as string))
+      }
+
+      const whereClause = baseConditions.length > 0 ? `WHERE ${baseConditions.join(' AND ')}` : ''
+
+      // 查询总数
+      const countQuery = `
+        SELECT COUNT(*) as total FROM "Project" p
+        ${whereClause}
+        AND EXISTS (
+          SELECT 1 FROM "Contract" c
+          WHERE c."projectId" = p.id AND c."deletedAt" IS NULL
+        )
+        AND (
+          SELECT COALESCE(SUM(CAST(cr.amount AS DECIMAL)), 0)
+          FROM "Contract" c
+          JOIN "ContractReceipt" cr ON cr."contractId" = c.id
+          WHERE c."projectId" = p.id AND c."deletedAt" IS NULL AND cr."deletedAt" IS NULL
+          AND cr.status IN ('RECEIVED', 'CONFIRMED')
+        ) >= (
+          SELECT COALESCE(SUM(CAST(c.amount AS DECIMAL)), 0)
+          FROM "Contract" c
+          WHERE c."projectId" = p.id AND c."deletedAt" IS NULL
+        )
+        AND (
+          SELECT COALESCE(SUM(CAST(c.amount AS DECIMAL)), 0)
+          FROM "Contract" c
+          WHERE c."projectId" = p.id AND c."deletedAt" IS NULL
+        ) > 0
+      `
+
+      // 查询分页数据
+      const dataQuery = `
+        SELECT p.id FROM "Project" p
+        ${whereClause}
+        AND EXISTS (
+          SELECT 1 FROM "Contract" c
+          WHERE c."projectId" = p.id AND c."deletedAt" IS NULL
+        )
+        AND (
+          SELECT COALESCE(SUM(CAST(cr.amount AS DECIMAL)), 0)
+          FROM "Contract" c
+          JOIN "ContractReceipt" cr ON cr."contractId" = c.id
+          WHERE c."projectId" = p.id AND c."deletedAt" IS NULL AND cr."deletedAt" IS NULL
+          AND cr.status IN ('RECEIVED', 'CONFIRMED')
+        ) >= (
+          SELECT COALESCE(SUM(CAST(c.amount AS DECIMAL)), 0)
+          FROM "Contract" c
+          WHERE c."projectId" = p.id AND c."deletedAt" IS NULL
+        )
+        AND (
+          SELECT COALESCE(SUM(CAST(c.amount AS DECIMAL)), 0)
+          FROM "Contract" c
+          WHERE c."projectId" = p.id AND c."deletedAt" IS NULL
+        ) > 0
+        ORDER BY p."${sortBy}" ${sortOrder}
+        LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+      `
+
+      const [countResult, idResults] = await Promise.all([
+        prisma.$queryRawUnsafe(countQuery, ...params) as Promise<Array<{ total: bigint }>>,
+        prisma.$queryRawUnsafe(dataQuery, ...params, take, skip) as Promise<Array<{ id: number }>>
+      ])
+
+      const total = Number(countResult[0]?.total || 0)
+      const projectIds = idResults.map(r => r.id)
+
+      if (projectIds.length === 0) {
+        return res.json({
+          data: [],
+          pagination: {
+            total: 0,
+            page: parseInt(page as string),
+            pageSize: parseInt(pageSize as string),
+            totalPages: 0
+          }
+        })
+      }
+
+      // 获取项目详情
+      const projects = await prisma.project.findMany({
+        where: { id: { in: projectIds } },
         include: {
           organization: { select: { id: true, name: true } },
           contact: { select: { id: true, name: true, title: true, phone: true } },
           owner: { select: { id: true, name: true } },
-          contracts: {
-            where: { deletedAt: null },
-            select: {
-              amount: true,
-              receipts: { where: { deletedAt: null }, select: { amount: true, status: true } }
-            }
-          },
           _count: { select: { contracts: { where: { deletedAt: null } } } }
-        },
-        orderBy: { [sortBy as string]: sortOrder as string },
+        }
       })
 
-      const paidProjects = allProjects.filter(p => {
-        if (!p.contracts.length) return false
-        const totalContractAmount = p.contracts.reduce((sum: number, c: any) => sum + Number(c.amount), 0)
-        const totalReceived = p.contracts.reduce((sum: number, c: any) => {
-          const received = c.receipts
-            .filter((pay: any) => pay.status === 'RECEIVED' || pay.status === 'CONFIRMED')
-            .reduce((s: number, pay: any) => s + Number(pay.amount), 0)
-          return sum + received
-        }, 0)
-        return totalReceived >= totalContractAmount && totalContractAmount > 0
-      })
-
-      const total = paidProjects.length
-      const projects = paidProjects.slice(skip, skip + take)
+      // 保持排序顺序
+      const projectMap = new Map(projects.map(p => [p.id, p]))
+      const sortedProjects = projectIds.map(id => projectMap.get(id)).filter(Boolean)
 
       // 检查当前用户是否有项目金额查看权限
       const canSeeAmount = await hasAmountPermission(req.user!.id)
-      const processedProjects = canSeeAmount ? projects : projects.map(filterProjectAmount)
+      const processedProjects = canSeeAmount ? sortedProjects : sortedProjects.map(filterProjectAmount)
 
       return res.json({
-        data: processedProjects.map((p: any) => ({ ...p, contracts: undefined, _count: undefined })),
+        data: processedProjects,
         pagination: {
           total,
           page: parseInt(page as string),
@@ -184,10 +272,15 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), sort
 // 项目统计（放在 /:id 之前，避免被 /:id 拦截）
 router.get('/stats/overview', authenticateToken, checkPermission('project:project:list'), async (req: AuthRequest, res) => {
   try {
+    const { statusNot = '' } = req.query
     // 使用统一的项目权限逻辑
     const where: any = { deletedAt: null, isArchived: false }
     const scopeWhere = await getProjectScopeWhere(req.user!.id, req.user!.role)
     Object.assign(where, scopeWhere)
+    // 与列表保持一致：排除指定状态
+    if (statusNot) {
+      where.status = { not: statusNot as string }
+    }
     const [total, inProgress, completed, cancelled] = await Promise.all([
       prisma.project.count({ where }),
       prisma.project.count({ where: { ...where, status: 'IN_PROGRESS' } }),
@@ -330,7 +423,7 @@ router.post('/', authenticateToken, checkPermission('project:project:add'), logO
 
     // 自动记录到日报
     if (req.user?.id) {
-      autoWriteProjectRecord(req.user.id, name, 'CREATE', project.id).catch(() => {})
+      autoWriteProjectRecord(req.user.id, name, 'CREATE', project.id).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.status(201).json(project)
@@ -401,7 +494,7 @@ router.put('/:id', authenticateToken, checkPermission('project:project:edit'), l
 
     // 自动记录到日报
     if (req.user?.id) {
-      autoWriteProjectRecord(req.user.id, project.name, 'UPDATE', project.id).catch(() => {})
+      autoWriteProjectRecord(req.user.id, project.name, 'UPDATE', project.id).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
     res.json(project)

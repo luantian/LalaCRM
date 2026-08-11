@@ -1,12 +1,11 @@
+import prisma from '../lib/prisma'
 import { Router, Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { authenticateToken, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 辅助函数：从返回的用户对象中剥离 password 字段，防止哈希泄露
 const userWithoutPassword = (user: any) => {

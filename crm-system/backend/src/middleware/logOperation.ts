@@ -1,9 +1,8 @@
+import prisma from '../lib/prisma'
 import { Response, NextFunction } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { AuthRequest } from '../middleware/auth'
 import logger from '../utils/logger'
 
-const prisma = new PrismaClient()
 
 /**
  * 操作日志中间件

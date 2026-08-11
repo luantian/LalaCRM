@@ -552,6 +552,8 @@ function CheckInList() {
                 }
               } else if (hasCheckedIn) {
                 const types = dayRecords.map(r => r.type)
+                const isComplete = morningRecord && eveningRecord // 是否打满2次
+                
                 if (types.includes('AUTO')) {
                   bgGradient = 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)'
                   borderColor = '#3b82f6'
@@ -568,10 +570,16 @@ function CheckInList() {
                   bgGradient = 'linear-gradient(135deg, #fecaca 0%, #fca5a5 100%)'
                   borderColor = '#f87171'
                   textColor = '#991b1b'
-                } else {
+                } else if (isComplete) {
+                  // 打满2次卡才显示绿色"正常打卡"
                   bgGradient = 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)'
                   borderColor = '#10b981'
                   textColor = '#065f46'
+                } else {
+                  // 只打1次卡显示黄色"打卡不完整"
+                  bgGradient = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)'
+                  borderColor = '#f59e0b'
+                  textColor = '#92400e'
                 }
               } else if (isPast) {
                 bgGradient = '#fee2e2'
@@ -782,8 +790,8 @@ function CheckInList() {
               border: '2px solid #f59e0b'
             }} />
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>补卡</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>每月限1次</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>补卡/打卡不完整</div>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>补卡每月限1次</div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -1,10 +1,9 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { isAdmin } from '../utils/permission'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 操作日志列表（分页 + 筛选）
 router.get('/', authenticateToken, async (req: AuthRequest, res) => {

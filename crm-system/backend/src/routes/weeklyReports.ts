@@ -1,13 +1,12 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { isAdmin, hasAnyRole } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { clampPagination } from '../middleware/validation'
 import logger from '../utils/logger'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取周报列表
 router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), clampPagination(), async (req: AuthRequest, res) => {

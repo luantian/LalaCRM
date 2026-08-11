@@ -1,6 +1,6 @@
+import prisma from '../lib/prisma'
 import { Router, Response } from 'express';
 import { isAdmin } from '../utils/permission'
-import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth';
 import { logOperation } from '../middleware/logOperation';
 import { upload } from '../middleware/upload';
@@ -11,7 +11,6 @@ import fs from 'fs';
 import path from 'path';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // 检查用户是否有权限访问项目
 async function checkProjectAccess(projectId: number, userId: number, role?: string): Promise<boolean> {

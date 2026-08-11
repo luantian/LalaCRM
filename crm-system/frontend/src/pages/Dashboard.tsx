@@ -11,7 +11,7 @@ import {
   ProjectOutlined, TeamOutlined, CheckSquareOutlined,
   EllipsisOutlined, UserOutlined
 } from '@ant-design/icons'
-import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse, getTaskRecords, createTaskRecord, updateTaskRecord, uploadTaskFiles, uploadTaskRecordFiles, downloadTaskRecordFileUrl, downloadTaskFileUrl, previewTaskFileUrl, previewTaskRecordFileUrl, openFilePreview, isPreviewableFile, getPreviewUrl, downloadFile, getProjects, getMyInProgressProjects } from '../services/api'
+import { getTasks, createTask, updateTask, deleteTask, getUserDropdown, getTodayCheckIn, checkIn, safeJsonParse, getTaskRecords, createTaskRecord, updateTaskRecord, uploadTaskFiles, uploadTaskRecordFiles, downloadTaskRecordFileUrl, downloadTaskFileUrl, previewTaskFileUrl, previewTaskRecordFileUrl, openFilePreview, isPreviewableFile, downloadFile, getProjects, getMyInProgressProjects } from '../services/api'
 import dayjs from 'dayjs'
 
 const { TextArea } = Input
@@ -121,7 +121,7 @@ function Dashboard() {
   const fetchProjects = async () => {
     setProjectsLoading(true)
     try {
-      const data = await getProjects({ pageSize: 1000 }) as any
+      const data = await getProjects({ pageSize: 100 }) as any
       setProjects(Array.isArray(data?.data) ? data.data : [])
     } catch (e) { /* ignore */ }
     setProjectsLoading(false)

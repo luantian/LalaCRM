@@ -1,221 +1,185 @@
+import dotenv from 'dotenv'
+dotenv.config()
+
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
-import http from 'http'
-import dotenv from 'dotenv'
-import { PrismaClient } from '@prisma/client'
+import { createServer } from 'http'
 import logger from './utils/logger'
+import prisma from './lib/prisma'
+import { authenticateToken } from './middleware/auth'
 import { utf8Sanitizer } from './middleware/utf8Sanitizer'
 import { initWebSocket } from './websocket'
+
+// 导入路由
 import authRoutes from './routes/auth'
 import userRoutes from './routes/users'
+import departmentRoutes from './routes/departments'
 import roleRoutes from './routes/roles'
+import roleMenuRoutes from './routes/roleMenus'
 import menuRoutes from './routes/menus'
+import dictRoutes from './routes/dicts'
+import organizationRoutes from './routes/organizations'
+import opportunityRoutes from './routes/opportunities'
 import projectRoutes from './routes/projects'
 import contractRoutes from './routes/contracts'
 import contractOrderItemRoutes from './routes/contractOrderItems'
 import contractReceiptRoutes from './routes/contractReceipts'
 import contractShipmentRoutes from './routes/contractShipments'
-import expenseFileRoutes from './routes/expenseFiles'
-import businessTripRoutes from './routes/businessTrips'
-import expenseRoutes from './routes/expenses'
-import dashboardRoutes from './routes/dashboard'
-import opportunityRoutes from './routes/opportunities'
+import quotationRoutes from './routes/quotations'
 import procurementRoutes from './routes/procurements'
 import procurementPaymentRoutes from './routes/procurementPayments'
+import invoiceRoutes from './routes/invoices'
+import expenseRoutes from './routes/expenses'
+import expenseFileRoutes from './routes/expenseFiles'
+import taskRoutes from './routes/tasks'
 import dailyReportRoutes from './routes/dailyReports'
-import roleMenuRoutes from './routes/roleMenus'
-import departmentRoutes from './routes/departments'
-import dictRoutes from './routes/dicts'
-import operationLogRoutes from './routes/operationLogs'
-import loginLogRoutes from './routes/loginLogs'
-import projectNoteRoutes from './routes/projectNotes'
-import projectCostRoutes from './routes/projectCosts'
 import dailyReportTemplateRoutes from './routes/dailyReportTemplates'
+import dailyReportReminderRoutes from './routes/dailyReportReminders'
 import weeklyReportRoutes from './routes/weeklyReports'
 import monthlyReportRoutes from './routes/monthlyReports'
-import dailyReportReminderRoutes from './routes/dailyReportReminders'
-import invoiceRoutes from './routes/invoices'
-import quotationRoutes from './routes/quotations'
 import checkInRoutes from './routes/checkIns'
-import taskRoutes from './routes/tasks'
+import businessTripRoutes from './routes/businessTrips'
+import projectCostRoutes from './routes/projectCosts'
+import projectNoteRoutes from './routes/projectNotes'
+import dashboardRoutes from './routes/dashboard'
 import notificationRoutes from './routes/notifications'
-import orgRoutes from './routes/organizations'
-import settingsRoutes from './routes/settings'
+import settingRoutes from './routes/settings'
+import loginLogRoutes from './routes/loginLogs'
+import operationLogRoutes from './routes/operationLogs'
 import databaseRoutes from './routes/database'
 
-dotenv.config()
-
-// 启动安全检查
-if (!process.env.JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET environment variable is not set!')
-  console.error('Please set a strong random JWT_SECRET before starting the server.')
-  console.error('Example: JWT_SECRET=$(openssl rand -base64 32)')
-  process.exit(1)
-}
-
 const app = express()
-const PORT = process.env.PORT || 5000
-
-// 安全中间件
-app.use(helmet()) // 设置安全 HTTP 头部
-
-// CORS 配置 - 限制允许的域名
-const corsOptions = {
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}
-app.use(cors(corsOptions))
+const server = createServer(app)
+const PORT = parseInt(process.env.PORT || '5000', 10)
 
 // 中间件
+app.use(helmet())
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  credentials: true
+}))
 app.use(express.json({ limit: '10mb' }))
-app.use(utf8Sanitizer) // UTF-8 编码保护
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(utf8Sanitizer)
 
-// 请求日志
-app.use((req, res, next) => {
-  const start = Date.now()
-  res.on('finish', () => {
-    const duration = Date.now() - start
-    logger.info(`${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`)
-  })
-  next()
+// 健康检查（不需要认证）
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// 设置所有响应的字符编码为UTF-8
-app.use((req, res, next) => {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8')
-  next()
-})
-
-// 健康检查（放在路由之前，避免被路由覆盖）
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'CRM API is running' })
-})
-
-// 路由 - 认证接口使用限流
+// 登录接口（不需要认证）
 app.use('/api/auth', authRoutes)
-app.use('/api/users', userRoutes)
-app.use('/api/roles', roleRoutes)
-app.use('/api/menus', menuRoutes)
-app.use('/api/projects', projectRoutes)
-app.use('/api/contracts', contractRoutes)
-app.use('/api/contract-order-items', contractOrderItemRoutes)
-app.use('/api/contract-receipts', contractReceiptRoutes)
-app.use('/api/contract-shipments', contractShipmentRoutes)
-app.use('/api/expense-files', expenseFileRoutes)
-app.use('/api/business-trips', businessTripRoutes)
-app.use('/api/expenses', expenseRoutes)
-app.use('/api/dashboard', dashboardRoutes)
-app.use('/api/opportunities', opportunityRoutes)
-app.use('/api/procurements', procurementRoutes)
-app.use('/api/procurement-payments', procurementPaymentRoutes)
-app.use('/api/daily-reports', dailyReportRoutes)
-app.use('/api/role-menus', roleMenuRoutes)
-app.use('/api/departments', departmentRoutes)
-app.use('/api/dicts', dictRoutes)
-app.use('/api/operation-logs', operationLogRoutes)
-app.use('/api/login-logs', loginLogRoutes)
-app.use('/api/project-notes', projectNoteRoutes)
-app.use('/api/project-costs', projectCostRoutes)
-app.use('/api/daily-report-templates', dailyReportTemplateRoutes)
-app.use('/api/weekly-reports', weeklyReportRoutes)
-app.use('/api/monthly-reports', monthlyReportRoutes)
-app.use('/api/daily-report-reminders', dailyReportReminderRoutes)
-app.use('/api/invoices', invoiceRoutes)
-app.use('/api/quotations', quotationRoutes)
-app.use('/api/check-ins', checkInRoutes)
-app.use('/api/tasks', taskRoutes)
-app.use('/api/notifications', notificationRoutes)
-app.use('/api/organizations', orgRoutes)
-app.use('/api/settings', settingsRoutes)
-app.use('/api/database', databaseRoutes)
 
-// 健康检查
+// 其他接口都需要认证
+app.use('/api/users', authenticateToken, userRoutes)
+app.use('/api/departments', authenticateToken, departmentRoutes)
+app.use('/api/roles', authenticateToken, roleRoutes)
+app.use('/api/role-menus', authenticateToken, roleMenuRoutes)
+app.use('/api/menus', authenticateToken, menuRoutes)
+app.use('/api/dicts', authenticateToken, dictRoutes)
+app.use('/api/organizations', authenticateToken, organizationRoutes)
+app.use('/api/opportunities', authenticateToken, opportunityRoutes)
+app.use('/api/projects', authenticateToken, projectRoutes)
+app.use('/api/contracts', authenticateToken, contractRoutes)
+app.use('/api/contract-order-items', authenticateToken, contractOrderItemRoutes)
+app.use('/api/contract-receipts', authenticateToken, contractReceiptRoutes)
+app.use('/api/contract-shipments', authenticateToken, contractShipmentRoutes)
+app.use('/api/quotations', authenticateToken, quotationRoutes)
+app.use('/api/procurements', authenticateToken, procurementRoutes)
+app.use('/api/procurement-payments', authenticateToken, procurementPaymentRoutes)
+app.use('/api/invoices', authenticateToken, invoiceRoutes)
+app.use('/api/expenses', authenticateToken, expenseRoutes)
+app.use('/api/expense-files', authenticateToken, expenseFileRoutes)
+app.use('/api/tasks', authenticateToken, taskRoutes)
+app.use('/api/daily-reports', authenticateToken, dailyReportRoutes)
+app.use('/api/daily-report-templates', authenticateToken, dailyReportTemplateRoutes)
+app.use('/api/daily-report-reminders', authenticateToken, dailyReportReminderRoutes)
+app.use('/api/weekly-reports', authenticateToken, weeklyReportRoutes)
+app.use('/api/monthly-reports', authenticateToken, monthlyReportRoutes)
+app.use('/api/check-ins', authenticateToken, checkInRoutes)
+app.use('/api/business-trips', authenticateToken, businessTripRoutes)
+app.use('/api/project-costs', authenticateToken, projectCostRoutes)
+app.use('/api/project-notes', authenticateToken, projectNoteRoutes)
+app.use('/api/dashboard', authenticateToken, dashboardRoutes)
+app.use('/api/notifications', authenticateToken, notificationRoutes)
+app.use('/api/settings', authenticateToken, settingRoutes)
+app.use('/api/login-logs', authenticateToken, loginLogRoutes)
+app.use('/api/operation-logs', authenticateToken, operationLogRoutes)
+app.use('/api/database', authenticateToken, databaseRoutes)
+
+// 静态文件服务（上传的文件）
+app.use('/uploads', express.static('uploads'))
 
 // 404 处理
 app.use((req, res) => {
   res.status(404).json({ error: '接口不存在' })
 })
 
-// 错误处理中间件
+// 全局错误处理
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  // 过滤敏感字段，避免密码等数据进入日志
-  const sanitizedBody = { ...req.body }
-  delete sanitizedBody.password
-  delete sanitizedBody.oldPassword
-  delete sanitizedBody.newPassword
-  delete sanitizedBody.token
-
-  logger.error(`${req.method} ${req.originalUrl} - ${err.message}`, {
-    stack: err.stack,
-    body: sanitizedBody
+  logger.error('Unhandled error:', err)
+  res.status(500).json({ 
+    error: '服务器内部错误',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
   })
-
-  // Prisma 错误处理
-  if (err.code === 'P2002') {
-    return res.status(400).json({ error: '数据已存在' })
-  }
-  if (err.code === 'P2025') {
-    return res.status(404).json({ error: '数据不存在' })
-  }
-
-  // Multer 文件上传错误处理
-  if (err.name === 'MulterError') {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: '文件大小超过限制（最大50MB）' })
-    }
-    return res.status(400).json({ error: `文件上传失败: ${err.message}` })
-  }
-
-  // 文件类型被过滤器拒绝
-  if (err.code === 'FILE_TYPE_REJECTED' || err.message === 'FILE_TYPE_REJECTED') {
-    return res.status(400).json({ error: '不支持的文件类型，请上传文档、图片、压缩包等常见格式' })
-  }
-
-  // JWT 错误处理
-  if (err.name === 'UnauthorizedError') {
-    return res.status(401).json({ error: '无效的认证令牌' })
-  }
-
-  // 默认错误
-  const statusCode = err.statusCode || 500
-  const message = process.env.NODE_ENV === 'production'
-    ? '服务器内部错误'
-    : err.message
-
-  res.status(statusCode).json({ error: message })
 })
 
-const server = http.createServer(app)
-const prisma = new PrismaClient()
-
-// 初始化 WebSocket
-initWebSocket(server)
-
-server.listen(PORT, () => {
-  logger.info(`Server is running on port ${PORT}`)
-  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`)
-  logger.info(`WebSocket available at ws://localhost:${PORT}/ws?token=xxx`)
-})
-
-// 优雅关闭
-function gracefulShutdown(signal: string) {
-  logger.info(`${signal} received, shutting down gracefully...`)
-  server.close(() => {
-    logger.info('HTTP server closed')
-    prisma.$disconnect().then(() => {
-      logger.info('Database connection closed')
-      process.exit(0)
-    })
-  })
-  // 10 秒后强制退出
-  setTimeout(() => {
-    logger.error('Forced shutdown after timeout')
-    process.exit(1)
-  }, 10000)
+// 测试数据库连接
+async function testDatabaseConnection() {
+  try {
+    await prisma.$connect()
+    logger.info('✅ 数据库连接成功')
+    
+    // 测试查询
+    const userCount = await prisma.user.count()
+    logger.info(`📊 数据库中有 ${userCount} 个用户`)
+    
+    return true
+  } catch (error) {
+    logger.error('❌ 数据库连接失败:', error)
+    return false
+  }
 }
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
-process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+// 启动服务器
+async function startServer() {
+  const dbConnected = await testDatabaseConnection()
+  
+  if (!dbConnected) {
+    logger.error('数据库连接失败，服务器无法启动')
+    process.exit(1)
+  }
+
+  server.listen(PORT, () => {
+    logger.info(`🚀 服务器已启动: http://localhost:${PORT}`)
+    logger.info(`📡 WebSocket 服务: ws://localhost:${PORT}/ws`)
+  })
+
+  // 初始化 WebSocket
+  initWebSocket(server)
+}
+
+// 优雅关闭
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM 信号接收，正在关闭服务器...')
+  await prisma.$disconnect()
+  server.close(() => {
+    logger.info('服务器已关闭')
+    process.exit(0)
+  })
+})
+
+process.on('SIGINT', async () => {
+  logger.info('SIGINT 信号接收，正在关闭服务器...')
+  await prisma.$disconnect()
+  server.close(() => {
+    logger.info('服务器已关闭')
+    process.exit(0)
+  })
+})
+
+startServer().catch((error) => {
+  logger.error('启动服务器失败:', error)
+  process.exit(1)
+})

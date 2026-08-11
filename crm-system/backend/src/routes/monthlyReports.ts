@@ -1,13 +1,12 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { isAdmin, getUserPerms, hasAnyRole } from '../utils/permission'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { clampPagination } from '../middleware/validation'
 import logger from '../utils/logger'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 辅助函数：检查用户是否有经理权限
 async function hasManagerPermission(userId: number): Promise<boolean> {

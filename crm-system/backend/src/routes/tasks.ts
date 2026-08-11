@@ -1,5 +1,5 @@
+import prisma from '../lib/prisma'
 import { Router, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
@@ -11,12 +11,15 @@ import { autoWriteTaskCompletion, autoWriteTaskRecord, autoWriteTaskFlow } from 
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取任务列表（我收到的 + 我委派的 + 历史任务）
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { type, status, search } = req.query  // type: 'assigned' | 'delegated' | 'historical'
+    const { type, status, search, page = '1', pageSize = '50' } = req.query  // type: 'assigned' | 'delegated' | 'historical'
+    const pageNum = Math.max(1, parseInt(page as string))
+    const pageSizeNum = Math.min(100, Math.max(1, parseInt(pageSize as string)))
+    const skip = (pageNum - 1) * pageSizeNum
+    
     const where: any = { deletedAt: null }
 
     if (type === 'assigned') {
@@ -56,21 +59,34 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       ]
     }
 
-    const tasks = await prisma.task.findMany({
-      where,
-      include: {
-        assigner: { select: { id: true, name: true } },
-        assignees: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } },
-        files: { where: { deletedAt: null } }
-      },
-      orderBy: [
-        { completedAt: 'desc' },
-        { createdAt: 'desc' }
-      ]
-    })
+    const [tasks, total] = await Promise.all([
+      prisma.task.findMany({
+        where,
+        include: {
+          assigner: { select: { id: true, name: true } },
+          assignees: { select: { id: true, name: true } },
+          project: { select: { id: true, name: true } },
+          files: { where: { deletedAt: null } }
+        },
+        orderBy: [
+          { completedAt: 'desc' },
+          { createdAt: 'desc' }
+        ],
+        skip,
+        take: pageSizeNum
+      }),
+      prisma.task.count({ where })
+    ])
 
-    res.json(tasks)
+    res.json({
+      data: tasks,
+      pagination: {
+        page: pageNum,
+        pageSize: pageSizeNum,
+        total,
+        totalPages: Math.ceil(total / pageSizeNum)
+      }
+    })
   } catch (error) {
     logger.error('Get tasks error:', error)
     res.status(500).json({ error: '获取任务列表失败' })
@@ -282,7 +298,7 @@ router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), as
         if (flowAction) {
           const note = recordType === 'REJECT' ? rejectionReason : 
                        recordType === 'SUBMIT' ? completionNote : undefined
-          autoWriteTaskFlow(req.user!.id, id, flowAction, note).catch(() => {})
+          autoWriteTaskFlow(req.user!.id, id, flowAction, note).catch((err) => logger.warn('Auto daily report failed:', err.message))
         }
       }
     }

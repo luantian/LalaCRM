@@ -1,11 +1,10 @@
+import prisma from '../lib/prisma'
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
 import { applyDataScope, getDataScopeWhere } from '../middleware/dataScope'
 import logger from '../utils/logger'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // 获取工作总览统计数据（全面版）
 router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
