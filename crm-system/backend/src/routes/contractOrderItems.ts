@@ -1,7 +1,7 @@
 import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { isAdmin } from '../utils/permission'
-import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
+import { authenticateToken, authenticateFileToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
 import logger from '../utils/logger'
@@ -13,7 +13,7 @@ import { checkContractProjectArchived } from '../utils/archive'
 const router = Router()
 
 // 获取合同订货明细列表
-router.get('/', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
     const contractId = parseInt(req.query.contractId as string)
     if (!contractId) {
@@ -219,7 +219,7 @@ router.post('/:id/files', authenticateToken, checkPermission('project:contract:e
 })
 
 // 获取订货明细附件列表
-router.get('/:id/files', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/:id/files', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
     const orderItemId = parseInt(req.params.id as string)
     const files = await prisma.contractOrderItemFile.findMany({
@@ -234,12 +234,18 @@ router.get('/:id/files', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 下载订货明细附件
-router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateFileToken, async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.contractOrderItemFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.contractOrderItemFile.findFirst({
+      where: { id: fileId, deletedAt: null },
+      include: { orderItem: { include: { contract: { select: { ownerId: true } } } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+    if (file.orderItem.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '无权下载此文件' })
     }
     const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
@@ -253,12 +259,18 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
 })
 
 // 预览订货明细附件（图片/PDF/Word/Excel）- 必须在下载路由之前
-router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateFileToken, async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.contractOrderItemFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.contractOrderItemFile.findFirst({
+      where: { id: fileId, deletedAt: null },
+      include: { orderItem: { include: { contract: { select: { ownerId: true } } } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+    if (file.orderItem.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '无权预览此文件' })
     }
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {

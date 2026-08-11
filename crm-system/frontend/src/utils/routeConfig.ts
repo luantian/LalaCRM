@@ -26,6 +26,7 @@ export const routeComponents: Record<string, React.LazyExoticComponent<any>> = {
   '/projects': lazy(() => import('../pages/ProjectList')),
   '/projects/archived': lazy(() => import('../pages/ProjectArchive')),
   '/projects/:id': lazy(() => import('../pages/ProjectDetail')),
+  '/sales': lazy(() => import('../pages/ProjectArchive')),
   
   // 费用报销
   '/expenses': lazy(() => import('../pages/ExpenseList')),

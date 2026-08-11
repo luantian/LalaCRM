@@ -7,6 +7,7 @@ import { upload } from '../middleware/upload'
 import fs from 'fs'
 import path from 'path'
 import { sortValidation, clampPagination, dateValidation } from '../middleware/validation'
+import { applyDataScope } from '../middleware/dataScope'
 import logger from '../utils/logger'
 import { exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
@@ -17,7 +18,7 @@ import { hasAmountPermission, filterContractAmount } from '../utils/amountPermis
 const router = Router()
 
 // 获取所有合同（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('project:contract:list'), sortValidation(['name', 'amount', 'signDate', 'startDate', 'endDate', 'status', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('project:contract:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), sortValidation(['name', 'amount', 'signDate', 'startDate', 'endDate', 'status', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -46,28 +47,9 @@ router.get('/', authenticateToken, checkPermission('project:contract:list'), sor
       where.name = { contains: search as string, mode: 'insensitive' }
     }
 
-    // 数据权限过滤：非管理员只能看自己创建的 + 自己是项目团队成员的合同
-    const userRole = (req.user as any)?.role
-    const isAdminUser = userRole === 'ADMIN' || await isAdmin(req.user!.id)
-    
-    if (!isAdminUser) {
-      const userId = req.user!.id
-      where.OR = [
-        { ownerId: userId }, // 自己创建的合同
-        {
-          project: {
-            OR: [
-              { ownerId: userId }, // 项目创建者
-              {
-                teamMembers: {
-                  some: { userId: userId } // 项目团队成员
-                }
-              }
-            ]
-          }
-        }
-      ]
-    }
+    // 数据权限过滤：使用统一的数据权限中间件
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    Object.assign(where, dataScopeWhere)
 
     const total = await prisma.contract.count({ where })
 
@@ -106,9 +88,10 @@ router.get('/', authenticateToken, checkPermission('project:contract:list'), sor
 })
 
 // 合同统计
-router.get('/stats/overview', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('project:contract:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
-    const where: any = { deletedAt: null }
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, ...dataScopeWhere }
     
     // 检查金额权限
     const hasAmountPerm = await hasAmountPermission(req.user!.id)
@@ -204,11 +187,12 @@ router.get('/files/:fileId/preview', authenticateToken, checkPermission('project
 })
 
 // 获取合同详情
-router.get('/:id', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('project:contract:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const contract = await prisma.contract.findFirst({
-      where: { id: parseInt(id), deletedAt: null },
+      where: { id: parseInt(id), deletedAt: null, ...dataScopeWhere },
       include: {
         organization: true,
         project: true,
@@ -604,10 +588,11 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:
 })
 
 // 导出合同Excel
-router.get('/export/excel', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('project:contract:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.contract.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...dataScopeWhere },
       include: { organization: { select: { name: true } }, owner: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }
     })

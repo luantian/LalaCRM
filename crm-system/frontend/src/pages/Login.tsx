@@ -23,6 +23,8 @@ function Login() {
       if (response.user?.permissions) {
         localStorage.setItem('permissions', JSON.stringify(response.user.permissions))
       }
+      // 通知权限 Hook 重新读取
+      window.dispatchEvent(new Event('user-permissions-changed'))
       message.success('登录成功')
       navigate('/')
     } catch (error: any) {

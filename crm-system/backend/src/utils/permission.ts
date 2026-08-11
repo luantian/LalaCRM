@@ -62,17 +62,6 @@ export async function isAdmin(userId: number): Promise<boolean> {
 }
 
 /**
- * 同步版 isAdmin（从 JWT 中的 role 字段快速判断）
- * 用于中间件链中不能 await 的场景
- * 
- * @param user JWT 解析后的用户对象
- * @returns 是否可能是管理员（快速判断）
- */
-export function isAdminFast(user: any): boolean {
-  return user?.role === 'ADMIN'
-}
-
-/**
  * 获取用户的所有权限标识
  * 若依模式：通过 UserRole -> RoleMenu -> MenuItem.perm 链路获取
  * 
@@ -134,56 +123,8 @@ export async function getUserPerms(userId: number): Promise<string[]> {
 }
 
 /**
- * 获取用户的数据权限范围
- * 从用户的所有角色中取最大数据范围
- * 
- * @param userId 用户ID
- * @returns 数据范围类型
- */
-export async function getUserDataScope(userId: number): Promise<string> {
-  if (!userId) return 'SELF'
-
-  try {
-    const userRoles = await prisma.userRole.findMany({
-      where: { userId },
-      include: { role: true }
-    })
-    
-    if (userRoles.length === 0) {
-      return 'SELF'
-    }
-    
-    // 数据范围优先级：ALL > CUSTOM > DEPARTMENT_BELOW > DEPARTMENT > TEAM > SELF
-    const scopePriority: Record<string, number> = {
-      'ALL': 6,
-      'CUSTOM': 5,
-      'DEPARTMENT_BELOW': 4,
-      'DEPARTMENT': 3,
-      'TEAM': 2,
-      'SELF': 1
-    }
-    
-    let maxScope = 'SELF'
-    let maxPriority = 1
-    
-    for (const ur of userRoles) {
-      const p = scopePriority[ur.role.dataScope] || 1
-      if (p > maxPriority) {
-        maxPriority = p
-        maxScope = ur.role.dataScope
-      }
-    }
-    
-    return maxScope
-  } catch (error) {
-    logger.error('Error getting user data scope:', error)
-    return 'SELF'
-  }
-}
-
-/**
  * 检查用户是否有指定权限
- * 
+ *
  * @param userId 用户ID
  * @param perm 权限标识，如 'user:list'
  * @returns 是否有权限
@@ -240,44 +181,6 @@ export function clearPermissionCache(userId?: number) {
     adminCache.clear()
     permsCache.clear()
   }
-}
-
-/**
- * 获取数据过滤条件（简化版，替代 applyDataScope）
- * 硬编码常见场景的数据权限逻辑
- * 
- * @param userId 用户ID
- * @param module 模块名称：'dailyreport' | 'finance' | 'crm' | 'project' | 'sales'
- * @param ownerField 数据所有者字段名，默认 'ownerId'
- * @returns Prisma where 条件对象
- */
-export async function getDataFilter(userId: number, module: string, ownerField: string = 'ownerId'): Promise<any> {
-  // 管理员看全部
-  if (await isAdmin(userId)) {
-    return {}
-  }
-
-  // 日报：所有人看全部
-  if (module === 'dailyreport') {
-    return {}
-  }
-
-  // 费用/发票：财务看全部，普通员工看自己的
-  if (module === 'finance') {
-    const isFinance = await hasAnyRole(userId, ['finance', 'FINANCE'])
-    if (isFinance) {
-      return {}
-    }
-    return { [ownerField]: userId }
-  }
-
-  // 客户/报价/售前/销售：管理员看全部，普通员工看自己的
-  if (module === 'crm' || module === 'project' || module === 'sales') {
-    return { [ownerField]: userId }
-  }
-
-  // 默认：只看自己的
-  return { [ownerField]: userId }
 }
 
 /**

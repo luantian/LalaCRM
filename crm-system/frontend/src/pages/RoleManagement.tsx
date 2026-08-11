@@ -4,6 +4,7 @@ import { SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined, EyeOutline
 import type { DataNode } from 'antd/es/tree'
 import api from '../services/api'
 import { getRoleMenus, assignRoleMenus } from '../services/api'
+import { usePermission } from '../hooks/usePermission'
 
 // ===== 权限对照表组件（矩阵打勾式） =====
 
@@ -201,6 +202,7 @@ interface MenuItem {
 }
 
 function RoleManagement() {
+  const { checkPermission } = usePermission()
   const { message } = App.useApp()
   const [roles, setRoles] = useState<Role[]>([])
   const [allMenus, setAllMenus] = useState<MenuItem[]>([])
@@ -460,7 +462,7 @@ function RoleManagement() {
           <Button icon={<BarChartOutlined />} onClick={() => setPermMatrixModalVisible(true)}>权限对照表</Button>
           <Button icon={<SettingOutlined />} onClick={handleOpenContactInfoModal}>联系方式权限配置</Button>
           <Button icon={<SettingOutlined />} onClick={handleOpenProjectAmountModal}>项目金额权限配置</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateRole}>新建角色</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateRole} disabled={!checkPermission('system:role:add')}>新建角色</Button>
         </Space>
       </div>
       <Card
@@ -495,8 +497,8 @@ function RoleManagement() {
               render: (_: any, record: Role) => (
                 <Space size={0}>
                   <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewRole(record)}>查看</Button>
-                  <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditRole(record)}>编辑</Button>
-                  <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteRole(record)}>
+                  <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditRole(record)} disabled={!checkPermission('system:role:edit')}>编辑</Button>
+                  <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteRole(record)} disabled={!checkPermission('system:role:delete')}>
                     <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
                   </Popconfirm>
                 </Space>
@@ -547,8 +549,24 @@ function RoleManagement() {
               label: '菜单权限',
               children: (
                 <div>
-                  <div style={{ marginBottom: 12, color: '#666', fontSize: 13 }}>
-                    勾选该角色可以看到的菜单页面。取消勾选后，该角色的用户将无法看到对应菜单。
+                  <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#666', fontSize: 13 }}>
+                      勾选该角色可以看到的菜单页面。取消勾选后，该角色的用户将无法看到对应菜单。
+                    </span>
+                    <Space size="small">
+                      <Button size="small" type="link" onClick={() => {
+                        const extractAllIds = (menus: MenuItem[]): number[] => {
+                          const ids: number[] = []
+                          menus.forEach(m => {
+                            ids.push(m.id)
+                            if (m.children?.length) ids.push(...extractAllIds(m.children))
+                          })
+                          return ids
+                        }
+                        setCheckedMenuIds(extractAllIds(menusWithChildren))
+                      }}>全选</Button>
+                      <Button size="small" type="link" danger onClick={() => setCheckedMenuIds([])}>清空</Button>
+                    </Space>
                   </div>
                   {menuLoading ? (
                     <div style={{ textAlign: 'center', padding: 20, color: '#999' }}>加载中...</div>

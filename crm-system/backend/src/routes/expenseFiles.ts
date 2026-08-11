@@ -1,7 +1,7 @@
 import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { isAdmin } from '../utils/permission'
-import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
+import { authenticateToken, authenticateFileToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
@@ -118,7 +118,7 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('finance:
 })
 
 // 下载报销附件
-router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateFileToken, async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -148,7 +148,7 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
 })
 
 // 预览报销附件（图片/PDF/Word/Excel）
-router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateFileToken, async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.expenseFile.findFirst({

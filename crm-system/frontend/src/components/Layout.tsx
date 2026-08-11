@@ -17,7 +17,7 @@ import {
 import type { MenuProps } from 'antd'
 import { useEffect, useState, useCallback } from 'react'
 import api from '../services/api'
-import * as Icons from '@ant-design/icons'
+import { getIcon } from '../utils/iconRegistry'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { getNotifications, markNotificationRead, markAllNotificationsRead, getTasks, updateTask, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
@@ -25,7 +25,7 @@ import dayjs from 'dayjs'
 const { Header, Sider, Content } = AntLayout
 
 const renderIcon = (iconName: string) => {
-  const IconComp = (Icons as any)[iconName]
+  const IconComp = getIcon(iconName)
   return IconComp ? <IconComp /> : null
 }
 
@@ -255,6 +255,8 @@ function Layout() {
     localStorage.removeItem('user')
     localStorage.removeItem('menus')
     localStorage.removeItem('permissions')
+    // 通知权限 Hook 清空
+    window.dispatchEvent(new Event('user-permissions-changed'))
     message.success('已退出登录')
     navigate('/login')
   }

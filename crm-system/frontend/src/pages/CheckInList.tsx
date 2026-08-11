@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Card, Row, Col, Button, message, Tag, Modal, Input, Space } from 'antd'
 import { CheckCircleOutlined, ClockCircleOutlined, CarOutlined, ExclamationCircleOutlined, CalendarOutlined, TrophyOutlined, FireOutlined } from '@ant-design/icons'
-import { getCheckIns, getTodayCheckIn, checkIn, makeupCheckIn, getCheckInStats } from '../services/api'
+import { getCheckIns, getTodayCheckIn, checkIn, makeupCheckIn, getCheckInStats, getHolidays } from '../services/api'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 
@@ -11,45 +11,8 @@ dayjs.extend(utc)
 const formatTime = (t: string | Date) => dayjs.utc(t).local().format('HH:mm')
 import type { Dayjs } from 'dayjs'
 
-// 2026年法定节假日和传统节日
-const HOLIDAYS_2026: Record<string, { name: string; type: 'legal' | 'festival' }> = {
-  // 元旦
-  '2026-01-01': { name: '元旦', type: 'legal' },
-  // 春节
-  '2026-01-26': { name: '除夕', type: 'legal' },
-  '2026-01-27': { name: '春节', type: 'legal' },
-  '2026-01-28': { name: '春节', type: 'legal' },
-  '2026-01-29': { name: '春节', type: 'legal' },
-  '2026-01-30': { name: '春节', type: 'legal' },
-  '2026-01-31': { name: '春节', type: 'legal' },
-  '2026-02-01': { name: '春节', type: 'legal' },
-  // 清明节
-  '2026-04-05': { name: '清明节', type: 'legal' },
-  // 劳动节
-  '2026-05-01': { name: '劳动节', type: 'legal' },
-  '2026-05-02': { name: '劳动节', type: 'legal' },
-  '2026-05-03': { name: '劳动节', type: 'legal' },
-  // 端午节
-  '2026-05-31': { name: '端午节', type: 'legal' },
-  // 中秋节
-  '2026-09-25': { name: '中秋节', type: 'legal' },
-  // 国庆节
-  '2026-10-01': { name: '国庆节', type: 'legal' },
-  '2026-10-02': { name: '国庆节', type: 'legal' },
-  '2026-10-03': { name: '国庆节', type: 'legal' },
-  '2026-10-04': { name: '国庆节', type: 'legal' },
-  '2026-10-05': { name: '国庆节', type: 'legal' },
-  '2026-10-06': { name: '国庆节', type: 'legal' },
-  '2026-10-07': { name: '国庆节', type: 'legal' },
-  // 传统节日
-  '2026-02-14': { name: '情人节', type: 'festival' },
-  '2026-03-08': { name: '妇女节', type: 'festival' },
-  '2026-05-04': { name: '青年节', type: 'festival' },
-  '2026-06-01': { name: '儿童节', type: 'festival' },
-  '2026-07-01': { name: '建党节', type: 'festival' },
-  '2026-08-01': { name: '建军节', type: 'festival' },
-  '2026-09-10': { name: '教师节', type: 'festival' },
-}
+// 节假日类型
+type HolidayInfo = { name: string; type: 'legal' | 'festival' }
 
 function CheckInList() {
   const [todayStatus, setTodayStatus] = useState<any>(null)
@@ -60,11 +23,31 @@ function CheckInList() {
   const [makeupDate, setMakeupDate] = useState<Dayjs | null>(null)
   const [checkingIn, setCheckingIn] = useState(false)
   const [makeupNotes, setMakeupNotes] = useState('')
+  const [holidays, setHolidays] = useState<Record<string, HolidayInfo>>({})
 
   useEffect(() => {
     fetchData()
     fetchTodayStatus()
+    fetchHolidays()
   }, [currentMonth])
+
+  const fetchHolidays = async () => {
+    try {
+      const year = currentMonth.year()
+      const data: any = await getHolidays({ year })
+      const holidayMap: Record<string, HolidayInfo> = {}
+      for (const h of (data.holidays || [])) {
+        // isWorkday=false → 法定假日, isWorkday=true → 调休/传统节日
+        holidayMap[h.date] = {
+          name: h.name,
+          type: h.isWorkday ? 'festival' : 'legal'
+        }
+      }
+      setHolidays(holidayMap)
+    } catch (error) {
+      console.error('获取节假日数据失败:', error)
+    }
+  }
 
   const fetchData = async () => {
     try {
@@ -120,7 +103,7 @@ function CheckInList() {
     // 检查是否为节假日或周末
     const dayOfWeek = makeupDate.day()
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-    const isHoliday = HOLIDAYS_2026[makeupDate.format('YYYY-MM-DD')]
+    const isHoliday = holidays[makeupDate.format('YYYY-MM-DD')]
     
     if (isWeekend || isHoliday) {
       message.error('节假日和周末不能补卡')
@@ -532,7 +515,7 @@ function CheckInList() {
               const morningRecord = dayRecords.find(r => r.period === 'MORNING')
               const eveningRecord = dayRecords.find(r => r.period === 'EVENING')
               const hasCheckedIn = dayRecords.length > 0
-              const holiday = HOLIDAYS_2026[dateStr]
+              const holiday = holidays[dateStr]
 
               // 确定单元格样式
               let bgGradient = '#f9fafb'
@@ -594,7 +577,7 @@ function CheckInList() {
                     // 排除节假日和周末的补卡
                     const dayOfWeek = date.day()
                     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-                    const isHoliday = HOLIDAYS_2026[dateStr]
+                    const isHoliday = holidays[dateStr]
                     
                     if (!hasCheckedIn && isPast && (stats?.makeupRemaining ?? 0) > 0 && !isWeekend && !isHoliday) {
                       handleOpenMakeup(date)

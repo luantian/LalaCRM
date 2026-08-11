@@ -4,6 +4,7 @@ import { isAdmin } from '../utils/permission'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
+import { applyDataScope } from '../middleware/dataScope'
 import logger from '../utils/logger'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import { autoWriteProcurementRecord } from '../utils/autoDailyReport'
@@ -13,9 +14,10 @@ import fs from 'fs'
 const router = Router()
 
 // GET /stats/overview - Stats (before /:id)
-router.get('/stats/overview', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('project:procurement:list'), applyDataScope({ ownerField: 'assignedTo', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
-    const where: any = { deletedAt: null }
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, ...dataScopeWhere }
     
     const [total, byStatus, amountResult] = await Promise.all([
       prisma.procurement.count({ where }),
@@ -32,7 +34,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('project:procur
 })
 
 // GET / - List procurements
-router.get('/', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('project:procurement:list'), applyDataScope({ ownerField: 'assignedTo', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 10
@@ -41,6 +43,12 @@ router.get('/', authenticateToken, checkPermission('project:procurement:list'), 
 
     // 构建查询条件
     const conditions: any[] = [{ deletedAt: null }]
+
+    // 数据权限过滤
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    if (Object.keys(dataScopeWhere).length > 0) {
+      conditions.push(dataScopeWhere)
+    }
 
     if (projectId) conditions.push({ projectId: parseInt(projectId as string) })
     if (status) conditions.push({ status: status as string })
@@ -70,11 +78,12 @@ router.get('/', authenticateToken, checkPermission('project:procurement:list'), 
 })
 
 // GET /:id - Detail
-router.get('/:id', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('project:procurement:list'), applyDataScope({ ownerField: 'assignedTo', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const procurement = await prisma.procurement.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...dataScopeWhere },
       include: { project: true, items: { where: { deletedAt: null } }, files: { where: { deletedAt: null } } }
     })
     if (!procurement) return res.status(404).json({ error: '采购单不存在' })

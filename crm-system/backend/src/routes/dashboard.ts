@@ -1,17 +1,25 @@
 import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { authenticateToken, AuthRequest } from '../middleware/auth'
-import { applyDataScope, getDataScopeWhere } from '../middleware/dataScope'
+import { getDataScopeWhere } from '../middleware/dataScope'
 import logger from '../utils/logger'
 
 const router = Router()
 
 // 获取工作总览统计数据（全面版）
-router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.user?.id
     const userRole = req.user?.role
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    if (!userId) return res.status(401).json({ error: '未登录' })
+
+    // 按模型分别获取数据权限条件
+    // basicScope: Organization / BusinessTrip / Expense（ownerId，无 teamMembers）
+    const basicScope = await getDataScopeWhere(userId, userRole, { ownerField: 'ownerId' })
+    // projectScope: Project / Opportunity（ownerId + teamMembers）
+    const projectScope = await getDataScopeWhere(userId, userRole, { ownerField: 'ownerId', teamMemberField: 'teamMembers' })
+    // contractScope: Contract（ownerId + project 关联）
+    const contractScope = await getDataScopeWhere(userId, userRole, { ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] })
 
     // 统一时间基准，避免跨午夜不一致
     const now = new Date()
@@ -27,24 +35,24 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
       // 回款统计（替代原来的Sale表）
       receiptStats
     ] = await Promise.all([
-      prisma.organization.count({ where: { deletedAt: null, status: { not: 'INACTIVE' }, ...dataScopeWhere } }),
+      prisma.organization.count({ where: { deletedAt: null, status: { not: 'INACTIVE' }, ...basicScope } }),
       prisma.organization.groupBy({
         by: ['status'],
-        where: { deletedAt: null, ...dataScopeWhere },
+        where: { deletedAt: null, ...basicScope },
         _count: { id: true }
       }),
-      prisma.project.count({ where: { deletedAt: null, status: 'IN_PROGRESS', ...dataScopeWhere } }),
-      prisma.contract.count({ where: { deletedAt: null, status: 'ACTIVE', ...dataScopeWhere } }),
-      prisma.opportunity.count({ where: { deletedAt: null, ...dataScopeWhere } }),
+      prisma.project.count({ where: { deletedAt: null, status: 'IN_PROGRESS', ...projectScope } }),
+      prisma.contract.count({ where: { deletedAt: null, status: 'ACTIVE', ...contractScope } }),
+      prisma.opportunity.count({ where: { deletedAt: null, ...projectScope } }),
       prisma.opportunity.groupBy({
         by: ['status'],
-        where: { deletedAt: null, ...dataScopeWhere },
+        where: { deletedAt: null, ...projectScope },
         _count: { id: true },
         _sum: { budget: true }
       }),
       prisma.contractReceipt.aggregate({
         _sum: { amount: true },
-        where: { deletedAt: null, status: { in: ['CONFIRMED', 'RECEIVED'] }, contract: { deletedAt: null } }
+        where: { deletedAt: null, status: { in: ['CONFIRMED', 'RECEIVED'] }, contract: { deletedAt: null, ...contractScope } }
       })
     ])
 
@@ -65,7 +73,7 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12)
 
     const recentReceipts = await prisma.contractReceipt.findMany({
-      where: { deletedAt: null, receiptDate: { gte: twelveMonthsAgo }, contract: { deletedAt: null } },
+      where: { deletedAt: null, receiptDate: { gte: twelveMonthsAgo }, contract: { deletedAt: null, ...contractScope } },
       select: { amount: true, receiptDate: true, status: true }
     })
 
@@ -91,10 +99,10 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
     const [monthReceiptAmount, monthNewOrganizations, monthNewOpportunities] = await Promise.all([
       prisma.contractReceipt.aggregate({
         _sum: { amount: true },
-        where: { deletedAt: null, receiptDate: { gte: monthStart }, contract: { deletedAt: null } }
+        where: { deletedAt: null, receiptDate: { gte: monthStart }, contract: { deletedAt: null, ...contractScope } }
       }),
-      prisma.organization.count({ where: { deletedAt: null, createdAt: { gte: monthStart }, ...dataScopeWhere } }),
-      prisma.opportunity.count({ where: { deletedAt: null, createdAt: { gte: monthStart }, ...dataScopeWhere } })
+      prisma.organization.count({ where: { deletedAt: null, createdAt: { gte: monthStart }, ...basicScope } }),
+      prisma.opportunity.count({ where: { deletedAt: null, createdAt: { gte: monthStart }, ...projectScope } })
     ])
 
     // 4. 待办事项提醒
@@ -103,9 +111,9 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
       pendingExpenses,
       pendingContracts
     ] = await Promise.all([
-      prisma.businessTrip.count({ where: { deletedAt: null, status: 'SUBMITTED', ...dataScopeWhere } }),
-      prisma.expense.count({ where: { deletedAt: null, status: 'SUBMITTED', ...dataScopeWhere } }),
-      prisma.contract.count({ where: { deletedAt: null, status: 'PENDING', ...dataScopeWhere } })
+      prisma.businessTrip.count({ where: { deletedAt: null, status: 'SUBMITTED', ...basicScope } }),
+      prisma.expense.count({ where: { deletedAt: null, status: 'SUBMITTED', ...basicScope } }),
+      prisma.contract.count({ where: { deletedAt: null, status: 'PENDING', ...contractScope } })
     ])
 
     // 5. 合同到期预警（30天内到期）
@@ -120,7 +128,7 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
           gte: now,
           lte: thirtyDaysLater
         },
-        ...dataScopeWhere
+        ...contractScope
       },
       select: {
         id: true,
@@ -138,7 +146,7 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
     // 7. 项目进度概览
     const projectStats = await prisma.project.groupBy({
       by: ['status'],
-      where: { deletedAt: null, ...dataScopeWhere },
+      where: { deletedAt: null, ...projectScope },
       _count: { id: true }
     })
     const projectStatusMap: Record<string, number> = {}
@@ -147,13 +155,13 @@ router.get('/stats', authenticateToken, applyDataScope('ownerId'), async (req: A
     // 8. 最新数据
     const [recentOrganizations, recentOpportunities] = await Promise.all([
       prisma.organization.findMany({
-        where: { deletedAt: null, ...dataScopeWhere },
+        where: { deletedAt: null, ...basicScope },
         take: 5,
         orderBy: { createdAt: 'desc' },
         select: { id: true, name: true, type: true, createdAt: true, status: true }
       }),
       prisma.opportunity.findMany({
-        where: { deletedAt: null, ...dataScopeWhere },
+        where: { deletedAt: null, ...projectScope },
         take: 5,
         orderBy: { createdAt: 'desc' },
         select: { id: true, name: true, status: true, budget: true, winRate: true, createdAt: true }

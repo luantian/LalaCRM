@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, List, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined, EyeOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getOrganizationsSimple, getProjects, getBusinessTrips, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses, previewExpenseFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
+import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getOrganizationsSimple, getProjects, getBusinessTrips, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, downloadExpenseFileUrl, downloadFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses, previewExpenseFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import { usePermission } from '../hooks/usePermission'
@@ -177,23 +177,12 @@ function ExpenseList() {
     }
   }
 
-  const handleDownload = (fileId: number, fileName: string) => {
-    const token = localStorage.getItem('token')
-    fetch(`${import.meta.env.VITE_API_URL || '/api'}/expense-files/files/${fileId}/download`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => res.blob())
-      .then(blob => {
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = fileName
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-        window.URL.revokeObjectURL(url)
-      })
-      .catch((e: any) => message.error(e?.error || '下载失败'))
+  const handleDownload = async (fileId: number, fileName: string) => {
+    try {
+      await downloadFile(downloadExpenseFileUrl, fileId, fileName)
+    } catch {
+      message.error('下载失败')
+    }
   }
 
   const formatFileSize = (bytes: number) => {
@@ -281,9 +270,7 @@ function ExpenseList() {
       content: `确定要删除选中的 ${selectedRowKeys.length} 条记录吗？`,
       onOk: async () => {
         try {
-          for (const id of selectedRowKeys) {
-            await deleteExpense(id as number)
-          }
+          await Promise.all(selectedRowKeys.map(id => deleteExpense(id as number)))
           message.success('批量删除成功')
           setSelectedRowKeys([])
           fetchExpenses(pagination.current, pagination.pageSize)

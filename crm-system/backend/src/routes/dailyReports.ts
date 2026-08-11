@@ -12,7 +12,7 @@ import { upload } from '../middleware/upload'
 const router = Router()
 
 // 获取工作日报列表（分页，支持筛选）—— 所有人可查看
-router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope('userId'), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -106,18 +106,20 @@ router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), a
 })
 
 // 日报统计概览（本月报告数、总工时、按类型统计）—— 所有人可查看
-router.get('/stats/overview', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
   try {
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
 
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const where = {
       deletedAt: null,
       reportDate: {
         gte: monthStart,
         lte: monthEnd
-      }
+      },
+      ...dataScopeWhere
     }
 
     const reports = await prisma.dailyReport.findMany({ where })
@@ -147,7 +149,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('office:dailyre
 })
 
 // 导出日报 CSV —— 所有人可导出
-router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
+router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
   try {
     const {
       userId = '',
@@ -158,7 +160,8 @@ router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport
       search = ''
     } = req.query
 
-    const where: any = { deletedAt: null }
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, ...dataScopeWhere }
 
     if (userId) {
       where.userId = parseInt(userId as string)
@@ -240,7 +243,7 @@ router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport
 })
 
 // 获取单个日报详情
-router.get('/:id', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope('userId'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const dataScopeWhere = (req as any).dataScopeWhere || {}
@@ -624,11 +627,12 @@ router.delete('/:id/comments/:commentId', authenticateToken, checkPermission('of
 })
 
 // 获取日报提交率统计 —— 所有人可查看
-router.get('/stats/submission-rate', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
+router.get('/stats/submission-rate', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const where: any = { deletedAt: null }
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, ...dataScopeWhere }
     if (startDate || endDate) {
       where.reportDate = {}
       if (startDate) where.reportDate.gte = new Date(startDate as string)
@@ -664,11 +668,12 @@ router.get('/stats/submission-rate', authenticateToken, checkPermission('office:
 })
 
 // 获取日报质量统计 —— 所有人可查看
-router.get('/stats/quality', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
+router.get('/stats/quality', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const where: any = { deletedAt: null, rating: { not: null } }
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, rating: { not: null }, ...dataScopeWhere }
     if (startDate || endDate) {
       where.reportDate = {}
       if (startDate) where.reportDate.gte = new Date(startDate as string)
@@ -1021,11 +1026,12 @@ router.delete('/:id/time-entries/:entryId', authenticateToken, checkPermission('
 })
 
 // 获取工时统计（按项目、按类型）—— 所有人可查看
-router.get('/stats/hours-analysis', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
+router.get('/stats/hours-analysis', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const where: any = { deletedAt: null }
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, ...dataScopeWhere }
     if (startDate || endDate) {
       where.reportDate = {}
       if (startDate) where.reportDate.gte = new Date(startDate as string)
@@ -1095,10 +1101,11 @@ const labelMap: Record<string, string> = {
   '工时': 'hours'
 }
 
-router.get('/export/excel', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
   try {
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.dailyReport.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...dataScopeWhere },
       include: { user: { select: { name: true } }, project: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }
     })

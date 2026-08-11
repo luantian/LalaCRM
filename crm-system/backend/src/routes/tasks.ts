@@ -738,12 +738,33 @@ router.post('/:id/files', authenticateToken, upload.array('files', 10), logOpera
   }
 })
 
+/**
+ * 检查用户是否有权访问任务（指派人或被指派人）
+ */
+async function checkTaskAccess(taskId: number, userId: number): Promise<boolean> {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, deletedAt: null },
+    select: {
+      assignerId: true,
+      assignees: { select: { id: true } }
+    }
+  })
+  if (!task) return false
+  if (task.assignerId === userId) return true
+  return task.assignees.some(a => a.id === userId)
+}
+
 // 获取任务文件列表
 router.get('/:id/files', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id as string)
     if (isNaN(id)) {
       return res.status(400).json({ error: '无效的ID' })
+    }
+
+    // 检查用户是否有权访问该任务
+    if (!(await checkTaskAccess(id, req.user!.id))) {
+      return res.status(403).json({ error: '无权查看此任务的文件' })
     }
 
     const files = await prisma.taskFile.findMany({
@@ -761,9 +782,15 @@ router.get('/:id/files', authenticateToken, async (req: AuthRequest, res: Respon
 // 删除任务文件
 router.delete('/:id/files/:fileId', authenticateToken, logOperation('任务管理', 'DELETE_FILE'), async (req: AuthRequest, res: Response) => {
   try {
+    const id = parseInt(req.params.id as string)
     const fileId = parseInt(req.params.fileId as string)
     if (isNaN(fileId)) {
       return res.status(400).json({ error: '无效的ID' })
+    }
+
+    // 检查用户是否有权访问该任务
+    if (!(await checkTaskAccess(id, req.user!.id))) {
+      return res.status(403).json({ error: '无权操作此任务的文件' })
     }
 
     const file = await prisma.taskFile.findFirst({ where: { id: fileId, deletedAt: null } })
@@ -805,6 +832,11 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
       return res.status(404).json({ error: '文件不存在' })
     }
 
+    // 检查用户是否有权访问该文件所属的任务
+    if (!(await checkTaskAccess(file.taskId, req.user!.id))) {
+      return res.status(403).json({ error: '无权下载此文件' })
+    }
+
     const filePath = path.join(__dirname, '../uploads', file.filePath)
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于服务器' })
@@ -830,6 +862,11 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
       return res.status(404).json({ error: '文件不存在' })
     }
 
+    // 检查用户是否有权访问该文件所属的任务
+    if (!(await checkTaskAccess(file.taskId, req.user!.id))) {
+      return res.status(403).json({ error: '无权预览此文件' })
+    }
+
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于服务器' })
@@ -850,9 +887,17 @@ router.get('/records/files/:fileId/download', authenticateToken, async (req: Aut
       return res.status(400).json({ error: '无效的ID' })
     }
 
-    const file = await prisma.taskRecordFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.taskRecordFile.findFirst({
+      where: { id: fileId, deletedAt: null },
+      include: { record: { select: { taskId: true } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 检查用户是否有权访问该附件所属的任务
+    if (!(await checkTaskAccess(file.record.taskId, req.user!.id))) {
+      return res.status(403).json({ error: '无权下载此文件' })
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)
@@ -875,9 +920,17 @@ router.get('/records/files/:fileId/preview', authenticateToken, async (req: Auth
       return res.status(400).json({ error: '无效的ID' })
     }
 
-    const file = await prisma.taskRecordFile.findFirst({ where: { id: fileId, deletedAt: null } })
+    const file = await prisma.taskRecordFile.findFirst({
+      where: { id: fileId, deletedAt: null },
+      include: { record: { select: { taskId: true } } }
+    })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 检查用户是否有权访问该附件所属的任务
+    if (!(await checkTaskAccess(file.record.taskId, req.user!.id))) {
+      return res.status(403).json({ error: '无权预览此文件' })
     }
 
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))

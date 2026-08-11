@@ -5,8 +5,10 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutli
 import { getOpportunities, createOpportunity, updateOpportunity, deleteOpportunity, getOpportunityStats, getOrganizationsSimple, convertOpportunity, exportOpportunitiesCsv, exportOpportunitiesExcel, importOpportunities } from '../services/api'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import dayjs from 'dayjs'
+import { usePermission } from '../hooks/usePermission'
 
 function OpportunityList() {
+  const { checkPermission } = usePermission()
   const navigate = useNavigate()
   const [opportunities, setOpportunities] = useState<any[]>([])
   const [organizations, setOrganizations] = useState<any[]>([])
@@ -151,9 +153,7 @@ function OpportunityList() {
       content: `确定要删除选中的 ${selectedRowKeys.length} 条记录吗？`,
       onOk: async () => {
         try {
-          for (const id of selectedRowKeys) {
-            await deleteOpportunity(id as number)
-          }
+          await Promise.all(selectedRowKeys.map(id => deleteOpportunity(id as number)))
           message.success('批量删除成功')
           setSelectedRowKeys([])
           fetchOpportunities(pagination.current, pagination.pageSize)
@@ -317,7 +317,7 @@ function OpportunityList() {
         <Space size={0}>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/opportunities/${record.id}`)}>查看</Button>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('crm:opportunity:delete')}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
           {!['WON', 'LOST', 'CLOSED'].includes(record.status) && (
@@ -392,9 +392,9 @@ function OpportunityList() {
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => fetchOpportunities(pagination.current, pagination.pageSize)}>刷新</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增项目机会</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} disabled={!checkPermission('crm:opportunity:add')}>新增项目机会</Button>
           {selectedRowKeys.length > 0 && (
-            <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete}>
+            <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete} disabled={!checkPermission('crm:opportunity:delete')}>
               批量删除 ({selectedRowKeys.length})
             </Button>
           )}

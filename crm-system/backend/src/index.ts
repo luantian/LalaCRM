@@ -59,8 +59,8 @@ app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
   credentials: true
 }))
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(express.json({ limit: '5mb' }))
+app.use(express.urlencoded({ extended: true, limit: '5mb' }))
 app.use(utf8Sanitizer)
 
 // 健康检查（不需要认证）
@@ -107,9 +107,6 @@ app.use('/api/settings', authenticateToken, settingRoutes)
 app.use('/api/login-logs', authenticateToken, loginLogRoutes)
 app.use('/api/operation-logs', authenticateToken, operationLogRoutes)
 app.use('/api/database', authenticateToken, databaseRoutes)
-
-// 静态文件服务（上传的文件）
-app.use('/uploads', express.static('uploads'))
 
 // 404 处理
 app.use((req, res) => {

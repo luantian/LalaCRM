@@ -3,7 +3,7 @@ import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Ro
 import { ArrowLeftOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { getQuotationDetail, uploadQuotationFiles, deleteQuotationFile, previewQuotationFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
+import { getQuotationDetail, uploadQuotationFiles, deleteQuotationFile, downloadQuotationFile, downloadFile, previewQuotationFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
 
 const statusConfig: Record<string, { text: string; color: string }> = {
   DRAFT: { text: '草稿', color: 'default' }, SUBMITTED: { text: '已提交', color: 'processing' },
@@ -27,8 +27,9 @@ const QuotationDetail: React.FC = () => {
 
   const handleFileUpload = async (file: File) => {
     try {
-      const fileList = { length: 1, 0: file } as unknown as FileList
-      await uploadQuotationFiles(parseInt(id!), fileList)
+      const dataTransfer = new DataTransfer()
+      dataTransfer.items.add(file)
+      await uploadQuotationFiles(parseInt(id!), dataTransfer.files)
       message.success('上传成功'); fetchDetail()
     } catch (e: any) { message.error(e?.error || '上传失败') }
     return false
@@ -43,15 +44,12 @@ const QuotationDetail: React.FC = () => {
     })
   }
 
-  const handleDownload = (file: any) => {
-    const token = localStorage.getItem('token')
-    fetch(`/api/quotations/files/${file.id}/download`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => res.blob()).then(blob => {
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a'); a.href = url; a.download = file.fileName
-        document.body.appendChild(a); a.click(); a.remove()
-        URL.revokeObjectURL(url)
-      })
+  const handleDownload = async (file: any) => {
+    try {
+      await downloadFile(downloadQuotationFile, file.id, file.fileName)
+    } catch {
+      message.error('下载失败')
+    }
   }
 
   if (loading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />

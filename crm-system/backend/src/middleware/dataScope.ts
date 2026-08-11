@@ -3,27 +3,44 @@ import { Response, NextFunction } from 'express'
 import { AuthRequest } from './auth'
 import logger from '../utils/logger'
 
+/**
+ * 关联模型的数据权限配置
+ * 用于 Contract/Procurement 等需要通过 project 关联查 owner/teamMembers 的模型
+ */
+export interface RelationScopeConfig {
+  /** Prisma 关联字段名，如 'project' */
+  path: string
+  /** 关联模型的 owner 字段名 */
+  ownerField: string
+  /** 关联模型的团队成员关系字段名（如 'teamMembers'） */
+  teamMemberField?: string
+}
+
+/**
+ * 模型的数据权限配置
+ */
+export interface ModelScopeConfig {
+  /** 所有者字段名：'ownerId' | 'userId' | 'assignedTo' */
+  ownerField: string
+  /** 直接团队成员关系字段名（如 'teamMembers'），用于 TEAM 数据范围 */
+  teamMemberField?: string
+  /** 嵌套关联配置，用于通过 project 等关联查 owner/teamMembers */
+  relations?: RelationScopeConfig[]
+}
 
 /**
  * 获取用户的数据权限范围
  * 返回 where 条件对象，用于 Prisma 查询
- * 
+ *
  * @param userId 用户ID
  * @param userRole 用户角色（ADMIN等）
- * @param ownerField 所有者字段名（默认 'ownerId'）
- * @param teamMemberField 团队成员关系字段名（如 'teamMembers'），用于 TEAM 数据范围
+ * @param config 模型数据权限配置（ownerField / teamMemberField / relations）
  */
 export async function getDataScopeWhere(
   userId: number,
-  userRole?: string,
-  ownerField: string = 'ownerId',
-  teamMemberField?: string
+  _userRole: string | undefined,
+  config: ModelScopeConfig
 ): Promise<any> {
-  // 管理员可以看到所有数据
-  if (userRole === 'ADMIN') {
-    return {}
-  }
-
   // 获取用户的所有角色（通过 UserRole 关联表）
   const userRoles = await prisma.userRole.findMany({
     where: { userId },
@@ -47,7 +64,7 @@ export async function getDataScopeWhere(
 
   // 如果没有任何角色配置，默认只能看自己的
   if (dataScopes.length === 0) {
-    return { [ownerField]: userId }
+    return buildScopeWhere({ [config.ownerField]: userId }, config)
   }
 
   // 如果任一角色是 ALL，返回所有数据
@@ -63,136 +80,225 @@ export async function getDataScopeWhere(
 
   const conditions: any[] = []
 
+  // 收集所有需要查 deptUserIds 的 scope
+  let deptUserIds: number[] | null = null
+  let deptBelowUserIds: number[] | null = null
+  let customDeptUserIds: number[] | null = null
+
   // SELF：只看自己的
   if (dataScopes.includes('SELF')) {
-    conditions.push({ [ownerField]: userId })
+    pushOwnerCondition(conditions, config, userId)
   }
 
   // DEPARTMENT：本部门
   if (dataScopes.includes('DEPARTMENT') && user?.deptId) {
-    const deptUserIds = await prisma.user.findMany({
-      where: { deptId: user.deptId },
-      select: { id: true }
-    }).then(users => users.map((u: any) => u.id))
+    if (!deptUserIds) {
+      deptUserIds = await getUserIdsByDeptIds([user.deptId])
+    }
     if (deptUserIds.length > 0) {
-      conditions.push({ [ownerField]: { in: deptUserIds } })
+      pushOwnerInCondition(conditions, config, deptUserIds)
     } else {
-      // 部门里没有其他人，至少看自己的
-      conditions.push({ [ownerField]: userId })
+      pushOwnerCondition(conditions, config, userId)
     }
   }
 
   // DEPARTMENT_BELOW：本部门及下级
   if (dataScopes.includes('DEPARTMENT_BELOW') && user?.deptId) {
-    const deptIds = await getSubDepartmentIds(user.deptId)
-    const deptUserIds = await prisma.user.findMany({
-      where: { deptId: { in: deptIds } },
-      select: { id: true }
-    }).then(users => users.map((u: any) => u.id))
-    if (deptUserIds.length > 0) {
-      conditions.push({ [ownerField]: { in: deptUserIds } })
+    const subDeptIds = await getSubDepartmentIds(user.deptId)
+    if (!deptBelowUserIds) {
+      deptBelowUserIds = await getUserIdsByDeptIds(subDeptIds)
+    }
+    if (deptBelowUserIds.length > 0) {
+      pushOwnerInCondition(conditions, config, deptBelowUserIds)
     } else {
-      conditions.push({ [ownerField]: userId })
+      pushOwnerCondition(conditions, config, userId)
     }
   }
 
   // CUSTOM：自定义部门列表
   if (dataScopes.includes('CUSTOM')) {
-    // 获取所有角色的 customDeptIds 并集
     const customDeptIdsSet = new Set<number>()
     for (const ur of userRoles) {
       if (ur.role.dataScope === 'CUSTOM' && ur.role.customDeptIds) {
         ur.role.customDeptIds.forEach(deptId => customDeptIdsSet.add(deptId))
       }
     }
-    
+
     if (customDeptIdsSet.size > 0) {
       const customDeptIds = Array.from(customDeptIdsSet)
-      const customDeptUserIds = await prisma.user.findMany({
-        where: { deptId: { in: customDeptIds } },
-        select: { id: true }
-      }).then(users => users.map((u: any) => u.id))
+      if (!customDeptUserIds) {
+        customDeptUserIds = await getUserIdsByDeptIds(customDeptIds)
+      }
       if (customDeptUserIds.length > 0) {
-        conditions.push({ [ownerField]: { in: customDeptUserIds } })
+        pushOwnerInCondition(conditions, config, customDeptUserIds)
       }
     }
   }
 
-  // TEAM：团队成员数据（基于 ProjectTeamMember 等关联表）
-  // 这种模式下，用户可以看到自己参与的项目/任务等
-  // 注意：这是一个标记，具体的团队查询逻辑需要在路由层实现
-  // 因为不同的模型需要查询不同的团队成员表
+  // TEAM：团队成员数据（含负责人 — 负责人本身就是团队成员的一种）
   const hasTeamScope = dataScopes.includes('TEAM')
 
-  // 如果设置了 teamMemberField 且有 TEAM 权限，添加团队成员查询条件
-  if (hasTeamScope && teamMemberField) {
-    // 添加团队成员条件：查询 teamMembers 表中包含当前用户且未被软删除的记录
-    conditions.push({
-      [teamMemberField]: {
-        some: {
-          userId: userId,
-          deletedAt: null
+  if (hasTeamScope) {
+    // TEAM 范围同时包含"我是负责人"的条件
+    // 这样即使项目没添加任何团队成员，创建者依然能看到自己的项目
+    pushOwnerCondition(conditions, config, userId)
+
+    // 主模型的 teamMembers
+    if (config.teamMemberField) {
+      conditions.push({
+        [config.teamMemberField]: {
+          some: { userId, deletedAt: null }
+        }
+      })
+    }
+
+    // 关联模型的 teamMembers
+    if (config.relations) {
+      for (const rel of config.relations) {
+        if (rel.teamMemberField) {
+          conditions.push({
+            [rel.path]: {
+              [rel.teamMemberField]: {
+                some: { userId, deletedAt: null }
+              }
+            }
+          })
         }
       }
-    })
-  } else if (hasTeamScope && !teamMemberField) {
-    // TEAM 数据范围只在项目管理模块生效，其他模块降级为 SELF
-    logger.info('TEAM data scope is only effective for project management module, falling back to SELF')
-    conditions.push({ [ownerField]: userId })
+    }
   }
 
   // 如果没有匹配的条件，默认只看自己的
   if (conditions.length === 0) {
-    return { [ownerField]: userId }
+    return buildScopeWhere({ [config.ownerField]: userId }, config)
   }
 
   // 多个条件取并集（OR）
   return { OR: conditions }
 }
 
-/**
- * 递归获取部门及所有下级部门ID（带深度限制防止栈溢出）
- */
-async function getSubDepartmentIds(deptId: number, depth: number = 0): Promise<number[]> {
-  const MAX_DEPTH = 20
-  if (depth > MAX_DEPTH) {
-    logger.warn(`Department tree exceeds max depth (${MAX_DEPTH}), stopping recursion at deptId=${deptId}`)
-    return [deptId]
-  }
+// ---------------------------------------------------------------------------
+// 内部辅助函数
+// ---------------------------------------------------------------------------
 
-  const ids = [deptId]
-  const children = await prisma.department.findMany({
-    where: { parentId: deptId },
+/**
+ * 获取指定部门ID列表下的所有用户ID
+ */
+async function getUserIdsByDeptIds(deptIds: number[]): Promise<number[]> {
+  const users = await prisma.user.findMany({
+    where: { deptId: { in: deptIds } },
     select: { id: true }
   })
+  return users.map((u: any) => u.id)
+}
 
-  for (const child of children) {
-    const subIds = await getSubDepartmentIds(child.id, depth + 1)
-    ids.push(...subIds)
+/**
+ * 递归获取部门及所有下级部门ID（单次查询优化版）
+ * 通过一次查询获取所有部门，在内存中递归构建子树
+ */
+async function getSubDepartmentIds(deptId: number): Promise<number[]> {
+  // 一次性查询所有部门（数量通常很少），避免 N+1 问题
+  const allDepts = await prisma.department.findMany({
+    select: { id: true, parentId: true }
+  })
+
+  const childrenMap = new Map<number, number[]>()
+  for (const dept of allDepts) {
+    if (dept.parentId) {
+      const siblings = childrenMap.get(dept.parentId) || []
+      siblings.push(dept.id)
+      childrenMap.set(dept.parentId, siblings)
+    }
   }
 
-  return ids
+  const result: number[] = [deptId]
+  const queue: number[] = [deptId]
+  const visited = new Set<number>([deptId])
+
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    const children = childrenMap.get(current) || []
+    for (const childId of children) {
+      if (!visited.has(childId)) {
+        visited.add(childId)
+        result.push(childId)
+        queue.push(childId)
+      }
+    }
+  }
+
+  return result
+}
+
+/**
+ * 向 conditions 数组添加 "owner = userId" 条件
+ * 同时为每个 relation 生成嵌套条件
+ */
+function pushOwnerCondition(
+  conditions: any[],
+  config: ModelScopeConfig,
+  userId: number
+): void {
+  // 主模型
+  conditions.push({ [config.ownerField]: userId })
+
+  // 关联模型
+  if (config.relations) {
+    for (const rel of config.relations) {
+      conditions.push({
+        [rel.path]: { [rel.ownerField]: userId }
+      })
+    }
+  }
+}
+
+/**
+ * 向 conditions 数组添加 "owner IN userIds" 条件
+ * 同时为每个 relation 生成嵌套条件
+ */
+function pushOwnerInCondition(
+  conditions: any[],
+  config: ModelScopeConfig,
+  userIds: number[]
+): void {
+  // 主模型
+  conditions.push({ [config.ownerField]: { in: userIds } })
+
+  // 关联模型
+  if (config.relations) {
+    for (const rel of config.relations) {
+      conditions.push({
+        [rel.path]: { [rel.ownerField]: { in: userIds } }
+      })
+    }
+  }
+}
+
+/**
+ * 构建一个仅过滤主模型 owner 的简单 where 条件（无 OR 包裹）
+ * 用于默认降级场景
+ */
+function buildScopeWhere(baseCondition: any, config: ModelScopeConfig): any {
+  return baseCondition
 }
 
 /**
  * 数据权限中间件
  * 将数据范围条件附加到 req 上，供路由使用
- * 
- * @param ownerField 所有者字段名（默认 'ownerId'）
- * @param teamMemberField 团队成员关系字段名（如 'teamMembers'），用于 TEAM 数据范围
+ *
+ * @param config 模型数据权限配置（ownerField / teamMemberField / relations）
  */
-export function applyDataScope(ownerField: string = 'ownerId', teamMemberField?: string) {
+export function applyDataScope(config: ModelScopeConfig) {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) {
-        return next()
+        return res.status(401).json({ error: '未登录' })
       }
 
       const scopeWhere = await getDataScopeWhere(
         req.user.id,
         req.user.role,
-        ownerField,
-        teamMemberField
+        config
       )
 
       // 将数据权限条件附加到请求对象
@@ -202,7 +308,7 @@ export function applyDataScope(ownerField: string = 'ownerId', teamMemberField?:
     } catch (error) {
       logger.error('DataScope middleware error:', error)
       // 出错时默认降级为只看自己的数据
-      ;(req as any).dataScopeWhere = { [ownerField]: req.user?.id }
+      ;(req as any).dataScopeWhere = { [config.ownerField]: req.user?.id }
       next()
     }
   }

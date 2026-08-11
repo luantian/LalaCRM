@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Card, Space, Switch, Tooltip, Descriptions } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, DownOutlined, RightOutlined, SearchOutlined, EyeOutlined } from '@ant-design/icons'
 import api from '../services/api'
-import * as Icons from '@ant-design/icons'
+import { getIcon, availableIconList } from '../utils/iconRegistry'
 
 interface MenuItem {
   id: number
@@ -24,24 +24,7 @@ interface MenuItem {
 }
 
 // 可用图标列表
-const iconList = [
-  'DashboardOutlined', 'HomeOutlined', 'AppstoreOutlined', 'SettingOutlined',
-  'UserOutlined', 'TeamOutlined', 'SafetyOutlined', 'AuditOutlined',
-  'DollarOutlined', 'AccountBookOutlined', 'ShopOutlined', 'ShoppingCartOutlined',
-  'ProjectOutlined', 'ContainerOutlined', 'ScheduleOutlined', 'FileTextOutlined',
-  'CarOutlined', 'FundOutlined', 'BarChartOutlined', 'PieChartOutlined',
-  'MailOutlined', 'PhoneOutlined', 'MessageOutlined', 'SendOutlined',
-  'EnvironmentOutlined', 'GlobalOutlined', 'CloudOutlined', 'DatabaseOutlined',
-  'ToolOutlined', 'BuildOutlined', 'CodeOutlined', 'BugOutlined',
-  'BellOutlined', 'InboxOutlined', 'SearchOutlined', 'FilterOutlined',
-  'LockOutlined', 'KeyOutlined', 'SecurityScanOutlined', 'CheckCircleOutlined',
-  'ClockCircleOutlined', 'StarOutlined', 'HeartOutlined', 'FireOutlined',
-  'RocketOutlined', 'ThunderboltOutlined', 'CrownOutlined', 'TrophyOutlined',
-  'CameraOutlined', 'VideoCameraOutlined', 'PrinterOutlined', 'RobotOutlined',
-  'FlagOutlined', 'LabelOutlined', 'BookmarkOutlined', 'GiftOutlined',
-  'BankOutlined', 'InsuranceOutlined', 'SoundOutlined', 'WifiOutlined',
-  'SwapOutlined', 'UploadOutlined', 'DownloadOutlined', 'DesktopOutlined',
-]
+const iconList = availableIconList
 
 // 从 roles 状态查角色中文名
 const getRoleDisplayName = (roleKey: string, rolesList: any[]): string => {
@@ -50,7 +33,7 @@ const getRoleDisplayName = (roleKey: string, rolesList: any[]): string => {
 }
 
 const IconCell = ({ name, selected, onClick }: { name: string; selected: boolean; onClick: () => void }) => {
-  const IconComp = (Icons as any)[name]
+  const IconComp = getIcon(name)
   if (!IconComp) return null
   return (
     <Tooltip title={name} key={name}>
@@ -255,7 +238,7 @@ function MenuManagement() {
       key: 'label',
       width: 200,
       render: (label: string, record: MenuItem) => {
-        const IconComp = (Icons as any)[record.icon]
+        const IconComp = getIcon(record.icon)
         return (
           <span>
             {IconComp ? <IconComp style={{ marginRight: 8, color: '#1890ff' }} /> : null}

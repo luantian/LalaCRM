@@ -208,7 +208,7 @@ router.get(
   '/',
   authenticateToken,
   checkPermission('crm:organization:list'),
-  applyDataScope('ownerId'),
+  applyDataScope({ ownerField: 'ownerId' }),
   async (req: AuthRequest, res: Response) => {
     try {
       const canView = await canViewContactInfo(req)
@@ -275,12 +275,14 @@ router.get(
   '/tree',
   authenticateToken,
   checkPermission('crm:organization:list'),
+  applyDataScope({ ownerField: 'ownerId' }),
   async (req: AuthRequest, res: Response) => {
     try {
       const canView = await canViewContactInfo(req)
+      const dataScopeWhere = (req as any).dataScopeWhere || {}
 
       const orgs = await prisma.organization.findMany({
-        where: { deletedAt: null },
+        where: { deletedAt: null, ...dataScopeWhere },
         orderBy: { createdAt: 'asc' }
       })
 
@@ -413,15 +415,17 @@ router.get(
 router.get(
   '/:id',
   authenticateToken,
+  applyDataScope({ ownerField: 'ownerId' }),
   param('id').isInt({ min: 1 }).withMessage('ID必须是正整数'),
   validate,
   async (req: AuthRequest, res: Response) => {
     try {
       const id = Number(req.params.id)
       const canView = await canViewContactInfo(req)
+      const dataScopeWhere = (req as any).dataScopeWhere || {}
 
       const org = await prisma.organization.findFirst({
-        where: { id, deletedAt: null },
+        where: { id, deletedAt: null, ...dataScopeWhere },
         include: {
           parent: { select: { id: true, name: true } },
           children: {

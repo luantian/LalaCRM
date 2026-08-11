@@ -15,12 +15,7 @@ interface AuthRequest extends Request {
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization']
-  let token = authHeader && authHeader.split(' ')[1]
-
-  // 支持从 query 参数获取 token（用于新标签页预览文件）
-  if (!token && req.query?.token) {
-    token = req.query.token as string
-  }
+  const token = authHeader && authHeader.split(' ')[1]
 
   if (!token) {
     return res.status(401).json({ error: '未提供认证令牌' })
@@ -132,3 +127,34 @@ export const checkAnyPermission = (permissions: string[]) => {
 }
 
 export { AuthRequest }
+
+/**
+ * 文件专用认证中间件
+ * 允许通过 query 参数 ?token=xxx 传递 JWT，仅用于文件下载/预览场景（新标签页打开）
+ * 安全性低于 authenticateToken，仅限文件路由使用
+ */
+export const authenticateFileToken = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const authHeader = req.headers['authorization']
+  let token = authHeader && authHeader.split(' ')[1]
+
+  // 文件路由允许从 query 参数获取 token（新标签页预览）
+  if (!token && req.query?.token) {
+    token = req.query.token as string
+  }
+
+  if (!token) {
+    return res.status(401).json({ error: '未提供认证令牌' })
+  }
+
+  try {
+    const secret = process.env.JWT_SECRET
+    if (!secret) {
+      throw new Error('JWT_SECRET environment variable is not set')
+    }
+    const decoded = jwt.verify(token, secret) as any
+    req.user = decoded
+    next()
+  } catch (error) {
+    return res.status(401).json({ error: '无效的认证令牌' })
+  }
+}

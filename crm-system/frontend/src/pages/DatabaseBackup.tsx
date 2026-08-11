@@ -3,7 +3,7 @@ import { Table, Button, Space, Card, message, Tag, Popconfirm, Switch, TimePicke
 import { DownloadOutlined, DeleteOutlined, ReloadOutlined, DatabaseOutlined, CloudDownloadOutlined, SettingOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import api from '../services/api'
-import { HasPermission } from '../components/Permission'
+import { HasPermission } from '../components/HasPermission'
 
 interface BackupRecord {
   id: number
@@ -215,7 +215,7 @@ const DatabaseBackup: React.FC = () => {
       width: 200,
       render: (_: any, record: BackupRecord) => (
         <Space size="small">
-          <HasPermission permission="system:backup:download">
+          <HasPermission perm="system:backup:download">
             <Button
               type="link"
               size="small"
@@ -226,7 +226,7 @@ const DatabaseBackup: React.FC = () => {
               下载
             </Button>
           </HasPermission>
-          <HasPermission permission="system:backup:restore">
+          <HasPermission perm="system:backup:restore">
             <Popconfirm
               title="确认恢复"
               description="恢复数据库将覆盖当前数据，确定要恢复吗？"
@@ -244,7 +244,7 @@ const DatabaseBackup: React.FC = () => {
               </Button>
             </Popconfirm>
           </HasPermission>
-          <HasPermission permission="system:backup:delete">
+          <HasPermission perm="system:backup:delete">
             <Popconfirm
               title="确认删除"
               description="确定要删除这个备份文件吗？"
@@ -314,7 +314,7 @@ const DatabaseBackup: React.FC = () => {
         style={{ marginBottom: 24 }}
       >
         <Space>
-          <HasPermission permission="system:backup:create">
+          <HasPermission perm="system:backup:create">
             <Button
               type="primary"
               size="large"

@@ -225,9 +225,7 @@ function BusinessTripList() {
       content: `确定要删除选中的 ${selectedRowKeys.length} 条记录吗？`,
       onOk: async () => {
         try {
-          for (const id of selectedRowKeys) {
-            await deleteBusinessTrip(id as number)
-          }
+          await Promise.all(selectedRowKeys.map(id => deleteBusinessTrip(id as number)))
           message.success('批量删除成功')
           setSelectedRowKeys([])
           fetchTrips(pagination.current, pagination.pageSize)

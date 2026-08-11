@@ -31,9 +31,19 @@ api.interceptors.request.use(
   }
 )
 
+// 常用 API 响应类型
+export interface PaginatedResponse<T = any> {
+  data: T[]
+  pagination: {
+    current: number
+    pageSize: number
+    total: number
+  }
+}
+
 // 响应拦截器 - 返回response.data
 api.interceptors.response.use(
-  (response) => response.data as any,
+  (response) => response.data,
   async (error) => {
     const status = error.response?.status
     let msg = error.response?.data?.error || ''
@@ -324,6 +334,7 @@ export const getTodayCheckIn = () => api.get('/check-ins/today')
 export const checkIn = (data: { period?: 'MORNING' | 'EVENING' } = {}) => api.post('/check-ins', data)
 export const makeupCheckIn = (data: { date: string; notes?: string }) => api.post('/check-ins/makeup', data)
 export const getCheckInStats = (params?: any) => api.get('/check-ins/stats', { params })
+export const getHolidays = (params?: any) => api.get('/check-ins/holidays', { params })
 
 // 用户和角色
 export const getUsers = (params?: any) => api.get('/users', { params })

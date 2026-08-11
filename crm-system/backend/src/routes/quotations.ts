@@ -17,7 +17,7 @@ import path from 'path'
 const router = Router()
 
 // 获取报价单列表（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope('ownerId'), sortValidation(['name', 'version', 'totalAmount', 'status', 'validUntil', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId' }), sortValidation(['name', 'version', 'totalAmount', 'status', 'validUntil', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -83,7 +83,7 @@ router.get('/', authenticateToken, checkPermission('crm:quotation:list'), applyD
 })
 
 // 报价单统计
-router.get('/stats/overview', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const [total, draft, submitted, approved, rejected, won, lost] = await Promise.all([
@@ -137,7 +137,7 @@ router.get('/opportunity/:oppId/versions', authenticateToken, checkPermission('c
 })
 
 // 获取报价单详情
-router.get('/:id', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const dataScopeWhere = (req as any).dataScopeWhere || {}
@@ -571,7 +571,7 @@ const quotationLabelMap: Record<string, string> = {
 }
 
 // 导出报价单 Excel
-router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.quotation.findMany({
@@ -587,7 +587,7 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
 })
 
 // 导出报价单 CSV
-router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/export/csv', authenticateToken, applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.quotation.findMany({

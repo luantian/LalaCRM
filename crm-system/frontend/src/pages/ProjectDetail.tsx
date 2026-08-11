@@ -5,7 +5,7 @@ import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOu
 import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizationsSimple, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getReceipts, createReceipt, updateReceipt, deleteReceipt, uploadReceiptFiles, deleteReceiptFile, downloadReceiptFileUrl, previewReceiptFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, downloadProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, downloadProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, downloadProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, openFilePreview, isPreviewableFile, downloadFile } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
-import { checkPermission } from '../utils/permission'
+import { usePermission } from '../hooks/usePermission'
 
 const { TextArea } = Input
 const { RangePicker } = DatePicker
@@ -13,6 +13,7 @@ const { RangePicker } = DatePicker
 function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { checkPermission } = usePermission()
   const [project, setProject] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -242,7 +243,15 @@ function ProjectDetail() {
     contractForm.setFieldsValue({ ...c, amount: Number(c.amount), signDate: c.signDate ? dayjs(c.signDate) : null, dateRange: (c.startDate && c.endDate) ? [dayjs(c.startDate), dayjs(c.endDate)] : undefined })
     setContractModalVisible(true)
   }
-  const handleDeleteContract = async (cid: number) => { await deleteContract(cid); message.success('删除成功'); refreshProject() }
+  const handleDeleteContract = async (cid: number) => {
+    try {
+      await deleteContract(cid)
+      message.success('删除成功')
+      refreshProject()
+    } catch (error: any) {
+      message.error(error?.error || '删除失败')
+    }
+  }
   const handleContractSubmit = async () => {
     try {
       const values = await contractForm.validateFields()
@@ -593,7 +602,7 @@ function ProjectDetail() {
     try {
       const res: any = await getUserDropdown()
       setAllUsers(Array.isArray(res) ? res : (res.data || []))
-    } catch {}
+    } catch (e) { console.error('获取用户列表失败:', e) }
   }
   const handleAddTeamMember = () => {
     setEditingMember(null)
@@ -624,7 +633,10 @@ function ProjectDetail() {
       setTeamModalVisible(false)
       teamForm.resetFields()
       fetchTeamMembers()
-    } catch {}
+    } catch (error: any) {
+      if (error?.errorFields) return // 表单校验失败，不提示
+      message.error(error?.error || '操作失败')
+    }
   }
   const handleRemoveMember = async (memberId: number) => {
     try {
@@ -706,7 +718,7 @@ function ProjectDetail() {
     try {
       const res: any = await getProcurementPayments(procurementId)
       setProcPayments(res?.data?.data || res?.data || [])
-    } catch { setProcPayments([]) }
+    } catch (e) { console.error('获取采购付款记录失败:', e); setProcPayments([]) }
   }
   const handleProcPaymentSubmit = async () => {
     try {

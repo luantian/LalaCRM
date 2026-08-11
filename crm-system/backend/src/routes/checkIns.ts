@@ -1,6 +1,6 @@
 import prisma from '../lib/prisma'
 import { Router } from 'express'
-import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
+import { authenticateToken, AuthRequest, checkPermission, checkAdmin } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 import dayjs from 'dayjs'
@@ -19,7 +19,7 @@ function serializeCheckIn(record: any) {
   return {
     ...record,
     checkInTime: record.checkInTime ? dayjs(record.checkInTime).utc().toISOString() : record.checkInTime,
-    checkInDate: record.checkInDate ? dayjs(record.checkInDate).utc().format('YYYY-MM-DD') + 'T00:00:00.000Z' : record.checkInDate,
+    checkInDate: record.checkInDate ? dayjs(record.checkInDate).tz('Asia/Shanghai').format('YYYY-MM-DD') + 'T00:00:00.000Z' : record.checkInDate,
   }
 }
 
@@ -32,40 +32,19 @@ const OVERNIGHT_OVERTIME_HOUR = 2
 // 通宵加班后第二天弹性上班时间：10:00 前不算迟到
 const NEXT_DAY_FLEXIBLE_HOUR = 10
 
-// 工作日切分点：凌晨 5 点（UTC+8）。5 点前算昨天加班，5 点后算今天
-const DAY_BOUNDARY_HOUR = 5
-const UTC_OFFSET = 8 // UTC+8（中国标准时间）
-
 /**
- * 获取 UTC+8 本地时间
- * 无论服务器在什么时区，都返回用户视角的本地时间
+ * 获取打卡日期的起止范围（以自然日 0 点为分界）
+ * 凌晨 0 点后即新的一天，不再归属前一天
+ * 例如：当前 UTC+8 时间 8月12日 01:00 → 属于 8月12日 的打卡
+ *       当前 UTC+8 时间 8月12日 23:00 → 属于 8月12日 的打卡
  */
-function getUTC8Local(now: dayjs.Dayjs): dayjs.Dayjs {
-  return dayjs(now.valueOf()).utc().add(UTC_OFFSET, 'hour')
-}
+function getCheckInDayRange(now?: dayjs.Dayjs) {
+  const localNow = (now || dayjs()).tz('Asia/Shanghai')
+  const checkInDate = localNow.startOf('day')
 
-/**
- * 获取打卡日期的起止范围（以 UTC+8 凌晨 5 点为分界）
- * 所有边界计算基于 UTC+8 时区
- * 例如：当前 UTC+8 时间 7 月 22 日 03:00 → 属于 7 月 21 日 的打卡
- *       当前 UTC+8 时间 7 月 22 日 06:00 → 属于 7 月 22 日 的打卡
- */
-function getCheckInDayRange(now: dayjs.Dayjs) {
-  const localNow = getUTC8Local(now)
-  const localHour = localNow.hour()
-
-  let checkInDate: dayjs.Dayjs
-  if (localHour < DAY_BOUNDARY_HOUR) {
-    // UTC+8 凌晨 5 点前 → 属于昨天的打卡周期
-    checkInDate = localNow.subtract(1, 'day').startOf('day')
-  } else {
-    // UTC+8 凌晨 5 点后 → 属于今天的打卡周期
-    checkInDate = localNow.startOf('day')
-  }
-
-  // 构建时间范围（转换为 UTC 存储）
-  const start = checkInDate.add(DAY_BOUNDARY_HOUR, 'hour').subtract(UTC_OFFSET, 'hour') // UTC+8 5AM → UTC 上一天 21:00
-  const end = start.add(1, 'day')
+  // 构建时间范围：从 checkInDate 当天 00:00 到次日 00:00
+  const start = checkInDate
+  const end = checkInDate.add(1, 'day')
 
   return {
     start: start.toDate(),
@@ -133,7 +112,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     const { month } = req.query
     const userId = req.user!.id
 
-    const targetMonth = month ? dayjs.utc(month as string) : dayjs.utc()
+    const targetMonth = month ? dayjs.tz(month as string + '-01', 'Asia/Shanghai') : dayjs.tz('Asia/Shanghai')
     const startDate = targetMonth.startOf('month').toDate()
     const endDate = targetMonth.endOf('month').toDate()
 
@@ -152,7 +131,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     // 按日期分组，取每天最早上班和最晚下班
     const dailyMap = new Map<string, { morning?: any; evening?: any }>()
     for (const r of records) {
-      const dateKey = dayjs.utc(r.checkInDate).format('YYYY-MM-DD')
+      const dateKey = dayjs(r.checkInDate).tz('Asia/Shanghai').format('YYYY-MM-DD')
       if (!dailyMap.has(dateKey)) dailyMap.set(dateKey, {})
       const day = dailyMap.get(dateKey)!
       if (r.period === 'MORNING') {
@@ -169,7 +148,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
     // 统计
     const normal = records.filter(r => r.type === 'NORMAL').length
     const auto = records.filter(r => r.type === 'AUTO').length
-    const makeup = records.filter(r => r.type === 'MAKEUP').length
+    // P3 fix: 只统计MORNING的MAKEUP记录，避免重复计数（每次补卡创建早+晚两条）
+    const makeup = records.filter(r => r.type === 'MAKEUP' && r.period === 'MORNING').length
 
     // 统计补卡次数：只统计MORNING记录，因为每次补卡创建早+晚两条记录
     const makeupCount = await prisma.dailyCheckIn.count({
@@ -190,8 +170,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
         date,
         morning: serializeCheckIn(d.morning),
         evening: serializeCheckIn(d.evening),
-        morningCount: records.filter(r => dayjs(r.checkInDate).format('YYYY-MM-DD') === date && r.period === 'MORNING').length,
-        eveningCount: records.filter(r => dayjs(r.checkInDate).format('YYYY-MM-DD') === date && r.period === 'EVENING').length,
+        morningCount: records.filter(r => dayjs(r.checkInDate).tz('Asia/Shanghai').format('YYYY-MM-DD') === date && r.period === 'MORNING').length,
+        eveningCount: records.filter(r => dayjs(r.checkInDate).tz('Asia/Shanghai').format('YYYY-MM-DD') === date && r.period === 'EVENING').length,
       })),
       stats: {
         total: records.length,
@@ -232,8 +212,8 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
     const morningRecords = records.filter(r => r.period === 'MORNING')
     const eveningRecords = records.filter(r => r.period === 'EVENING')
 
-    const morningRecord = morningRecords.length > 0 ? morningRecords[0] : null // 最早
-    const eveningRecord = eveningRecords.length > 0 ? eveningRecords[eveningRecords.length - 1] : null // 最晚
+    let morningRecord = morningRecords.length > 0 ? morningRecords[0] : null // 最早
+    let eveningRecord = eveningRecords.length > 0 ? eveningRecords[eveningRecords.length - 1] : null // 最晚
 
     // 检查昨天是否通宵加班(用于今天的弹性上班判断)
     const yesterday = range.checkInDate
@@ -282,6 +262,72 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
       select: { id: true, title: true, destination: true }
     })
 
+    // P2 fix: 出差自动打卡 — 如果在出差期间且未打卡，自动创建 AUTO 类型记录
+    if (activeTrip) {
+      const localNow = now.tz('Asia/Shanghai')
+      const localHour = localNow.hour()
+      let needRefresh = false
+
+      // 早上 9:00 后自动创建上班打卡
+      if (!morningRecord && localHour >= 9) {
+        const morningTime = new Date(range.checkInDate.getTime() + 9 * 60 * 60 * 1000) // 9:00 UTC+8
+        await prisma.dailyCheckIn.create({
+          data: {
+            userId,
+            checkInDate: range.checkInDate,
+            checkInTime: morningTime,
+            period: 'MORNING',
+            type: 'AUTO',
+            tripId: activeTrip.id,
+            location: `出差: ${activeTrip.destination}`
+          }
+        })
+        needRefresh = true
+      }
+
+      // 晚上 18:00 后自动创建下班打卡
+      if (!eveningRecord && localHour >= 18) {
+        const eveningTime = new Date(range.checkInDate.getTime() + 18 * 60 * 60 * 1000) // 18:00 UTC+8
+        await prisma.dailyCheckIn.create({
+          data: {
+            userId,
+            checkInDate: range.checkInDate,
+            checkInTime: eveningTime,
+            period: 'EVENING',
+            type: 'AUTO',
+            tripId: activeTrip.id,
+            location: `出差: ${activeTrip.destination}`
+          }
+        })
+        needRefresh = true
+      }
+
+      // 重新查询记录
+      if (needRefresh) {
+        const freshRecords = await prisma.dailyCheckIn.findMany({
+          where: {
+            userId,
+            deletedAt: null,
+            checkInTime: { gte: range.start, lt: range.end }
+          },
+          include: {
+            trip: { select: { id: true, title: true, destination: true } }
+          },
+          orderBy: { checkInTime: 'asc' }
+        })
+        const freshMorning = freshRecords.filter(r => r.period === 'MORNING')
+        const freshEvening = freshRecords.filter(r => r.period === 'EVENING')
+        records.length = 0
+        records.push(...freshRecords)
+        morningRecords.length = 0
+        morningRecords.push(...freshMorning)
+        eveningRecords.length = 0
+        eveningRecords.push(...freshEvening)
+        morningRecord = morningRecords.length > 0 ? morningRecords[0] : null
+        eveningRecord = eveningRecords.length > 0 ? eveningRecords[eveningRecords.length - 1] : null
+      }
+    }
+
     res.json({
       morningCheckedIn: !!morningRecord,
       eveningCheckedIn: !!eveningRecord,
@@ -290,17 +336,42 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
       morningCount: morningRecords.length,
       eveningCount: eveningRecords.length,
       allRecords: records.map(serializeCheckIn),
-      checkInDate: dayjs(range.checkInDate).utc().startOf('day').toISOString(),
+      checkInDate: dayjs(range.checkInDate).tz('Asia/Shanghai').startOf('day').toISOString(),
       onBusinessTrip: !!activeTrip,
       activeTrip,
       // 加班相关
       isOvernightOvertime, // 昨天是否通宵加班
-      flexibleCheckInTime: flexibleCheckInTime ? dayjs(flexibleCheckInTime).utc().toISOString() : null, // 弹性上班时间
-      overtimeRecord: records.find(r => r.overtimeStartTime) ? {
-        startTime: records.find(r => r.overtimeStartTime)?.overtimeStartTime,
-        endTime: records.find(r => r.overtimeEndTime)?.overtimeEndTime,
-        isOvernight: records.find(r => r.isOvernightOvertime)?.isOvernightOvertime
-      } : null
+      flexibleCheckInTime: flexibleCheckInTime ? dayjs(flexibleCheckInTime).toISOString() : null, // 弹性上班时间
+      overtimeRecord: await (async () => {
+        // 先从今天的记录中查找
+        const todayOvertime = records.find(r => r.overtimeStartTime)
+        if (todayOvertime) {
+          return {
+            startTime: todayOvertime.overtimeStartTime,
+            endTime: todayOvertime.overtimeEndTime,
+            isOvernight: todayOvertime.isOvernightOvertime
+          }
+        }
+        // 如果今天没有，查昨天是否有未结束的加班（跨天加班）
+        const yesterdayDate = new Date(range.checkInDate.getTime() - 24 * 60 * 60 * 1000)
+        const yesterdayOvertime = await prisma.dailyCheckIn.findFirst({
+          where: {
+            userId,
+            deletedAt: null,
+            checkInDate: yesterdayDate,
+            overtimeStartTime: { not: null },
+            overtimeEndTime: null
+          }
+        })
+        if (yesterdayOvertime) {
+          return {
+            startTime: yesterdayOvertime.overtimeStartTime,
+            endTime: yesterdayOvertime.overtimeEndTime,
+            isOvernight: yesterdayOvertime.isOvernightOvertime
+          }
+        }
+        return null
+      })()
     })
   } catch (error) {
     logger.error('Get today check-in error:', error)
@@ -316,7 +387,7 @@ router.post('/', authenticateToken, checkPermission('office:checkin:add'), logOp
     const range = getCheckInDayRange(now)
 
     // 自动判断时段：根据 UTC+8 本地时间
-    const localNow = getUTC8Local(now)
+    const localNow = now.tz('Asia/Shanghai')
     const localHour = localNow.hour()
     const localMinute = localNow.minute()
     const localTime = localHour * 60 + localMinute // UTC+8 的分钟数
@@ -376,7 +447,7 @@ router.post('/', authenticateToken, checkPermission('office:checkin:add'), logOp
         // 下班打卡：根据早上打卡时间判断是否早退
         // 规则：晚上打卡时间 >= 早上打卡时间 + 9 小时
         if (existingMorningRecord) {
-          const morningTime = dayjs(existingMorningRecord.checkInTime)
+          const morningTime = dayjs(existingMorningRecord.checkInTime).tz('Asia/Shanghai')
           const requiredEveningTime = morningTime.add(9, 'hour')
           const currentEveningTime = localNow.hour() * 60 + localNow.minute()
           const requiredEveningMinutes = requiredEveningTime.hour() * 60 + requiredEveningTime.minute()
@@ -388,16 +459,8 @@ router.post('/', authenticateToken, checkPermission('office:checkin:add'), logOp
       }
     }
 
-    // 检查是否已存在同时段的打卡记录，软删除所有未删除的旧记录
-    await prisma.dailyCheckIn.updateMany({
-      where: {
-        userId,
-        deletedAt: null,
-        checkInDate: range.checkInDate,
-        period: period as any
-      },
-      data: { deletedAt: now.toDate() }
-    })
+    // P0 fix: 不再软删除旧记录，保留所有打卡记录
+    // 早上取最早、晚上取最晚，由查询逻辑自动判断哪条有效
 
     const record = await prisma.dailyCheckIn.create({
       data: {
@@ -478,7 +541,7 @@ router.post('/overtime/start', authenticateToken, checkPermission('office:checki
     }
 
     // 检查今天是否已开始过加班
-    const existingOvertime = await prisma.dailyCheckIn.findFirst({
+    let existingOvertime = await prisma.dailyCheckIn.findFirst({
       where: {
         userId,
         deletedAt: null,
@@ -486,6 +549,20 @@ router.post('/overtime/start', authenticateToken, checkPermission('office:checki
         overtimeStartTime: { not: null }
       }
     })
+
+    // 如果今天没有，也检查昨天是否有未结束的加班（跨天加班未结束）
+    if (!existingOvertime) {
+      const yesterdayDate = new Date(range.checkInDate.getTime() - 24 * 60 * 60 * 1000)
+      existingOvertime = await prisma.dailyCheckIn.findFirst({
+        where: {
+          userId,
+          deletedAt: null,
+          checkInDate: yesterdayDate,
+          overtimeStartTime: { not: null },
+          overtimeEndTime: null
+        }
+      })
+    }
 
     if (existingOvertime) {
       return res.status(400).json({ error: '今天已开始过加班，请使用"结束加班"按钮' })
@@ -516,28 +593,28 @@ router.post('/overtime/end', authenticateToken, checkPermission('office:checkin:
     const userId = req.user!.id
     const now = dayjs()
 
-    // 查找今天的加班记录
-    const today = dayjs().tz('Asia/Shanghai').startOf('day')
+    // 查找今天的加班记录（使用与加班开始时相同的日期计算逻辑）
+    const range = getCheckInDayRange(now)
     const overtimeRecord = await prisma.dailyCheckIn.findFirst({
       where: {
         userId,
         deletedAt: null,
         overtimeStartTime: { not: null },
         overtimeEndTime: null,
-        checkInDate: today.toDate()
+        checkInDate: range.checkInDate
       }
     })
 
     if (!overtimeRecord) {
-      // 也查一下昨天凌晨5点前的加班（跨天加班）
-      const yesterday = dayjs().tz('Asia/Shanghai').subtract(1, 'day').startOf('day')
+      // 也查一下前一天的加班（跨天加班：昨天开始的加班今天才结束）
+      const yesterdayDate = new Date(range.checkInDate.getTime() - 24 * 60 * 60 * 1000)
       const yesterdayOvertime = await prisma.dailyCheckIn.findFirst({
         where: {
           userId,
           deletedAt: null,
           overtimeStartTime: { not: null },
           overtimeEndTime: null,
-          checkInDate: yesterday.toDate()
+          checkInDate: yesterdayDate
         }
       })
 
@@ -574,7 +651,7 @@ router.post('/overtime/end', authenticateToken, checkPermission('office:checkin:
     }
 
     // 判断是否通宵加班（加班结束时间 >= 凌晨2点）
-    const localNow = getUTC8Local(now)
+    const localNow = now.tz('Asia/Shanghai')
     const endHour = localNow.hour()
     const isOvernight = endHour >= OVERNIGHT_OVERTIME_HOUR && endHour < 12 // 凌晨2点到中午12点之间算通宵
 
@@ -618,7 +695,7 @@ router.post('/makeup', authenticateToken, checkPermission('office:checkin:add'),
     }
 
     // 使用 UTC+8 时区处理补卡日期
-    const targetDate = dayjs(date).tz('Asia/Shanghai').startOf('day')
+    const targetDate = dayjs.tz(date, 'Asia/Shanghai').startOf('day')
     const today = dayjs().tz('Asia/Shanghai').startOf('day')
 
     if (targetDate.isAfter(today)) {
@@ -694,7 +771,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
     const userId = req.user!.id
     const { month } = req.query
 
-    const targetMonth = month ? dayjs.utc(month as string) : dayjs.utc()
+    const targetMonth = month ? dayjs.tz(month as string + '-01', 'Asia/Shanghai') : dayjs.tz('Asia/Shanghai')
     const startDate = targetMonth.startOf('month').toDate()
     const endDate = targetMonth.endOf('month').toDate()
 
@@ -707,7 +784,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
     })
 
     // 按日期分组统计出勤天数（每天有任意打卡记录即算出勤）
-    const uniqueDates = new Set(records.map((r: any) => dayjs(r.checkInDate).format('YYYY-MM-DD')))
+    const uniqueDates = new Set(records.map((r: any) => dayjs(r.checkInDate).tz('Asia/Shanghai').format('YYYY-MM-DD')))
     const attendance = uniqueDates.size
 
     const normal = records.filter(r => r.type === 'NORMAL').length
@@ -736,7 +813,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
 router.get('/holidays', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { year } = req.query
-    const targetYear = year ? parseInt(year as string) : dayjs().year()
+    const targetYear = year ? parseInt(year as string) : dayjs().tz('Asia/Shanghai').year()
 
     const holidays = await prisma.holiday.findMany({
       where: {
@@ -749,7 +826,7 @@ router.get('/holidays', authenticateToken, async (req: AuthRequest, res) => {
 
     res.json({
       holidays: holidays.map((h: any) => ({
-        date: dayjs(h.date).format('YYYY-MM-DD'),
+        date: dayjs(h.date).tz('Asia/Shanghai').format('YYYY-MM-DD'),
         name: h.name,
         isWorkday: h.isWorkday
       }))
@@ -761,7 +838,7 @@ router.get('/holidays', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 添加节假日（仅管理员）
-router.post('/holidays', authenticateToken, checkPermission('office:checkin:add'), logOperation('打卡管理', 'HOLIDAY'), async (req: AuthRequest, res) => {
+router.post('/holidays', authenticateToken, checkAdmin, logOperation('打卡管理', 'HOLIDAY'), async (req: AuthRequest, res) => {
   try {
     const { date, name, isWorkday } = req.body
 
@@ -769,8 +846,8 @@ router.post('/holidays', authenticateToken, checkPermission('office:checkin:add'
       return res.status(400).json({ error: '日期和名称不能为空' })
     }
 
-    const holidayDate = dayjs(date).tz('Asia/Shanghai').startOf('day').toDate()
-    const year = dayjs(date).year()
+    const holidayDate = dayjs.tz(date, 'Asia/Shanghai').startOf('day').toDate()
+    const year = dayjs.tz(date, 'Asia/Shanghai').year()
 
     const holiday = await prisma.holiday.create({
       data: {
@@ -783,7 +860,7 @@ router.post('/holidays', authenticateToken, checkPermission('office:checkin:add'
 
     res.status(201).json({
       id: holiday.id,
-      date: dayjs(holiday.date).format('YYYY-MM-DD'),
+      date: dayjs(holiday.date).tz('Asia/Shanghai').format('YYYY-MM-DD'),
       name: holiday.name,
       isWorkday: holiday.isWorkday
     })
@@ -797,7 +874,7 @@ router.post('/holidays', authenticateToken, checkPermission('office:checkin:add'
 })
 
 // 删除节假日（仅管理员）
-router.delete('/holidays/:id', authenticateToken, checkPermission('office:checkin:add'), logOperation('打卡管理', 'HOLIDAY'), async (req: AuthRequest, res) => {
+router.delete('/holidays/:id', authenticateToken, checkAdmin, logOperation('打卡管理', 'HOLIDAY'), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
 

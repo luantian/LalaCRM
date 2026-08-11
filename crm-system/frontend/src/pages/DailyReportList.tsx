@@ -3,10 +3,12 @@ import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, mes
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, DownloadOutlined, EyeOutlined, CheckCircleOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, exportDailyReports, exportDailyReportsExcel, importDailyReports, getDailyReportItems, createDailyReportItem, updateDailyReportItem, deleteDailyReportItem, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
+import { usePermission } from '../hooks/usePermission'
 
 const { RangePicker } = DatePicker
 
 function DailyReportList() {
+  const { checkPermission } = usePermission()
   const user = safeJsonParse(localStorage.getItem('user'), {})
   const [reports, setReports] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
@@ -518,7 +520,7 @@ function DailyReportList() {
             {isOwner && (
               <>
                 <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-                <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+                <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('office:dailyreport:delete')}>
                   <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
                 </Popconfirm>
               </>
@@ -602,7 +604,7 @@ function DailyReportList() {
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => fetchReports(pagination.current, pagination.pageSize)}>刷新</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增日报</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} disabled={!checkPermission('office:dailyreport:add')}>新增日报</Button>
           <Dropdown menu={{ items: [
             { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
             { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },

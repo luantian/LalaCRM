@@ -44,7 +44,9 @@ function App() {
           setLoading(false)
           return
         }
-      } catch {}
+      } catch (e) {
+        console.error('解析用户数据失败:', e)
+      }
     }
 
     // 普通用户：从菜单数据提取允许的路由
@@ -74,7 +76,9 @@ function App() {
             }
           }
         })
-      } catch {}
+      } catch (e) {
+        console.error('解析菜单数据失败:', e)
+      }
     }
     
     setAllowedRoutes(routes)

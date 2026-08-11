@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Table, Button, Modal, Form, Input, Select, message, Popconfirm, Card, Space, Tag, Empty, Descriptions } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons'
 import api from '../services/api'
+import { usePermission } from '../hooks/usePermission'
 
 interface User {
   id: number
@@ -21,6 +22,7 @@ interface Role {
 }
 
 function UserManagement() {
+  const { checkPermission } = usePermission()
   const [users, setUsers] = useState<User[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(false)
@@ -187,12 +189,13 @@ function UserManagement() {
       render: (_: any, record: User) => (
         <Space size={0}>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewUser(record)}>查看</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} disabled={!checkPermission('system:user:edit')}>编辑</Button>
           <Popconfirm
             title="确定要删除吗?"
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
+            disabled={!checkPermission('system:user:delete')}
           >
             <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
@@ -205,7 +208,7 @@ function UserManagement() {
     <div>
       <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e293b', margin: 0 }}>用户管理</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} disabled={!checkPermission('system:user:add')}>
           创建用户
         </Button>
       </div>

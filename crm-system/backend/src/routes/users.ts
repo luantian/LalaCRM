@@ -3,6 +3,7 @@ import { Router, Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
 import { authenticateToken, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
+import { clearPermissionCache } from '../utils/permission'
 import logger from '../utils/logger'
 
 const router = Router()
@@ -210,6 +211,8 @@ router.put('/:id', authenticateToken, checkPermission('system:user:edit'), logOp
           data: { userId, roleId }
         })
       }
+      // 清除该用户的权限缓存，使新角色立即生效
+      clearPermissionCache(userId)
     }
 
     res.json(userWithoutPassword(user))

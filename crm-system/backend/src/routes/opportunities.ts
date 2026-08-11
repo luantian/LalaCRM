@@ -17,7 +17,7 @@ import path from 'path'
 const router = Router()
 
 // 获取所有商机（支持分页、筛选）
-router.get('/', authenticateToken, checkAnyPermission(['crm:opportunity:list', 'project:archive:list']), sortValidation(['name', 'budget', 'status', 'winRate', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkAnyPermission(['crm:opportunity:list', 'project:archive:list']), applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), sortValidation(['name', 'budget', 'status', 'winRate', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -35,13 +35,9 @@ router.get('/', authenticateToken, checkAnyPermission(['crm:opportunity:list', '
 
     const where: any = { deletedAt: null }
 
-    // 非管理员：只能看到自己是创建者或团队成员的商机
-    if (!(await isAdmin(req.user!.id))) {
-      where.OR = [
-        { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
-      ]
-    }
+    // 数据权限过滤：使用统一的数据权限中间件
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    Object.assign(where, dataScopeWhere)
 
     if (converted === 'false') {
       where.project = null
@@ -111,16 +107,11 @@ router.get('/', authenticateToken, checkAnyPermission(['crm:opportunity:list', '
 })
 
 // 商机统计（放在 /:id 之前，避免被 /:id 拦截）
-router.get('/stats/overview', authenticateToken, checkAnyPermission(['crm:opportunity:list', 'project:archive:list']), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkAnyPermission(['crm:opportunity:list', 'project:archive:list']), applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
   try {
-    // 只统计 owner 和团队成员的商机
-    const where: any = { deletedAt: null }
-    if (!(await isAdmin(req.user!.id))) {
-      where.OR = [
-        { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
-      ]
-    }
+    // 数据权限过滤：使用统一的数据权限中间件
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { deletedAt: null, ...dataScopeWhere }
     // 只统计未转化的商机（project 为 null）
     const [total, open, following, won, lost] = await Promise.all([
       prisma.opportunity.count({ where: { ...where, project: null } }),
@@ -158,18 +149,13 @@ router.get('/stats/overview', authenticateToken, checkAnyPermission(['crm:opport
 })
 
 // 获取商机详情
-router.get('/:id', authenticateToken, checkPermission('crm:opportunity:list'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('crm:opportunity:list'), applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
   try {
     const id = req.params.id as string
 
-    // 商机只允许 owner 和团队成员查看
-    const where: any = { id: parseInt(id), deletedAt: null }
-    if (!(await isAdmin(req.user!.id))) {
-      where.OR = [
-        { ownerId: req.user!.id },
-        { teamMembers: { some: { userId: req.user!.id, deletedAt: null } } }
-      ]
-    }
+    // 数据权限过滤：使用统一的数据权限中间件
+    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const where: any = { id: parseInt(id), deletedAt: null, ...dataScopeWhere }
 
     const opportunity = await prisma.opportunity.findFirst({
       where,
@@ -247,7 +233,14 @@ router.post('/', authenticateToken, checkPermission('crm:opportunity:edit'), log
         winRate: winRate || 0,
         status: status || 'OPEN',
         notes,
-        ownerId: req.user!.id
+        ownerId: req.user!.id,
+        // 自动将创建者添加为团队成员（销售角色），确保 TEAM 数据范围下也能看到
+        teamMembers: {
+          create: {
+            userId: req.user!.id,
+            teamRole: 'SALES'
+          }
+        }
       },
       include: {
         organization: { select: { id: true, name: true } },
@@ -969,7 +962,7 @@ const opportunityLabelMap: Record<string, string> = {
 }
 
 // 导出商机 Excel
-router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.opportunity.findMany({
@@ -985,7 +978,7 @@ router.get('/export/excel', authenticateToken, applyDataScope('ownerId'), async 
 })
 
 // 导出商机 CSV
-router.get('/export/csv', authenticateToken, applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/export/csv', authenticateToken, applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.opportunity.findMany({

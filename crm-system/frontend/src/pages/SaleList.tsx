@@ -70,9 +70,7 @@ function ProjectArchive() {
       return
     }
     try {
-      for (const id of selectedRowKeys) {
-        await deleteProject(id as number)
-      }
+      await Promise.all(selectedRowKeys.map(id => deleteProject(id as number)))
       message.success(`批量删除 ${selectedRowKeys.length} 条记录成功`)
       setSelectedRowKeys([])
       fetchData(pagination.current, pagination.pageSize)

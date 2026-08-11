@@ -7,6 +7,7 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, BankOutlined,
   ExpandAltOutlined, ShrinkOutlined, UserOutlined, HomeOutlined
 } from '@ant-design/icons'
+import { usePermission } from '../hooks/usePermission'
 import {
   getOrganizationTree, getOrganizationContacts,
   createOrganization, updateOrganization, deleteOrganization,
@@ -121,6 +122,7 @@ const typeColor = (type?: string) => {
 // ───────────────────────── Component ─────────────────────────
 
 function OrganizationList() {
+  const { checkPermission } = usePermission()
   const [treeData, setTreeData] = useState<Organization[]>([])
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<number[]>([])
@@ -568,6 +570,7 @@ function OrganizationList() {
             type="dashed"
             icon={<PlusOutlined />}
             onClick={() => handleAddOrg()}
+            disabled={!checkPermission('crm:organization:add')}
             block
             style={{ marginTop: 12 }}
           >
@@ -586,16 +589,18 @@ function OrganizationList() {
                 <Button
                   size="small"
                   icon={<PlusOutlined />}
+                  disabled={!checkPermission('crm:organization:add')}
                   onClick={() => handleAddOrg(selectedOrg.id)}
                 >
                   新增子客户
                 </Button>
-                <Button icon={<EditOutlined />} onClick={() => handleEditOrg(selectedOrg)}>
+                <Button icon={<EditOutlined />} disabled={!checkPermission('crm:organization:edit')} onClick={() => handleEditOrg(selectedOrg)}>
                   编辑
                 </Button>
                 <Popconfirm
                   title="确认删除"
                   description="确定要删除该客户吗？其下级客户也会被一并删除。"
+                  disabled={!checkPermission('crm:organization:delete')}
                   onConfirm={() => handleDeleteOrg(selectedOrg.id)}
                   okText="确定"
                   cancelText="取消"

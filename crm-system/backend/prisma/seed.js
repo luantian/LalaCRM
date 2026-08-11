@@ -24,7 +24,7 @@ async function main() {
     { id: 2,  key: 'organizations',   icon: 'TeamOutlined',         label: '客户管理', order: 4,  menuType: 'MENU', path: '/organizations', component: 'OrganizationList', perm: 'crm:organization:list' },
     { id: 4,  key: 'projects',        icon: 'ProjectOutlined',      label: '项目管理', order: 5,  menuType: 'MENU', path: '/projects', component: 'ProjectList', perm: 'project:project:list' },
     // 财务
-    { id: 3,  key: 'sales',           icon: 'DollarOutlined',       label: '项目归档', order: 6,  menuType: 'MENU', path: '/sales', component: 'SaleList' },
+    { id: 3,  key: 'sales',           icon: 'DollarOutlined',       label: '项目归档', order: 6,  menuType: 'MENU', path: '/sales', component: 'SaleList', perm: 'project:archive:list' },
     { id: 9,  key: 'expenses',        icon: 'MoneyCollectOutlined', label: '费用报销', order: 7,  menuType: 'MENU', path: '/expenses', component: 'ExpenseList', perm: 'finance:expense:list' },
     // 日常办公
     { id: 6,  key: 'office',          icon: 'ScheduleOutlined',     label: '日常办公', order: 8,  menuType: 'DIRECTORY' },
@@ -131,7 +131,7 @@ async function main() {
       displayName: '管理员',
       description: '系统管理员，拥有所有权限',
       permissions: [],
-      dataScope: 'ALL',
+      dataScope: 'TEAM',
     }
   })
 

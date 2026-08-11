@@ -4,7 +4,8 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, DownloadOutlin
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getOrganizationsSimple, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations } from '../services/api'
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations } from '../services/api'
+import { usePermission } from '../hooks/usePermission'
 
 const { Option } = Select
 
@@ -18,6 +19,7 @@ const statusConfig: Record<string, { text: string; color: string }> = {
 }
 
 const QuotationList: React.FC = () => {
+  const { checkPermission } = usePermission()
   const navigate = useNavigate()
   const [quotations, setQuotations] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -28,7 +30,6 @@ const QuotationList: React.FC = () => {
   const [filters, setFilters] = useState<any>({})
   const [stats, setStats] = useState<any>({})
   const [opportunities, setOpportunities] = useState<any[]>([])
-  const [, setOrganizations] = useState<any[]>([])
   const [items, setItems] = useState<any[]>([])
   const [importModalVisible, setImportModalVisible] = useState(false)
 
@@ -53,18 +54,10 @@ const QuotationList: React.FC = () => {
     } catch (e) { console.error(e) }
   }
 
-  const fetchOrganizations = async () => {
-    try {
-      const res: any = await getOrganizationsSimple()
-      setOrganizations(res || [])
-    } catch (e) { console.error(e) }
-  }
-
   useEffect(() => {
     fetchQuotations()
     fetchStats()
     fetchOpportunities()
-    fetchOrganizations()
   }, [fetchQuotations, fetchStats]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExport = async (type: 'csv' | 'excel') => {
@@ -183,7 +176,7 @@ const QuotationList: React.FC = () => {
         <Space size={0}>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/quotations/${record.id}`)}>查看</Button>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)}>
+          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('crm:quotation:delete')}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
         </Space>
@@ -214,7 +207,7 @@ const QuotationList: React.FC = () => {
       <Card>
         <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
           <Space>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建报价单</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate} disabled={!checkPermission('crm:quotation:add')}>新建报价单</Button>
             <Dropdown menu={{ items: [
               { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
               { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },

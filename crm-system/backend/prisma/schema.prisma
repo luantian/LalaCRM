@@ -49,6 +49,9 @@ model User {
   taskRecords     TaskRecord[] // 任务信息记录
   notifications   Notification[] // 我的通知
   organizations   Organization[] // 管理的组织
+
+  @@index([deptId])
+  @@index([roleId])
 }
 
 // 角色表
@@ -198,6 +201,11 @@ model Project {
   invoices        Invoice[]        // 发票
   teamMembers     ProjectTeamMember[] // 项目团队成员
   tasks           Task[]           // 项目任务
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([organizationId])
+  @@index([isArchived])
 }
 
 // 合同表
@@ -271,6 +279,8 @@ model ContractOrderItem {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   files        ContractOrderItemFile[] // 订货明细附件
+
+  @@index([contractId])
 }
 
 // 订货明细附件表
@@ -285,6 +295,8 @@ model ContractOrderItemFile {
   uploadedBy Int      // 上传人ID
   deletedAt  DateTime? // 软删除标记
   uploadedAt DateTime @default(now()) // 上传时间
+
+  @@index([orderItemId])
 }
 
 // 合同回款记录表
@@ -303,6 +315,8 @@ model ContractReceipt {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   files       ContractReceiptFile[] // 回款记录附件
+
+  @@index([contractId])
 }
 
 // 回款记录附件表
@@ -317,6 +331,8 @@ model ContractReceiptFile {
   uploadedBy Int      // 上传人ID
   deletedAt  DateTime? // 软删除标记
   uploadedAt DateTime @default(now()) // 上传时间
+
+  @@index([receiptId])
 }
 
 // 合同发货记录表
@@ -337,6 +353,8 @@ model ContractShipment {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   files       ContractShipmentFile[] // 发货记录附件
+
+  @@index([contractId])
 }
 
 // 发货记录附件表
@@ -351,6 +369,8 @@ model ContractShipmentFile {
   uploadedBy Int      // 上传人ID
   deletedAt  DateTime? // 软删除标记
   uploadedAt DateTime @default(now()) // 上传时间
+
+  @@index([shipmentId])
 }
 
 // 项目文件表
@@ -392,6 +412,9 @@ model BusinessTrip {
   updatedAt       DateTime @updatedAt
   expenses        Expense[] // 关联费用报销
   checkIns        DailyCheckIn[] // 出差期间的自动打卡
+
+  @@index([ownerId])
+  @@index([status])
 }
 
 // 费用报销表
@@ -418,6 +441,10 @@ model Expense {
   updatedAt      DateTime @updatedAt
   files          ExpenseFile[] // 报销附件
   items          ExpenseItem[] // 费用明细
+
+  @@index([ownerId])
+  @@index([projectId])
+  @@index([status])
 }
 
 // 费用明细表
@@ -482,6 +509,10 @@ model Opportunity {
   project         Project?                // 转化后的项目
   quotations      Quotation[]             // 报价单
   contracts       Contract[]              // 关联合同
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([organizationId])
 }
 
 // 商机信息记录表
@@ -638,6 +669,10 @@ model Procurement {
   payments      ProcurementPayment[] // 采购付款记录
   invoices      Invoice[]         // 发票
   files         ProcurementFile[] // 采购附件
+
+  @@index([projectId])
+  @@index([assignedTo])
+  @@index([status])
 }
 
 // 采购附件表
@@ -1284,6 +1319,8 @@ model RoleMenu {
   createdAt DateTime @default(now())
 
   @@unique([roleId, menuId]) // 同一角色同一菜单只关联一次
+  @@index([roleId])
+  @@index([menuId])
 }
 
 // 用户-角色关联表（支持一个用户多个角色）
@@ -1296,6 +1333,7 @@ model UserRole {
   createdAt DateTime @default(now())
 
   @@unique([userId, roleId]) // 同一用户同一角色只关联一次
+  @@index([roleId])
 }
 
 // 菜单类型枚举（若依模式）
@@ -1332,6 +1370,8 @@ model Department {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   users       User[]
+
+  @@index([parentId])
 }
 
 // ==================== 操作日志 ====================
@@ -1697,11 +1737,9 @@ enum TaskType {
 
 model SystemConfig {
   id        Int      @id @default(autoincrement())
-  key       String   @unique // 配置键
+  key       String   @unique // 配置键（@unique 已自动创建索引）
   value     String   // 配置值（JSON 字符串）
   updatedAt DateTime @updatedAt
-  
-  @@index([key])
 }
 
 // ==================== 数据库备份 ====================

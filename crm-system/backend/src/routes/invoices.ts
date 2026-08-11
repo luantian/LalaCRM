@@ -14,7 +14,7 @@ import path from 'path'
 const router = Router()
 
 // 获取发票列表（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('finance:invoice:list'), applyDataScope('ownerId'), sortValidation(['invoiceNo', 'amount', 'totalAmount', 'invoiceDate', 'status', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('finance:invoice:list'), applyDataScope({ ownerField: 'ownerId' }), sortValidation(['invoiceNo', 'amount', 'totalAmount', 'invoiceDate', 'status', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -90,7 +90,7 @@ router.get('/', authenticateToken, checkPermission('finance:invoice:list'), appl
 })
 
 // 发票统计
-router.get('/stats/overview', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('finance:invoice:list'), applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const [total, incomeCount, expenseCount, pendingCount, issuedCount, confirmedCount] = await Promise.all([
@@ -139,7 +139,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('finance:expens
 })
 
 // 对账统计（按项目维度汇总进销项）
-router.get('/stats/reconciliation', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/reconciliation', authenticateToken, checkPermission('finance:invoice:list'), applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
   try {
     const { projectId = '' } = req.query
 
@@ -211,7 +211,7 @@ router.get('/stats/reconciliation', authenticateToken, checkPermission('finance:
 })
 
 // 获取发票详情
-router.get('/:id', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('finance:invoice:list'), applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const dataScopeWhere = (req as any).dataScopeWhere || {}
@@ -450,7 +450,7 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('finance:
 })
 
 // 下载发票附件
-router.get('/files/:fileId/download', authenticateToken, checkPermission('finance:expense:list'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateToken, checkPermission('finance:invoice:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.invoiceFile.findFirst({ 
@@ -484,7 +484,7 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('financ
 })
 
 // 预览发票附件（图片/PDF/Word/Excel）
-router.get('/files/:fileId/preview', authenticateToken, checkPermission('finance:expense:list'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateToken, checkPermission('finance:invoice:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.invoiceFile.findFirst({ 

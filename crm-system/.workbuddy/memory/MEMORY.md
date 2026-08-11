@@ -41,10 +41,22 @@
 - **三段式**：`module:entity:action`
 - 示例：`crm:organization:list`、`project:project:edit`、`office:trip:approve`
 
-### 数据权限
-- `applyDataScope('字段名')` 中间件，参数为所属字段名
-- 支持 ALL/DEPARTMENT/DEPARTMENT_BELOW/SELF/CUSTOM 五种范围
-- 常用字段：`userId`（日报）、`ownerId`（发票/费用）、`assignedTo`（采购）
+### 数据权限（2026-08-12 全角色改为 TEAM 后）
+- `applyDataScope(config)` 中间件，参数为 `ModelScopeConfig` 对象：`{ ownerField, teamMemberField?, relations? }`
+- 支持 ALL/DEPARTMENT/DEPARTMENT_BELOW/SELF/CUSTOM/TEAM 六种范围，多角色取并集
+- **所有角色（含管理员）数据范围统一为 TEAM**：只能看到自己是负责人或团队成员的数据
+- **isAdmin bypass 已移除**：管理员不再自动跳过数据范围过滤（但路由内编辑/删除/审批等操作权限仍通过 `isAdmin()` 检查）
+- TEAM 范围 = `ownerId === userId OR teamMembers.some(userId === userId)`，含关联模型
+- 创建项目/商机时自动把创建者加为团队成员（MANAGER/SALES 角色）
+- `relations` 支持嵌套关联：Contract/Procurement 通过 `project` 关联查 owner/teamMembers
+- 所有 11 个业务模块统一使用此中间件，不再有内联逻辑或死代码
+- Dashboard 特殊处理：去掉中间件，路由内按模型分别调用 `getDataScopeWhere`（basicScope/projectScope/contractScope）
+- 各模块配置：
+  - Organization/Quotation/Invoice/Expense/BusinessTrip → `{ ownerField: 'ownerId' }`
+  - DailyReport → `{ ownerField: 'userId' }`
+  - Opportunity/Project → `{ ownerField: 'ownerId', teamMemberField: 'teamMembers' }`
+  - Contract → `{ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }`
+  - Procurement → `{ ownerField: 'assignedTo', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }`
 
 ### 数据库菜单结构
 - 20 个目录/菜单 + 73 个 BUTTON 权限节点（2026-08-07 删除"编辑任务"权限）

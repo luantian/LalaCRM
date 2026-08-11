@@ -13,7 +13,7 @@ import { autoWriteExpenseRecord } from '../utils/autoDailyReport'
 const router = Router()
 
 // 获取所有费用报销记录
-router.get('/', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('finance:expense:list'), applyDataScope({ ownerField: 'ownerId' }), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const { page = '1', pageSize = '10', status = '', category = '', search = '', tripId = '' } = req.query
 
@@ -101,7 +101,7 @@ router.get('/', authenticateToken, checkPermission('finance:expense:list'), appl
 })
 
 // 费用统计
-router.get('/stats/overview', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('finance:expense:list'), applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const expenses = await prisma.expense.findMany({ where: { deletedAt: null, ...dataScopeWhere } })
@@ -146,7 +146,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('finance:expens
 })
 
 // 获取单个费用报销记录
-router.get('/:id', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('finance:expense:list'), applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const dataScopeWhere = (req as any).dataScopeWhere || {}
@@ -593,7 +593,7 @@ const labelMap: Record<string, string> = {
   '状态': 'status'
 }
 
-router.get('/export/excel', authenticateToken, checkPermission('finance:expense:list'), applyDataScope('ownerId'), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('finance:expense:list'), applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.expense.findMany({
