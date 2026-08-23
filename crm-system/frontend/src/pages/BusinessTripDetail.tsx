@@ -4,6 +4,7 @@ import { Card, Descriptions, Tag, Button, Space, Row, Col, Modal, Form, Input, S
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { getBusinessTripDetail, updateBusinessTrip, getOrganizationsSimple, getProjects } from '../services/api'
 import { OrgContactSelector } from '../components/OrgContactSelector'
+import { ExpenseCreateModal } from '../components/ExpenseCreateModal'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -17,21 +18,24 @@ function BusinessTripDetail() {
 
   // 编辑状态
   const [modalVisible, setModalVisible] = useState(false)
+  // 关联费用新增弹窗（就地打开，不再跳转费用页）
+  const [expenseModalOpen, setExpenseModalOpen] = useState(false)
   const [form] = Form.useForm()
+
+  const fetchDetail = async () => {
+    try {
+      const data = await getBusinessTripDetail(parseInt(id!))
+      setTrip(data)
+    } catch (error) {
+      console.error('获取出差详情失败:', error)
+      setError(true)
+    } finally {
+      setLoading(false)
+    }
+  }
   const [projects, setProjects] = useState<any[]>([])
 
   useEffect(() => {
-    const fetchDetail = async () => {
-      try {
-        const data = await getBusinessTripDetail(parseInt(id!))
-        setTrip(data)
-      } catch (error) {
-        console.error('获取出差详情失败:', error)
-        setError(true)
-      } finally {
-        setLoading(false)
-      }
-    }
     fetchDetail()
   }, [id])
 
@@ -181,7 +185,7 @@ function BusinessTripDetail() {
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => navigate('/expenses', { state: { tripId: trip.id, tripTitle: trip.title, openAddModal: true } })}
+            onClick={() => setExpenseModalOpen(true)}
           >
             添加费用
           </Button>
@@ -302,6 +306,14 @@ function BusinessTripDetail() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 就地新增关联费用报销（创建成功后刷新详情） */}
+      <ExpenseCreateModal
+        open={expenseModalOpen}
+        onCancel={() => setExpenseModalOpen(false)}
+        onCreated={() => fetchDetail()}
+        defaultTripId={trip?.id}
+      />
     </div>
   )
 }

@@ -230,6 +230,9 @@ else
     fi
     exit 1
 fi
+
+# 写入节假日种子数据（db push 不执行迁移中的 INSERT，此脚本幂等可重复）
+docker exec crm-backend sh -c "cd /app && node prisma/seed-holidays.js" || log_warn "节假日种子数据写入失败（不影响主流程）"
 rm -f "$MIGRATE_LOG"
 
 # -------------------------------------------------

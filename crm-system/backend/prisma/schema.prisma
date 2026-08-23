@@ -125,6 +125,8 @@ model Organization {
   expenses    Expense[]    // 费用报销
   opportunities Opportunity[] // 商机
   quotations  Quotation[]  // 报价单
+  dailyReports DailyReport[] // 工作日报
+  reportEntries DailyReportEntry[] // 日报条目
 
   @@index([parentId])
   @@index([type])
@@ -194,7 +196,8 @@ model Project {
   files           ProjectFile[]    // 项目文件
   procurements    Procurement[]    // 采购清单
   dailyReports    DailyReport[]    // 工作日报
-  reportItems     DailyReportItem[]       // 日报工作条目
+  reportItems     DailyReportItem[]       // 日报工作条目（旧）
+  reportEntries   DailyReportEntry[]     // 日报条目
   reportTimeEntries DailyReportTimeEntry[] // 日报工时条目
   notes           ProjectNote[]    // 项目备注
   versions        ProjectVersion[] // 版本记录
@@ -848,9 +851,12 @@ model DailyReport {
   reportDate    DateTime // 日报日期
   projectId     Int?     // 关联项目
   project       Project? @relation(fields: [projectId], references: [id])
+  organizationId Int?    // 关联客户
+  organization  Organization? @relation(fields: [organizationId], references: [id])
   opportunityId Int?     // 关联商机
   type          DailyReportType @default(WORK) // 日报类型
-  content       String   // 工作内容
+  content       String   // 工作内容（Notes信息）
+  todos         String[] @default([]) // 待办事项
   plan          String?  // 明日计划
   issues        String?  // 问题与困难
   hours         Decimal? @db.Decimal(4, 1) // 工作时长（小时）
@@ -870,12 +876,37 @@ model DailyReport {
   visibility    DailyReportVisibility[] // 可见性设置
   favorites     DailyReportFavorite[] // 收藏
   history       DailyReportHistory[] // 历史记录
-  items         DailyReportItem[]    // 工作条目（结构化内容）
+  items         DailyReportItem[]    // 工作条目（旧结构，已停用）
+  entries       DailyReportEntry[]  // 日报条目（分条记录，每件事一条）
   timeEntries   DailyReportTimeEntry[] // 工时条目（细化工时）
 
   @@index([userId])
   @@index([reportDate])
   @@index([status])
+}
+
+// 日报条目表：一天内的每件事一条记录
+model DailyReportEntry {
+  id             Int      @id @default(autoincrement())
+  reportId       Int
+  report         DailyReport @relation(fields: [reportId], references: [id])
+  organizationId Int?     // 关联客户（可空）
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  projectId      Int?     // 关联项目（可空）
+  project        Project? @relation(fields: [projectId], references: [id])
+  title          String?  // 标题（自动写入时为事件标题）
+  content        String   // Notes详情
+  hours          Decimal? @db.Decimal(4, 1) // 工时（小时，手动填写）
+  source         String   @default("MANUAL") // MANUAL=手动 / AUTO=系统自动
+  sourceType     String?  // 自动来源类型：INVOICE/RECEIPT/CONTRACT/TASK等
+  refId          Int?     // 来源对象ID
+  deletedAt      DateTime? // 软删除标记
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([reportId])
+  @@index([organizationId])
+  @@index([projectId])
 }
 
 // 日报工作条目表（结构化内容）
@@ -1707,6 +1738,7 @@ enum CheckInType {
   LATE_AND_EARLY // 迟到+早退
   AUTO          // 出差自动打卡
   MAKEUP        // 补卡
+  OVERTIME      // 加班打卡（非工作日/调休外周末打卡）
 }
 
 // ==================== 组织管理枚举 ====================

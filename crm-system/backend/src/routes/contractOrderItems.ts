@@ -5,10 +5,12 @@ import { authenticateToken, authenticateFileToken, AuthRequest, checkPermission 
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
 import logger from '../utils/logger'
+import { autoWriteContractOrderItemRecord } from '../utils/autoDailyReport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
 import path from 'path'
 import { checkContractProjectArchived } from '../utils/archive'
+import { getDataScopeWhere } from '../middleware/dataScope'
 
 const router = Router()
 
@@ -20,10 +22,24 @@ router.get('/', authenticateToken, checkPermission('project:contract:list'), asy
       return res.status(400).json({ error: '缺少合同ID' })
     }
 
+    // 数据权限：校验用户对该合同的数据范围（与合同列表一致），
+    // 防止拿到他人合同 id 后越权读取订货明细
+    const contractScopeWhere = await getDataScopeWhere(req.user!.id, req.user?.role, {
+      ownerField: 'ownerId',
+      relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }]
+    })
+    const contract = await prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null, ...contractScopeWhere },
+      select: { id: true }
+    })
+    if (!contract) {
+      return res.status(404).json({ error: '合同不存在' })
+    }
+
     const items = await prisma.contractOrderItem.findMany({
       where: { contractId, deletedAt: null },
       include: {
-        files: { orderBy: { uploadedAt: 'desc' } }
+        files: { where: { deletedAt: null }, orderBy: { uploadedAt: 'desc' } }
       },
       orderBy: { createdAt: 'desc' }
     })
@@ -93,6 +109,18 @@ router.post('/', authenticateToken, checkPermission('project:contract:edit'), lo
         remarks
       }
     })
+
+    // 自动写入工作日报（Notes）
+    autoWriteContractOrderItemRecord(
+      req.user!.id,
+      contract.name,
+      productName,
+      item.id,
+      contract.projectId,
+      parsedQuantity,
+      'CREATE',
+      remarks
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
 
     res.status(201).json(item)
   } catch (error) {
@@ -290,10 +318,15 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.contractOrderItemFile.findFirst({
       where: { id: fileId, deletedAt: null },
-      include: { orderItem: { include: { contract: { select: { projectId: true } } } } }
+      include: { orderItem: { include: { contract: { select: { ownerId: true, projectId: true } } } } }
     })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 所有权校验：管理员或合同负责人才能删除附件（与订货明细删除的校验保持一致）
+    if (file.orderItem.contract.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '只有合同负责人才能删除附件' })
     }
 
     // 检查项目是否已归档

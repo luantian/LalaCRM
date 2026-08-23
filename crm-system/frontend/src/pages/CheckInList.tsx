@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Card, Row, Col, Button, message, Tag, Modal, Input, Space } from 'antd'
 import { CheckCircleOutlined, ClockCircleOutlined, CarOutlined, ExclamationCircleOutlined, CalendarOutlined, TrophyOutlined, FireOutlined } from '@ant-design/icons'
 import { getCheckIns, getTodayCheckIn, checkIn, makeupCheckIn, getCheckInStats, getHolidays } from '../services/api'
+import CheckInCalendar, { type CalendarDayData } from '../components/CheckInCalendar'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 
@@ -12,7 +13,7 @@ const formatTime = (t: string | Date) => dayjs.utc(t).local().format('HH:mm')
 import type { Dayjs } from 'dayjs'
 
 // 节假日类型
-type HolidayInfo = { name: string; type: 'legal' | 'festival' }
+type HolidayInfo = { name: string; type: 'legal' | 'festival'; isWorkday?: boolean }
 
 function CheckInList() {
   const [todayStatus, setTodayStatus] = useState<any>(null)
@@ -40,7 +41,8 @@ function CheckInList() {
         // isWorkday=false → 法定假日, isWorkday=true → 调休/传统节日
         holidayMap[h.date] = {
           name: h.name,
-          type: h.isWorkday ? 'festival' : 'legal'
+          type: h.isWorkday ? 'festival' : 'legal',
+          isWorkday: !!h.isWorkday
         }
       }
       setHolidays(holidayMap)
@@ -191,14 +193,32 @@ function CheckInList() {
                   boxShadow: todayCheckedCount >= 2 ? 'none' : '0 4px 16px rgba(0,0,0,0.15)',
                 }}
               >
-                {checkingIn ? '打卡中...' : (todayCheckedCount >= 2 ? '✓ 今日已打卡' : (dayjs().hour() < 12 ? '上班打卡' : '下班打卡'))}
+                {checkingIn ? '打卡中...' : (todayCheckedCount >= 2 ? '✓ 今日已打卡' : (todayStatus?.isWorkdayToday === false ? '加班打卡' : (dayjs().hour() < 12 ? '上班打卡' : '下班打卡')))}
               </Button>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 8 }}>
-                {todayCheckedCount >= 2 ? '上下班均已打卡' : `当前为${dayjs().hour() < 12 ? '上班' : '下班'}时段`}
+                {todayStatus?.isWorkdayToday === false
+                  ? '今日休息 · 打卡将记录为加班'
+                  : (todayCheckedCount >= 2 ? '上下班均已打卡' : `当前为${dayjs().hour() < 12 ? '上班' : '下班'}时段`)}
               </div>
-              
-              {/* 迟到/早退标记和建议下班时间 */}
-              {todayStatus?.morningRecord && (
+
+              {/* 迟到/早退标记和建议下班时间（休息日加班不适用上下班规则） */}
+              {todayStatus?.isWorkdayToday === false ? (
+                todayStatus?.morningRecord || todayStatus?.eveningRecord ? (
+                  <div style={{ marginTop: 12 }}>
+                    <Tag
+                      style={{
+                        background: 'rgba(99, 102, 241, 0.25)',
+                        border: '1px solid rgba(129, 140, 248, 0.6)',
+                        color: '#c7d2fe',
+                        fontSize: 12,
+                        padding: '2px 8px',
+                      }}
+                    >
+                      🌙 加班打卡
+                    </Tag>
+                  </div>
+                ) : null
+              ) : todayStatus?.morningRecord && (
                 <div style={{ marginTop: 12 }}>
                   {/* 判断是否迟到 */}
                   {(() => {
@@ -239,8 +259,8 @@ function CheckInList() {
                 </div>
               )}
               
-              {/* 早退标记 */}
-              {todayStatus?.eveningRecord && todayStatus?.morningRecord && (() => {
+              {/* 早退标记（休息日加班不适用） */}
+              {todayStatus?.isWorkdayToday !== false && todayStatus?.eveningRecord && todayStatus?.morningRecord && (() => {
                 const morningTime = dayjs.utc(todayStatus.morningRecord.checkInTime).local()
                 const eveningTime = dayjs.utc(todayStatus.eveningRecord.checkInTime).local()
                 const requiredTime = morningTime.add(9, 'hour')
@@ -463,386 +483,75 @@ function CheckInList() {
         }}
         styles={{ body: { padding: '24px' } }}
       >
-        {/* 星期标题 */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
-          gap: 8,
-          marginBottom: 12
-        }}>
-          {['日', '一', '二', '三', '四', '五', '六'].map(day => (
-            <div key={day} style={{
-              textAlign: 'center',
-              fontSize: 13,
-              fontWeight: 600,
-              color: '#9ca3af',
-              padding: '8px 0'
-            }}>
-              {day}
-            </div>
-          ))}
-        </div>
-
-        {/* 日期网格 */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
-          gap: 8
-        }}>
-          {(() => {
-            const firstDay = currentMonth.startOf('month')
-            const startDayOfWeek = firstDay.day()
+        <CheckInCalendar
+          month={currentMonth}
+          days={(() => {
+            const map: Record<string, CalendarDayData> = {}
             const daysInMonth = currentMonth.daysInMonth()
-
-            const cells = []
-
-            // 添加空白单元格（月初前的天数）
-            for (let i = 0; i < startDayOfWeek; i++) {
-              cells.push(<div key={`empty-${i}`} />)
-            }
-
-            // 添加日期单元格
-            for (let day = 1; day <= daysInMonth; day++) {
-              const date = currentMonth.date(day)
+            const today = dayjs()
+            for (let d = 1; d <= daysInMonth; d++) {
+              const date = currentMonth.date(d)
               const dateStr = date.format('YYYY-MM-DD')
-              // 使用 dayjs 进行日期比较（更可靠）
               const dayRecords = records.filter(r => dayjs(r.checkInDate).isSame(date, 'day'))
-                .sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime())
-              const isToday = date.isSame(dayjs(), 'day')
-              const isPast = date.isBefore(dayjs(), 'day')
-              const isFuture = date.isAfter(dayjs(), 'day')
-
               const morningRecord = dayRecords.find(r => r.period === 'MORNING')
               const eveningRecord = dayRecords.find(r => r.period === 'EVENING')
               const hasCheckedIn = dayRecords.length > 0
               const holiday = holidays[dateStr]
+              const types = dayRecords.map(r => r.type) as string[]
 
-              // 确定单元格样式
-              let bgGradient = '#f9fafb'
-              let borderColor = '#e5e7eb'
-              let textColor = '#6b7280'
+              let status: CalendarDayData['status']
+              // 非工作日：周末（调休上班日除外）或法定假日
+              const isMakeupWorkday = holiday?.isWorkday === true
+              const isWeekendDay = date.day() === 0 || date.day() === 6
+              const isNonWorkday = (isWeekendDay && !isMakeupWorkday) || (!!holiday && !holiday.isWorkday)
 
-              if (holiday) {
-                // 节假日特殊样式
-                if (holiday.type === 'legal') {
-                  bgGradient = 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)'
-                  borderColor = '#ec4899'
-                  textColor = '#9f1239'
-                } else {
-                  bgGradient = 'linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)'
-                  borderColor = '#8b5cf6'
-                  textColor = '#5b21b6'
-                }
+              if (types.includes('AUTO')) {
+                status = 'AUTO'
+              } else if (types.includes('OVERTIME') || (isNonWorkday && hasCheckedIn)) {
+                // 非工作日的打卡记录显示为加班（含旧数据兼容：此前周日记为 NORMAL）
+                status = 'OVERTIME'
+              } else if (types.includes('MAKEUP')) {
+                status = 'MAKEUP'
+              } else if (types.includes('LATE') || types.includes('LATE_AND_EARLY')) {
+                status = 'LATE'
+              } else if (types.includes('EARLY_LEAVE')) {
+                status = 'EARLY_LEAVE'
+              } else if (morningRecord && eveningRecord) {
+                status = 'NORMAL'
               } else if (hasCheckedIn) {
-                const types = dayRecords.map(r => r.type)
-                const isComplete = morningRecord && eveningRecord // 是否打满2次
-                
-                if (types.includes('AUTO')) {
-                  bgGradient = 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)'
-                  borderColor = '#3b82f6'
-                  textColor = '#1e40af'
-                } else if (types.includes('MAKEUP')) {
-                  bgGradient = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)'
-                  borderColor = '#f59e0b'
-                  textColor = '#92400e'
-                } else if (types.includes('LATE')) {
-                  bgGradient = 'linear-gradient(135deg, #fed7aa 0%, #fdba74 100%)'
-                  borderColor = '#fb923c'
-                  textColor = '#9a3412'
-                } else if (types.includes('EARLY_LEAVE')) {
-                  bgGradient = 'linear-gradient(135deg, #fecaca 0%, #fca5a5 100%)'
-                  borderColor = '#f87171'
-                  textColor = '#991b1b'
-                } else if (isComplete) {
-                  // 打满2次卡才显示绿色"正常打卡"
-                  bgGradient = 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)'
-                  borderColor = '#10b981'
-                  textColor = '#065f46'
-                } else {
-                  // 只打1次卡显示黄色"打卡不完整"
-                  bgGradient = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)'
-                  borderColor = '#f59e0b'
-                  textColor = '#92400e'
-                }
-              } else if (isPast) {
-                bgGradient = '#fee2e2'
-                borderColor = '#fca5a5'
-                textColor = '#dc2626'
+                status = 'INCOMPLETE'
+              } else if (holiday) {
+                status = holiday.type === 'legal' ? 'HOLIDAY_LEGAL' : 'HOLIDAY_EXTRA'
+              } else if (date.isAfter(today, 'day') && !isNonWorkday) {
+                // 未来工作日才显示"待打卡"，未来的周末归入休息日
+                status = 'FUTURE'
+              } else if (date.isBefore(today, 'day') && !isNonWorkday) {
+                status = 'ABSENT'
+              } else {
+                status = 'REST'
               }
 
-              cells.push(
-                <div
-                  key={day}
-                  onClick={() => {
-                    // 排除节假日和周末的补卡
-                    const dayOfWeek = date.day()
-                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-                    const isHoliday = holidays[dateStr]
-                    
-                    if (!hasCheckedIn && isPast && (stats?.makeupRemaining ?? 0) > 0 && !isWeekend && !isHoliday) {
-                      handleOpenMakeup(date)
-                    }
-                  }}
-                  style={{
-                    background: bgGradient,
-                    borderWidth: 2,
-                    borderStyle: 'solid',
-                    borderColor: borderColor,
-                    borderRadius: 12,
-                    padding: '12px 8px',
-                    minHeight: 90,
-                    cursor: !hasCheckedIn && isPast && !holiday && date.day() !== 0 && date.day() !== 6 ? 'pointer' : 'default',
-                    transition: 'all 0.2s ease',
-                    position: 'relative',
-                    ...(isToday && {
-                      boxShadow: '0 0 0 3px rgba(102, 126, 234, 0.3)',
-                      borderColor: '#667eea'
-                    })
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!hasCheckedIn && isPast && !holiday && date.day() !== 0 && date.day() !== 6) {
-                      e.currentTarget.style.transform = 'translateY(-2px)'
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!hasCheckedIn && isPast && !holiday && date.day() !== 0 && date.day() !== 6) {
-                      e.currentTarget.style.transform = 'translateY(0)'
-                      e.currentTarget.style.boxShadow = isToday ? '0 0 0 3px rgba(102, 126, 234, 0.3)' : 'none'
-                    }
-                  }}
-                >
-                  {/* 法定假日小表情 */}
-                  {holiday && holiday.type === 'legal' && (
-                    <div style={{
-                      position: 'absolute',
-                      top: 4,
-                      right: 4,
-                      fontSize: 14,
-                      lineHeight: 1
-                    }}>
-                      😊
-                    </div>
-                  )}
-
-                  {/* 日期数字 */}
-                  <div style={{
-                    fontSize: 18,
-                    fontWeight: 700,
-                    color: textColor,
-                    marginBottom: 8,
-                    textAlign: 'center'
-                  }}>
-                    {day}
-                    {isToday && (
-                      <div style={{
-                        fontSize: 9,
-                        color: '#667eea',
-                        fontWeight: 600,
-                        marginTop: 2
-                      }}>
-                        今天
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 节假日显示 */}
-                  {holiday && (
-                    <div style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      color: textColor,
-                      textAlign: 'center',
-                      marginBottom: 4,
-                      padding: '2px 4px',
-                      background: 'rgba(255,255,255,0.5)',
-                      borderRadius: 4
-                    }}>
-                      {holiday.name}
-                    </div>
-                  )}
-
-                  {/* 打卡状态 */}
-                  {hasCheckedIn && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {morningRecord && (
-                        <div style={{
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: textColor,
-                          background: 'rgba(255,255,255,0.6)',
-                          padding: '3px 6px',
-                          borderRadius: 6,
-                          textAlign: 'center',
-                          backdropFilter: 'blur(4px)'
-                        }}>
-                          ☀ {formatTime(morningRecord.checkInTime)}
-                        </div>
-                      )}
-                      {eveningRecord && (
-                        <div style={{
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: textColor,
-                          background: 'rgba(255,255,255,0.6)',
-                          padding: '3px 6px',
-                          borderRadius: 6,
-                          textAlign: 'center',
-                          backdropFilter: 'blur(4px)'
-                        }}>
-                          ☾ {formatTime(eveningRecord.checkInTime)}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 缺勤标记 */}
-                  {isPast && !hasCheckedIn && (
-                    <div style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: '#dc2626',
-                      textAlign: 'center',
-                      marginTop: 4
-                    }}>
-                      缺勤
-                    </div>
-                  )}
-
-                  {/* 未来日期标记 */}
-                  {isFuture && (
-                    <div style={{
-                      fontSize: 10,
-                      color: '#9ca3af',
-                      textAlign: 'center',
-                      marginTop: 4
-                    }}>
-                      待打卡
-                    </div>
-                  )}
-                </div>
-              )
+              map[dateStr] = {
+                date: dateStr,
+                status,
+                morningTime: morningRecord ? formatTime(morningRecord.checkInTime) : null,
+                eveningTime: eveningRecord ? formatTime(eveningRecord.checkInTime) : null,
+                holidayName: holiday?.name || null,
+              }
             }
-
-            return cells
+            return map
           })()}
-        </div>
-
-        {/* 图例 */}
-        <div style={{
-          marginTop: 24,
-          paddingTop: 24,
-          borderTop: '1px solid #e5e7eb',
-          display: 'flex',
-          gap: 32,
-          justifyContent: 'center',
-          flexWrap: 'wrap'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
-              border: '2px solid #10b981'
-            }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>正常打卡</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>按时上下班</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
-              border: '2px solid #3b82f6'
-            }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>出差打卡</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>出差期间自动</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
-              border: '2px solid #f59e0b'
-            }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>补卡/打卡不完整</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>补卡每月限1次</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, #fed7aa 0%, #fdba74 100%)',
-              border: '2px solid #fb923c'
-            }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>迟到</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>9:00后上班打卡</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, #fecaca 0%, #fca5a5 100%)',
-              border: '2px solid #f87171'
-            }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>早退</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>工作时长不满9小时</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: '#fee2e2',
-              border: '2px solid #fca5a5'
-            }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>缺勤</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>未打卡</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)',
-              border: '2px solid #ec4899'
-            }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>法定假日</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>国家法定节假日</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)',
-              border: '2px solid #8b5cf6'
-            }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>传统节日</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>节日纪念日</div>
-            </div>
-          </div>
-        </div>
+          onDayClick={(day, date) => {
+            const isWeekend = date.day() === 0 || date.day() === 6
+            if (day.status === 'ABSENT' && (stats?.makeupRemaining ?? 0) > 0 && !isWeekend && !day.holidayName) {
+              handleOpenMakeup(date)
+            }
+          }}
+          isDayClickable={(day, date) => {
+            const isWeekend = date.day() === 0 || date.day() === 6
+            return day.status === 'ABSENT' && (stats?.makeupRemaining ?? 0) > 0 && !isWeekend && !day.holidayName
+          }}
+        />
       </Card>
 
       {/* 补卡弹窗 */}

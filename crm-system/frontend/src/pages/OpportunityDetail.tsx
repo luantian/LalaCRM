@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Spin, Result } from 'antd'
+import { Card, Descriptions, Tag, Tabs, Button, Space, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Empty, Avatar, Spin, Result } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, FileTextOutlined, ScheduleOutlined, CheckOutlined, EyeOutlined, CloseOutlined } from '@ant-design/icons'
-import { getOpportunityDetail, updateOpportunity, convertOpportunity, closeOpportunityProject, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getOrganizationsSimple, getUserDropdown, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, openFilePreview, isPreviewableFile, safeJsonParse, downloadFile } from '../services/api'
+import { getOpportunityDetail, updateOpportunity, convertOpportunity, closeOpportunityProject, addOpportunityTeamMember, removeOpportunityTeamMember, getOpportunityFiles, getOrganizationsSimple, getUserDropdown, getOpportunityRecords, createOpportunityRecord, updateOpportunityRecord, deleteOpportunityRecord, uploadOpportunityRecordFiles, deleteOpportunityRecordFile, downloadOpportunityRecordFileUrl, previewOpportunityRecordFileUrl, openFilePreview, isPreviewableFile, downloadFile } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
+import { TeamMembersPanel } from '../components/TeamMembersPanel'
 import { usePermission } from '../hooks/usePermission'
 
 const { TextArea } = Input
@@ -18,32 +19,14 @@ function OpportunityDetail() {
   const [error, setError] = useState(false)
 
   // 当前用户与权限
-  const currentUser = safeJsonParse(localStorage.getItem('user'), {})
   const canEditOpportunity = checkPermission('crm:opportunity:edit')
-  const defaultTeamRole = useMemo(() => {
-    if (canEditOpportunity) return 'BUSINESS'
-    // 根据用户系统角色判断默认团队角色
-    const userRole = currentUser.role
-    if (userRole === 'PROJECT_MANAGER' || userRole === 'ADMIN') return 'TECHNICAL'
-    return 'SALES'
-  }, [canEditOpportunity, currentUser.role])
 
   // 编辑状态
   const [modalVisible, setModalVisible] = useState(false)
   const [form] = Form.useForm()
 
-  // 团队成员状态
+  // 团队成员状态（候选用户；角色展示由共享组件取自成员系统角色）
   const [users, setUsers] = useState<any[]>([])
-  const [teamMemberUserId, setTeamMemberUserId] = useState<number | null>(null)
-  const [teamMemberRole, setTeamMemberRole] = useState<string>(defaultTeamRole)
-
-  // 选择成员时自动设置默认角色
-  const handleTeamMemberUserIdChange = (userId: number | null) => {
-    setTeamMemberUserId(userId)
-    if (userId) {
-      setTeamMemberRole(defaultTeamRole)
-    }
-  }
 
   // 文件管理状态
   const [, setFiles] = useState<any[]>([])
@@ -152,21 +135,12 @@ function OpportunityDetail() {
     }
   }
 
-  // ===== 团队成员 =====
-  const handleAddTeamMember = async () => {
-    if (!teamMemberUserId) {
-      message.warning('请选择成员')
-      return
+  // ===== 团队成员（共享组件回调：多选添加，不选角色） =====
+  const handleTeamAdd = async (userIds: number[]) => {
+    for (const uid of userIds) {
+      await addOpportunityTeamMember(parseInt(id!), { userId: uid })
     }
-    try {
-      await addOpportunityTeamMember(parseInt(id!), { userId: teamMemberUserId, teamRole: teamMemberRole })
-      message.success('添加团队成员成功')
-      setTeamMemberUserId(null)
-      setTeamMemberRole(defaultTeamRole)
-      refreshDetail()
-    } catch (error: any) {
-      message.error(error?.error || '添加失败')
-    }
+    refreshDetail()
   }
 
   const handleRemoveTeamMember = async (memberId: number) => {
@@ -297,42 +271,9 @@ function OpportunityDetail() {
     TECHNICAL: { text: '技术', color: 'green' },
     BUSINESS: { text: '商务', color: 'orange' }
   }
+  void teamRoleConfig // 历史枚举映射保留备查；团队成员展示已统一为系统角色
 
   const status = statusConfig[opportunity.status] || { text: opportunity.status, color: 'default' }
-
-  // 团队成员表格列
-  const teamColumns = [
-    {
-      title: '成员',
-      dataIndex: 'user',
-      key: 'user',
-      render: (user: any) => user?.name || '-'
-    },
-    {
-      title: '角色',
-      dataIndex: 'teamRole',
-      key: 'teamRole',
-      render: (role: string) => {
-        const r = teamRoleConfig[role] || { text: role, color: 'default' }
-        return <Tag color={r.color}>{r.text}</Tag>
-      }
-    },
-    {
-      title: '加入时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      render: (date: string) => dayjs(date).format('YYYY-MM-DD')
-    },
-    {
-      title: '操作',
-      key: 'action',
-      render: (_: any, record: any) => (
-        <Popconfirm title="确定要删除吗?" onConfirm={() => handleRemoveTeamMember(record.id)}>
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>移除</Button>
-        </Popconfirm>
-      )
-    }
-  ]
 
   // Tab 项
   const tabItems = [
@@ -434,42 +375,13 @@ function OpportunityDetail() {
       key: 'team',
       label: `团队成员 (${opportunity.teamMembers?.length || 0})`,
       children: (
-        <div>
-          <div style={{ marginBottom: 16 }}>
-            <Space>
-              <Select
-                style={{ width: 200 }}
-                placeholder="选择成员"
-                value={teamMemberUserId}
-                onChange={handleTeamMemberUserIdChange}
-                showSearch
-                optionFilterProp="children"
-                allowClear
-              >
-                {users.map((u: any) => (
-                  <Select.Option key={u.id} value={u.id}>{u.name || u.username}</Select.Option>
-                ))}
-              </Select>
-              <Select
-                style={{ width: 120 }}
-                value={teamMemberRole}
-                onChange={setTeamMemberRole}
-              >
-                <Select.Option value="SALES">销售</Select.Option>
-                <Select.Option value="TECHNICAL">技术</Select.Option>
-                <Select.Option value="BUSINESS">商务</Select.Option>
-              </Select>
-              <Button type="primary" icon={<PlusOutlined />} onClick={handleAddTeamMember}>添加成员</Button>
-            </Space>
-          </div>
-          <Table
-            columns={teamColumns}
-            dataSource={opportunity.teamMembers || []}
-            rowKey="id"
-            pagination={false}
-            locale={{ emptyText: '暂无团队成员' }}
-          />
-        </div>
+        <TeamMembersPanel
+          members={opportunity.teamMembers || []}
+          users={users}
+          onAdd={handleTeamAdd}
+          onRemove={handleRemoveTeamMember}
+          disabled={!canEditOpportunity}
+        />
       )
     }
   ]

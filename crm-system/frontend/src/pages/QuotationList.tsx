@@ -107,14 +107,17 @@ const QuotationList: React.FC = () => {
     setModalVisible(true)
   }
 
-  const handleDelete = (id: number) => {
-    Modal.confirm({
-      title: '确认删除', content: '确定要删除这条报价单吗？',
-      onOk: async () => {
-        try { await deleteQuotation(id); message.success('删除成功'); fetchQuotations(); fetchStats() }
-        catch (e: any) { message.error(e?.error || '删除失败') }
-      }
-    })
+  // 删除：外层按钮已包 Popconfirm 确认（见操作列），此处直接执行，
+  // 不再叠加 Modal.confirm 造成双重确认
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteQuotation(id)
+      message.success('删除成功')
+      fetchQuotations()
+      fetchStats()
+    } catch (e: any) {
+      message.error(e?.error || '删除失败')
+    }
   }
 
   const addItem = () => {

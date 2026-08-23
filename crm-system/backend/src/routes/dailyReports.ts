@@ -3,7 +3,6 @@ import { Router } from 'express'
 import { isAdmin, hasAnyRole } from '../utils/permission'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
-import { applyDataScope } from '../middleware/dataScope'
 import { clampPagination } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
@@ -11,14 +10,94 @@ import { upload } from '../middleware/upload'
 
 const router = Router()
 
-// 获取工作日报列表（分页，支持筛选）—— 所有人可查看
-router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), clampPagination(), async (req: AuthRequest, res) => {
+/**
+ * 日报数据可见性：管理员可查看全部，非管理员只能查看自己的日报
+ */
+async function getReportScopeWhere(userId: number): Promise<Record<string, any>> {
+  return (await isAdmin(userId)) ? {} : { userId }
+}
+
+/**
+ * 规范化待办事项：去除空串、限制最多 50 条
+ */
+function normalizeTodos(todos: unknown): string[] {
+  if (!Array.isArray(todos)) return []
+  return todos
+    .map(t => (typeof t === 'string' ? t.trim() : String(t ?? '').trim()))
+    .filter(Boolean)
+    .slice(0, 50)
+}
+
+interface NormalizedEntry {
+  id?: number
+  organizationId: number | null
+  projectId: number | null
+  title: string | null
+  content: string
+  hours: number | null
+}
+
+/**
+ * 规范化日报条目：过滤空条目、限制最多 50 条；工时 0-24 小时
+ */
+function normalizeEntries(entries: unknown): NormalizedEntry[] {
+  if (!Array.isArray(entries)) return []
+  return entries
+    .map((e: any) => {
+      const rawHours = Number(e?.hours)
+      return {
+        id: typeof e?.id === 'number' ? e.id : undefined,
+        organizationId: e?.organizationId || null,
+        projectId: e?.projectId || null,
+        title: (typeof e?.title === 'string' && e.title.trim()) || null,
+        content: typeof e?.content === 'string' ? e.content.trim() : '',
+        hours: Number.isFinite(rawHours) && rawHours > 0 && rawHours <= 24 ? Math.round(rawHours * 10) / 10 : null
+      }
+    })
+    .filter(e => e.content || e.title)
+    .slice(0, 50)
+}
+
+/** 条目列表 → 日报 content 缓存文本 */
+function entriesToContent(entries: { title: string | null; content: string }[]): string {
+  return entries.map(e => [e.title, e.content].filter(Boolean).join('\n')).join('\n')
+}
+
+/** 本地时区安全的日期串（toISOString 在 UTC+8 会偏移一天） */
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** 解析 YYYY-MM-DD 为本地日期（new Date('YYYY-MM-DD') 会按 UTC 午夜解析导致时区偏移）；endOfDay 时含当天全部时间 */
+function parseLocalDate(s: string, endOfDay = false): Date {
+  const [y, m, d] = s.split('-').map(Number)
+  return endOfDay ? new Date(y, m - 1, d, 23, 59, 59, 999) : new Date(y, m - 1, d)
+}
+
+/** 条目统一 include 结构 */
+const entryInclude = {
+  entries: {
+    where: { deletedAt: null },
+    include: {
+      organization: { select: { id: true, name: true } },
+      project: { select: { id: true, name: true } }
+    },
+    orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }]
+  }
+}
+
+// 获取工作日报列表（分页，支持筛选）—— 管理员可查看全部，非管理员只能查看自己的
+router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
       pageSize = '10',
       userId = '',
       projectId = '',
+      organizationId = '',
       startDate = '',
       endDate = '',
       type = '',
@@ -29,7 +108,7 @@ router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), a
     const take = parseInt(pageSize as string)
 
     // 获取数据权限条件
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const dataScopeWhere = await getReportScopeWhere(req.user!.id)
 
     // 构建查询条件：合并数据权限和筛选条件
     const conditions: any[] = []
@@ -43,7 +122,18 @@ router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), a
     }
 
     if (projectId) {
-      conditions.push({ projectId: parseInt(projectId as string) })
+      const pid = parseInt(projectId as string)
+      // 日报级或任一条目级关联都命中
+      conditions.push({
+        OR: [{ projectId: pid }, { entries: { some: { projectId: pid } } }]
+      })
+    }
+
+    if (organizationId) {
+      const oid = parseInt(organizationId as string)
+      conditions.push({
+        OR: [{ organizationId: oid }, { entries: { some: { organizationId: oid } } }]
+      })
     }
 
     if (type) {
@@ -52,8 +142,8 @@ router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), a
 
     if (startDate || endDate) {
       const dateCondition: any = {}
-      if (startDate) dateCondition.gte = new Date(startDate as string)
-      if (endDate) dateCondition.lte = new Date(endDate as string)
+      if (startDate) dateCondition.gte = parseLocalDate(startDate as string)
+      if (endDate) dateCondition.lte = parseLocalDate(endDate as string, true)
       conditions.push({ reportDate: dateCondition })
     }
 
@@ -62,7 +152,9 @@ router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), a
         OR: [
           { content: { contains: search as string, mode: 'insensitive' } },
           { plan: { contains: search as string, mode: 'insensitive' } },
-          { issues: { contains: search as string, mode: 'insensitive' } }
+          { issues: { contains: search as string, mode: 'insensitive' } },
+          { entries: { some: { content: { contains: search as string, mode: 'insensitive' } } } },
+          { entries: { some: { title: { contains: search as string, mode: 'insensitive' } } } }
         ]
       })
     }
@@ -80,10 +172,8 @@ router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), a
       include: {
         user: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } },
-        items: {
-          where: { deletedAt: null },
-          select: { project: { select: { id: true, name: true } } }
-        }
+        organization: { select: { id: true, name: true } },
+        ...entryInclude
       },
       orderBy: { reportDate: 'desc' },
       skip,
@@ -105,14 +195,14 @@ router.get('/', authenticateToken, checkPermission('office:dailyreport:list'), a
   }
 })
 
-// 日报统计概览（本月报告数、总工时、按类型统计）—— 所有人可查看
-router.get('/stats/overview', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
+// 日报统计概览（本月报告数、总工时、按类型统计）—— 管理员可查看全部，非管理员只能查看自己的
+router.get('/stats/overview', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
 
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const dataScopeWhere = await getReportScopeWhere(req.user!.id)
     const where = {
       deletedAt: null,
       reportDate: {
@@ -125,7 +215,11 @@ router.get('/stats/overview', authenticateToken, checkPermission('office:dailyre
     const reports = await prisma.dailyReport.findMany({ where })
 
     const totalReports = reports.length
-    const totalHours = Number(reports.reduce((sum, r) => sum + Number(r.hours), 0).toFixed(1))
+    const totalHours = Number(reports.reduce((sum, r) => sum + Number(r.hours || 0), 0).toFixed(1))
+    const totalTodos = reports.reduce((sum, r) => sum + ((r.todos as string[] | null)?.length || 0), 0)
+    const totalEntries = await prisma.dailyReportEntry.count({
+      where: { reportId: { in: reports.map(r => r.id) }, deletedAt: null }
+    })
 
     const typeCount = reports.reduce((acc, r) => {
       acc[r.type] = (acc[r.type] || 0) + 1
@@ -135,6 +229,8 @@ router.get('/stats/overview', authenticateToken, checkPermission('office:dailyre
     res.json({
       totalReports,
       totalHours,
+      totalTodos,
+      totalEntries,
       work: typeCount['WORK'] || 0,
       preSales: typeCount['PRE_SALES'] || 0,
       project: typeCount['PROJECT'] || 0,
@@ -148,27 +244,35 @@ router.get('/stats/overview', authenticateToken, checkPermission('office:dailyre
   }
 })
 
-// 导出日报 CSV —— 所有人可导出
-router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
+// 导出日报 CSV —— 管理员可导出全部，非管理员只能导出自己的
+router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const {
       userId = '',
       projectId = '',
+      organizationId = '',
       startDate = '',
       endDate = '',
       type = '',
       search = ''
     } = req.query
 
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const dataScopeWhere = await getReportScopeWhere(req.user!.id)
     const where: any = { deletedAt: null, ...dataScopeWhere }
 
-    if (userId) {
+    // 显式筛选不能越过数据权限：非管理员（已有 userId 限制）时忽略该筛选
+    if (userId && where.userId === undefined) {
       where.userId = parseInt(userId as string)
     }
 
     if (projectId) {
-      where.projectId = parseInt(projectId as string)
+      const pid = parseInt(projectId as string)
+      where.AND = [...(where.AND || []), { OR: [{ projectId: pid }, { entries: { some: { projectId: pid } } }] }]
+    }
+
+    if (organizationId) {
+      const oid = parseInt(organizationId as string)
+      where.AND = [...(where.AND || []), { OR: [{ organizationId: oid }, { entries: { some: { organizationId: oid } } }] }]
     }
 
     if (type) {
@@ -178,10 +282,10 @@ router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport
     if (startDate || endDate) {
       where.reportDate = {}
       if (startDate) {
-        where.reportDate.gte = new Date(startDate as string)
+        where.reportDate.gte = parseLocalDate(startDate as string)
       }
       if (endDate) {
-        where.reportDate.lte = new Date(endDate as string)
+        where.reportDate.lte = parseLocalDate(endDate as string, true)
       }
     }
 
@@ -189,7 +293,9 @@ router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport
       where.OR = [
         { content: { contains: search as string, mode: 'insensitive' } },
         { plan: { contains: search as string, mode: 'insensitive' } },
-        { issues: { contains: search as string, mode: 'insensitive' } }
+        { issues: { contains: search as string, mode: 'insensitive' } },
+        { entries: { some: { content: { contains: search as string, mode: 'insensitive' } } } },
+        { entries: { some: { title: { contains: search as string, mode: 'insensitive' } } } }
       ]
     }
 
@@ -197,7 +303,9 @@ router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport
       where,
       include: {
         user: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } }
+        project: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
+        ...entryInclude
       },
       orderBy: { reportDate: 'desc' }
     })
@@ -217,19 +325,27 @@ router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport
       return `"${str}"`
     }
 
-    const header = '日期,姓名,项目,类型,工作内容,明日计划,问题,时长'
-    const rows = reports.map((r: any) =>
-      [
-        escape(r.reportDate.toISOString().slice(0, 10)),
-        escape(r.user?.name || ''),
-        escape(r.project?.name || ''),
-        escape(typeMap[r.type] || r.type),
-        escape(r.content),
-        escape(r.plan),
-        escape(r.issues),
-        escape(Number(r.hours).toFixed(1))
-      ].join(',')
-    )
+    // 逐条输出：一天多件事 = 多行
+    const header = '日期,姓名,客户,项目,类型,来源,工作内容(Notes),待办事项,后续计划,时长'
+    const rows = reports.flatMap((r: any) => {
+      const entryList: any[] = (r.entries && r.entries.length > 0)
+        ? r.entries
+        : [{ title: null, content: r.content, organization: null, project: null, sourceType: null }]
+      return entryList.map(e =>
+        [
+          escape(toLocalDateStr(r.reportDate)),
+          escape(r.user?.name || ''),
+          escape(e.organization?.name || r.organization?.name || ''),
+          escape(e.project?.name || r.project?.name || ''),
+          escape(typeMap[r.type] || r.type),
+          escape(e.sourceType || (e.source === 'AUTO' ? '自动' : '')),
+          escape(e.content || e.title || ''),
+          escape(Array.isArray(r.todos) ? r.todos.join('；') : ''),
+          escape(r.plan),
+          escape(Number(r.hours || 0).toFixed(1))
+        ].join(',')
+      )
+    })
 
     const csv = '﻿' + [header, ...rows].join('\r\n')
 
@@ -243,15 +359,17 @@ router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport
 })
 
 // 获取单个日报详情
-router.get('/:id', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const dataScopeWhere = await getReportScopeWhere(req.user!.id)
     const report = await prisma.dailyReport.findFirst({
       where: { id, deletedAt: null, ...dataScopeWhere },
       include: {
         user: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } }
+        project: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
+        ...entryInclude
       }
     })
 
@@ -265,35 +383,53 @@ router.get('/:id', authenticateToken, checkPermission('office:dailyreport:list')
   }
 })
 
-// 创建工作日报
+// 创建工作日报（分条：entries 为当天做的多件事）
 router.post('/', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const {
       reportDate,
       type,
-      projectId,
-      content,
+      entries,
+      todos,
       plan,
-      issues,
       hours,
       status = 'DRAFT'
     } = req.body
+
+    const normalized = normalizeEntries(entries)
+    // 日报级客户/项目取第一个有条目关联的（兼容筛选/导出）
+    const firstWith = normalized.find(e => e.organizationId || e.projectId)
+    // 总工时 = 各条目工时之和
+    const totalHours = Number(normalized.reduce((sum, e) => sum + (e.hours || 0), 0).toFixed(1))
 
     const report = await prisma.dailyReport.create({
       data: {
         reportDate: new Date(reportDate),
         type,
-        projectId: projectId || null,
-        content,
+        projectId: firstWith?.projectId || null,
+        organizationId: firstWith?.organizationId || null,
+        content: entriesToContent(normalized),
+        todos: normalizeTodos(todos),
         plan,
-        issues,
-        hours: parseFloat(hours || 0),
+        hours: totalHours,
         status: status || 'DRAFT',
-        userId: req.user!.id
+        userId: req.user!.id,
+        entries: {
+          create: normalized.map(e => ({
+            organizationId: e.organizationId,
+            projectId: e.projectId,
+            title: e.title,
+            content: e.content,
+            hours: e.hours,
+            source: 'MANUAL'
+          }))
+        }
       },
       include: {
         user: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } }
+        project: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
+        ...entryInclude
       }
     })
 
@@ -304,17 +440,16 @@ router.post('/', authenticateToken, checkPermission('office:dailyreport:add'), l
   }
 })
 
-// 更新工作日报
+// 更新工作日报（分条差量更新：有id的更新、无id的新增、缺失的软删除）
 router.put('/:id', authenticateToken, checkPermission('office:dailyreport:add'), logOperation('工作日报', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const {
       reportDate,
       type,
-      projectId,
-      content,
+      entries,
+      todos,
       plan,
-      issues,
       hours
     } = req.body
 
@@ -328,20 +463,57 @@ router.put('/:id', authenticateToken, checkPermission('office:dailyreport:add'),
       return res.status(403).json({ error: '只能修改自己的日报' })
     }
 
+    // 手动条目差量同步（不动 AUTO 来源的条目）
+    const normalized = normalizeEntries(entries)
+    const updatedIds = normalized.map(e => e.id).filter((v): v is number => !!v)
+    const existingManualEntries = await prisma.dailyReportEntry.findMany({
+      where: { reportId: id, deletedAt: null, source: 'MANUAL' }
+    })
+
+    const now = new Date()
+    for (const e of existingManualEntries) {
+      if (!updatedIds.includes(e.id)) {
+        await prisma.dailyReportEntry.update({ where: { id: e.id }, data: { deletedAt: now } })
+      }
+    }
+    for (const e of normalized) {
+      if (e.id && existingManualEntries.some(x => x.id === e.id)) {
+        await prisma.dailyReportEntry.update({
+          where: { id: e.id },
+          data: { organizationId: e.organizationId, projectId: e.projectId, title: e.title, content: e.content, hours: e.hours }
+        })
+      } else if (!e.id) {
+        await prisma.dailyReportEntry.create({
+          data: { reportId: id, organizationId: e.organizationId, projectId: e.projectId, title: e.title, content: e.content, hours: e.hours, source: 'MANUAL' }
+        })
+      }
+    }
+
+    // 重算 content 缓存与日报级关联；总工时 = 全部有效条目（含自动）工时之和
+    const allEntries = await prisma.dailyReportEntry.findMany({
+      where: { reportId: id, deletedAt: null },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    })
+    const firstWith = allEntries.find(e => e.organizationId || e.projectId)
+    const totalHours = Number(allEntries.reduce((sum, e) => sum + Number(e.hours || 0), 0).toFixed(1))
+
     const report = await prisma.dailyReport.update({
       where: { id },
       data: {
         reportDate: new Date(reportDate),
         type,
-        projectId: projectId || null,
-        content,
+        projectId: firstWith?.projectId ?? existing.projectId,
+        organizationId: firstWith?.organizationId ?? existing.organizationId,
+        content: entriesToContent(allEntries),
+        todos: normalizeTodos(todos),
         plan,
-        issues,
-        hours: parseFloat(hours || 0)
+        hours: totalHours
       },
       include: {
         user: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } }
+        project: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
+        ...entryInclude
       }
     })
 
@@ -378,6 +550,7 @@ router.delete('/:id', authenticateToken, checkPermission('office:dailyreport:add
 
     // 级联软删除子实体（只有这些模型有 deletedAt）
     await prisma.dailyReportItem.updateMany({ where: { reportId: id }, data: { deletedAt: new Date() } })
+    await prisma.dailyReportEntry.updateMany({ where: { reportId: id }, data: { deletedAt: new Date() } })
     await prisma.dailyReportTimeEntry.updateMany({ where: { reportId: id }, data: { deletedAt: new Date() } })
     await prisma.dailyReportComment.updateMany({ where: { reportId: id }, data: { deletedAt: new Date() } })
     await prisma.dailyReportFile.updateMany({ where: { reportId: id }, data: { deletedAt: new Date() } })
@@ -548,6 +721,15 @@ router.get('/:id/comments', authenticateToken, checkPermission('office:dailyrepo
   try {
     const id = parseInt(req.params.id as string)
 
+    // 非管理员只能查看自己日报的评论
+    const report = await prisma.dailyReport.findFirst({ where: { id, deletedAt: null } })
+    if (!report) {
+      return res.status(404).json({ error: '工作日报不存在' })
+    }
+    if (report.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '只能查看自己的日报' })
+    }
+
     const comments = await prisma.dailyReportComment.findMany({
       where: { reportId: id, parentId: null, deletedAt: null },
       include: {
@@ -582,6 +764,11 @@ router.post('/:id/comments', authenticateToken, checkPermission('office:dailyrep
     const report = await prisma.dailyReport.findFirst({ where: { id, deletedAt: null } })
     if (!report) {
       return res.status(404).json({ error: '工作日报不存在' })
+    }
+
+    // 非管理员只能评论自己的日报
+    if (report.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '只能评论自己的日报' })
     }
 
     const comment = await prisma.dailyReportComment.create({
@@ -626,19 +813,20 @@ router.delete('/:id/comments/:commentId', authenticateToken, checkPermission('of
   }
 })
 
-// 获取日报提交率统计 —— 所有人可查看
-router.get('/stats/submission-rate', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
+// 获取日报提交率统计 —— 管理员可查看全部，非管理员只能查看自己的
+router.get('/stats/submission-rate', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const dataScopeWhere = await getReportScopeWhere(req.user!.id)
     const where: any = { deletedAt: null, ...dataScopeWhere }
     if (startDate || endDate) {
       where.reportDate = {}
-      if (startDate) where.reportDate.gte = new Date(startDate as string)
-      if (endDate) where.reportDate.lte = new Date(endDate as string)
+      if (startDate) where.reportDate.gte = parseLocalDate(startDate as string)
+      if (endDate) where.reportDate.lte = parseLocalDate(endDate as string, true)
     }
-    if (userId) {
+    // 显式筛选不能越过数据权限：非管理员（已有 userId 限制）时忽略该筛选
+    if (userId && where.userId === undefined) {
       where.userId = parseInt(userId as string)
     }
 
@@ -667,19 +855,20 @@ router.get('/stats/submission-rate', authenticateToken, checkPermission('office:
   }
 })
 
-// 获取日报质量统计 —— 所有人可查看
-router.get('/stats/quality', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
+// 获取日报质量统计 —— 管理员可查看全部，非管理员只能查看自己的
+router.get('/stats/quality', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const dataScopeWhere = await getReportScopeWhere(req.user!.id)
     const where: any = { deletedAt: null, rating: { not: null }, ...dataScopeWhere }
     if (startDate || endDate) {
       where.reportDate = {}
-      if (startDate) where.reportDate.gte = new Date(startDate as string)
-      if (endDate) where.reportDate.lte = new Date(endDate as string)
+      if (startDate) where.reportDate.gte = parseLocalDate(startDate as string)
+      if (endDate) where.reportDate.lte = parseLocalDate(endDate as string, true)
     }
-    if (userId) {
+    // 显式筛选不能越过数据权限：非管理员（已有 userId 限制）时忽略该筛选
+    if (userId && where.userId === undefined) {
       where.userId = parseInt(userId as string)
     }
 
@@ -729,6 +918,11 @@ router.get('/:id/items', authenticateToken, checkPermission('office:dailyreport:
 
     if (!report) {
       return res.status(404).json({ error: '工作日报不存在' })
+    }
+
+    // 非管理员只能查看自己日报的工作条目
+    if (report.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '只能查看自己的日报' })
     }
 
     const items = await prisma.dailyReportItem.findMany({
@@ -897,6 +1091,11 @@ router.get('/:id/time-entries', authenticateToken, checkPermission('office:daily
       return res.status(404).json({ error: '工作日报不存在' })
     }
 
+    // 非管理员只能查看自己日报的工时条目
+    if (report.userId !== req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '只能查看自己的日报' })
+    }
+
     const timeEntries = await prisma.dailyReportTimeEntry.findMany({
       where: { reportId, deletedAt: null },
       include: {
@@ -1025,19 +1224,20 @@ router.delete('/:id/time-entries/:entryId', authenticateToken, checkPermission('
   }
 })
 
-// 获取工时统计（按项目、按类型）—— 所有人可查看
-router.get('/stats/hours-analysis', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
+// 获取工时统计（按项目、按类型）—— 管理员可查看全部，非管理员只能查看自己的
+router.get('/stats/hours-analysis', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, userId } = req.query
 
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    const dataScopeWhere = await getReportScopeWhere(req.user!.id)
     const where: any = { deletedAt: null, ...dataScopeWhere }
     if (startDate || endDate) {
       where.reportDate = {}
-      if (startDate) where.reportDate.gte = new Date(startDate as string)
-      if (endDate) where.reportDate.lte = new Date(endDate as string)
+      if (startDate) where.reportDate.gte = parseLocalDate(startDate as string)
+      if (endDate) where.reportDate.lte = parseLocalDate(endDate as string, true)
     }
-    if (userId) {
+    // 显式筛选不能越过数据权限：非管理员（已有 userId 限制）时忽略该筛选
+    if (userId && where.userId === undefined) {
       where.userId = parseInt(userId as string)
     }
 
@@ -1083,31 +1283,66 @@ router.get('/stats/hours-analysis', authenticateToken, checkPermission('office:d
 
 const columns = [
   { key: 'reportDate', label: '日期' },
-  { key: 'type', label: '类型' },
-  { key: 'content', label: '工作内容' },
-  { key: 'plan', label: '明日计划' },
-  { key: 'issues', label: '问题与困难' },
+  { key: 'userName', label: '姓名' },
+  { key: 'orgName', label: '客户' },
+  { key: 'projName', label: '项目' },
+  { key: 'sourceLabel', label: '来源' },
+  { key: 'notesText', label: '工作内容(Notes)' },
+  { key: 'todosText', label: '待办事项' },
+  { key: 'plan', label: '后续计划' },
   { key: 'hours', label: '工时' },
-  { key: 'status', label: '状态' },
-  { key: 'user.name', label: '创建人' }
+  { key: 'status', label: '状态' }
 ]
 
 const labelMap: Record<string, string> = {
   '日期': 'reportDate',
   '类型': 'type',
   '工作内容': 'content',
+  '工作内容(Notes)': 'content',
+  '客户': 'organizationName',
+  '项目': 'projectName',
+  '待办事项': 'todos',
+  '后续计划': 'plan',
   '明日计划': 'plan',
-  '问题与困难': 'issues',
   '工时': 'hours'
 }
 
-router.get('/export/excel', authenticateToken, checkPermission('office:dailyreport:list'), applyDataScope({ ownerField: 'userId' }), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
-    const data = await prisma.dailyReport.findMany({
+    const dataScopeWhere = await getReportScopeWhere(req.user!.id)
+    const reports = await prisma.dailyReport.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { user: { select: { name: true } }, project: { select: { name: true } } },
+      include: {
+        user: { select: { name: true } },
+        project: { select: { name: true } },
+        organization: { select: { name: true } },
+        ...entryInclude
+      },
       orderBy: { createdAt: 'desc' }
+    })
+    // 逐条输出：一天多件事 = 多行
+    const sourceLabelMap: Record<string, string> = {
+      INVOICE: '发票', RECEIPT: '回款', CONTRACT: '合同', SHIPMENT: '发货',
+      PROCUREMENT: '采购', PROCUREMENT_PAYMENT: '采购付款', TASK: '任务', NOTE: '项目备注',
+      OPPORTUNITY: '售前', QUOTATION: '报价', EXPENSE: '报销', BUSINESS_TRIP: '出差',
+      PROJECT: '项目', ORGANIZATION: '客户'
+    }
+    const data = reports.flatMap((r: any) => {
+      const entryList: any[] = (r.entries && r.entries.length > 0)
+        ? r.entries
+        : [{ title: null, content: r.content, organization: null, project: null, sourceType: null }]
+      return entryList.map(e => ({
+        reportDate: toLocalDateStr(r.reportDate),
+        userName: r.user?.name || '',
+        orgName: e.organization?.name || r.organization?.name || '',
+        projName: e.project?.name || r.project?.name || '',
+        sourceLabel: sourceLabelMap[e.sourceType] || (e.source === 'AUTO' ? '自动' : '手动'),
+        notesText: e.content || e.title || '',
+        todosText: Array.isArray(r.todos) ? r.todos.join('；') : '',
+        plan: r.plan || '',
+        hours: r.hours,
+        status: r.status
+      }))
     })
     exportExcel(res, 'daily-reports.xlsx', '工作日报', columns, data)
   } catch (error) {
@@ -1127,11 +1362,33 @@ router.post('/import', authenticateToken, checkPermission('office:dailyreport:ad
     for (const row of data) {
       try {
         const mapped = mapImportRow(row, labelMap)
+
+        // 客户/项目按名称匹配ID（匹配不到留空）
+        let organizationId: number | null = null
+        if (mapped.organizationName) {
+          const org = await prisma.organization.findFirst({ where: { name: mapped.organizationName as string, deletedAt: null }, select: { id: true } })
+          organizationId = org?.id || null
+        }
+        let projectId: number | null = null
+        if (mapped.projectName) {
+          const proj = await prisma.project.findFirst({ where: { name: mapped.projectName as string, deletedAt: null }, select: { id: true } })
+          projectId = proj?.id || null
+        }
+
+        // 待办事项：按换行或分号拆分为数组
+        const todos: string[] = typeof mapped.todos === 'string' && mapped.todos
+          ? String(mapped.todos).split(/[\n;；]+/).map(s => s.trim()).filter(Boolean)
+          : []
+
+        const { organizationName, projectName, todos: _todos, ...rest } = mapped
         await prisma.dailyReport.create({
           data: {
-            ...mapped,
+            ...rest,
             reportDate: mapped.reportDate ? new Date(mapped.reportDate) : new Date(),
             hours: parseFloat(mapped.hours) || 0,
+            organizationId,
+            projectId,
+            todos,
             userId: req.user!.id,
           } as any
         })

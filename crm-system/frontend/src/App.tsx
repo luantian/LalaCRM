@@ -37,7 +37,9 @@ function App() {
     if (userStr) {
       try {
         const user = JSON.parse(userStr)
-        if (user.role === ROLE_ADMIN || user.roleKey === ROLE_ADMIN) {
+        // 与后端判定对齐：后端只给 ADMIN 角色发通配符权限 '*'，
+        // 同时保留旧字段兼容
+        if (user.role === ROLE_ADMIN || user.roleKey === ROLE_ADMIN || user.permissions?.includes('*')) {
           // 管理员：所有注册的路由都允许
           Object.keys(routeComponents).forEach(path => routes.add(path))
           setAllowedRoutes(routes)
@@ -56,8 +58,10 @@ function App() {
         const menus = JSON.parse(menusStr)
         const extractPaths = (items: any[]) => {
           for (const item of items) {
-            if (item.path && item.menuType !== 'BUTTON') {
-              routes.add(item.path)
+            if (item.menuType !== 'BUTTON') {
+              // path 为空时按 key 约定兜底（与 Layout 生成侧边栏的逻辑一致），
+              // 否则菜单数据缺 path 会导致路由不注册、页面空白
+              routes.add(item.path || `/${item.key}`)
             }
             if (item.children?.length) {
               extractPaths(item.children)

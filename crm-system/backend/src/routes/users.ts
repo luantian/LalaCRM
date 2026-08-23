@@ -242,6 +242,9 @@ router.delete('/:id', authenticateToken, checkPermission('system:user:delete'), 
     }
 
     // 删除用户（硬删除，User 模型无 deletedAt 字段）
+    // 先清理用户-角色关联（纯配置数据）：创建用户时必选角色会写入 UserRole，
+    // 不清理的话外键约束会导致"界面创建的用户永远无法删除"
+    await prisma.userRole.deleteMany({ where: { userId } })
     // 若用户存在关联业务数据（客户、销售、项目等），Prisma 会抛出外键约束错误
     await prisma.user.delete({
       where: { id: userId }

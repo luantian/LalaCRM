@@ -7,7 +7,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:15-alpine-arm64
+    image: postgres:15-alpine
     container_name: crm-postgres
     restart: always
     environment:
@@ -37,7 +37,7 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ./data/uploads:/app/src/uploads       # 上传文件持久化
+      - ./data/uploads:/app/dist/uploads      # 上传文件持久化
       - ./data/backups:/app/src/backups       # 数据库备份持久化
     command: sh -c "npx prisma db push && node dist/index.js"   # 启动时先同步数据库，再启动服务
     networks:

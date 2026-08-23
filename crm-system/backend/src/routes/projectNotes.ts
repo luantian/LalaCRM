@@ -1,11 +1,11 @@
 import prisma from '../lib/prisma'
 import { Router, Response } from 'express';
 import { isAdmin } from '../utils/permission'
-import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth';
+import { authenticateToken, authenticateFileToken, AuthRequest, checkPermission } from '../middleware/auth';
 import { logOperation } from '../middleware/logOperation';
 import { upload } from '../middleware/upload';
 import logger from '../utils/logger';
-import { autoWriteProjectNote } from '../utils/autoDailyReport';
+import { autoWriteProjectNote, autoWriteProjectRecord, autoWriteFileUploadRecord } from '../utils/autoDailyReport';
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview';
 import fs from 'fs';
 import path from 'path';
@@ -167,6 +167,17 @@ router.put('/notes/:id', authenticateToken, checkPermission('project:project:edi
       },
     });
 
+    // 自动写入工作日报（Notes）
+    const proj = await prisma.project.findUnique({ where: { id: existing.projectId }, select: { name: true } });
+    autoWriteProjectNote(
+      req.user!.id,
+      proj?.name || '项目',
+      note.title,
+      note.content || '',
+      note.noteType,
+      existing.projectId
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message));
+
     res.json(note);
   } catch (error) {
     logger.error('Error updating project note:', error);
@@ -279,6 +290,16 @@ router.post('/versions', authenticateToken, checkPermission('project:project:edi
       },
     });
 
+    // 自动写入工作日报（Notes）：版本发布是重要节点
+    const proj = await prisma.project.findUnique({ where: { id: pid }, select: { name: true } });
+    autoWriteProjectRecord(
+      req.user!.id,
+      proj?.name || '项目',
+      'VERSION',
+      pid,
+      `版本 ${version}：${title}`
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message));
+
     res.status(201).json(ver);
   } catch (error) {
     logger.error('Error creating project version:', error);
@@ -384,6 +405,19 @@ router.post('/notes/:id/files', authenticateToken, checkPermission('project:proj
         }
       }))
     );
+
+    // 自动写入工作日报（Notes）
+    const projForFiles = await prisma.project.findUnique({ where: { id: note.projectId }, select: { name: true } });
+    autoWriteFileUploadRecord(
+      req.user!.id,
+      `备注「${note.title}」（${projForFiles?.name || '项目'}）`,
+      files.map(f => f.originalname),
+      note.projectId,
+      null,
+      'NOTE',
+      noteId
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message));
+
     res.json({ message: '上传成功', files: createdFiles });
   } catch (error) {
     logger.error('Upload note files error:', error);
@@ -392,7 +426,7 @@ router.post('/notes/:id/files', authenticateToken, checkPermission('project:proj
 });
 
 // 预览备注附件（图片/PDF/Word/Excel）- 必须在下载路由之前
-router.get('/notes/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.get('/notes/files/:fileId/preview', authenticateFileToken, async (req: AuthRequest, res: Response) => {
   try {
     const fileId = Number(req.params.fileId);
     const file = await prisma.projectNoteFile.findFirst({ where: { id: fileId, deletedAt: null } });
@@ -408,7 +442,7 @@ router.get('/notes/files/:fileId/preview', authenticateToken, async (req: AuthRe
 });
 
 // 下载备注附件
-router.get('/notes/files/:fileId/download', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.get('/notes/files/:fileId/download', authenticateFileToken, async (req: AuthRequest, res: Response) => {
   try {
     const fileId = Number(req.params.fileId);
     const file = await prisma.projectNoteFile.findFirst({ where: { id: fileId, deletedAt: null } });

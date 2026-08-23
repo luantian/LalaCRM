@@ -2,6 +2,7 @@ import prisma from '../lib/prisma'
 import { Router, Request, Response } from 'express'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { isAdmin } from '../utils/permission'
+import { hasAmountPermission } from '../utils/amountPermission'
 import logger from '../utils/logger'
 
 const router = Router()
@@ -126,25 +127,10 @@ router.put('/project-amount-permission', authenticateToken, checkPermission('sys
 router.get('/check-project-amount-permission', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id
-    
-    // 获取用户角色
-    const userRoles = await prisma.userRole.findMany({
-      where: { userId },
-      select: { roleId: true }
-    })
-    
-    const roleIds = userRoles.map((ur: any) => ur.roleId)
-    
-    // 获取配置
-    const config = await prisma.systemConfig.findUnique({
-      where: { key: 'project_amount_viewable_roles' }
-    })
-    
-    const allowedRoleIds = config ? JSON.parse(config.value) : []
-    
-    // 判断用户是否有权限（管理员或有授权角色）
-    const hasPermission = allowedRoleIds.some((roleId: number) => roleIds.includes(roleId))
-    
+
+    // 复用统一的金额权限判定（管理员按 roleKey 判定，与实际过滤逻辑一致）
+    const hasPermission = await hasAmountPermission(userId)
+
     res.json({ hasPermission })
   } catch (error) {
     logger.error('Check project amount permission error:', error)

@@ -4,7 +4,6 @@ import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, mes
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
 import { getProjects, createProject, updateProject, deleteProject, getProjectStats, getOrganizationsSimple, exportProjectsCsv, exportProjectsExcel, importProjects } from '../services/api'
 import dayjs from 'dayjs'
-import { OrgTreeSelect } from '../components/OrgTreeSelect'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import { usePermission } from '../hooks/usePermission'
 
@@ -29,7 +28,7 @@ function ProjectList() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [searchText, setSearchText] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('')
-  const [filterOrgId, setFilterOrgId] = useState<number | null>(null)
+  const [filterContactId, setFilterContactId] = useState<number | null>(null)
   const [filterFullyPaid, setFilterFullyPaid] = useState<string>('')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [importModalVisible, setImportModalVisible] = useState(false)
@@ -39,10 +38,10 @@ function ProjectList() {
 
   // 用 ref 存储筛选条件，避免 fetchProjects 引用频繁变化导致 useEffect 重复触发
   const filterStatusRef = useRef(filterStatus)
-  const filterOrgIdRef = useRef(filterOrgId)
+  const filterContactIdRef = useRef(filterContactId)
   const filterFullyPaidRef = useRef(filterFullyPaid)
   useEffect(() => { filterStatusRef.current = filterStatus }, [filterStatus])
-  useEffect(() => { filterOrgIdRef.current = filterOrgId }, [filterOrgId])
+  useEffect(() => { filterContactIdRef.current = filterContactId }, [filterContactId])
   useEffect(() => { filterFullyPaidRef.current = filterFullyPaid }, [filterFullyPaid])
 
   const fetchProjects = useCallback(async (page = 1, pageSize = 10) => {
@@ -67,7 +66,7 @@ function ProjectList() {
         params.status = filterStatusRef.current
         delete params.statusNot // 用户手动选择了状态，取消默认排除
       }
-      if (filterOrgIdRef.current) params.organizationId = String(filterOrgIdRef.current)
+      if (filterContactIdRef.current) params.contactId = String(filterContactIdRef.current)
       if (filterFullyPaidRef.current) params.fullyPaid = filterFullyPaidRef.current
       const response: any = await getProjects(params)
       setProjects(response.data || [])
@@ -127,7 +126,7 @@ function ProjectList() {
   const handleReset = () => {
     setSearchText('')
     setFilterStatus('')
-    setFilterOrgId(null)
+    setFilterContactId(null)
     setFilterFullyPaid('')
     setRefreshTrigger(prev => prev + 1)
   }
@@ -342,10 +341,10 @@ function ProjectList() {
             </Select>
           </Col>
           <Col xs={12} sm={4}>
-            <OrgTreeSelect
-              placeholder="客户"
-              value={filterOrgId}
-              onChange={(v) => setFilterOrgId(v)}
+            <OrgContactSelector
+              placeholder="客户（联系人）"
+              value={filterContactId}
+              onChange={(v) => setFilterContactId(v)}
               style={{ width: '100%' }}
             />
           </Col>

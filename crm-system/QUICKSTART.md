@@ -18,22 +18,32 @@
 3. **初始化数据库**
    ```bash
    cd backend
-   npx prisma migrate dev --name init
+   npx prisma db push        # 按当前 schema 建表（迁移基线说明见 prisma/MIGRATIONS.md）
    npx prisma generate
    ```
 
-4. **创建管理员账户**
+4. **写入种子数据并创建管理员**
+   > 注意：`/api/auth/register` 需要已登录且具备 `system:user:add` 权限，
+   > 首个管理员无法通过 API 创建，请直接用下面的命令写库。
    ```bash
-   # 启动后端（新终端）
-   cd backend
-   npm run dev
-   
-   # 在另一个终端创建管理员
-   ./create-admin.sh
-   # 或手动调用API
-   curl -X POST http://localhost:5000/api/auth/register \
-     -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"admin123","email":"admin@crm.com","name":"管理员","role":"ADMIN"}'
+   # 仍在 backend 目录、已完成建表的前提下：
+   node prisma/seed.js            # 写入 66 个菜单（含按钮权限）+ ADMIN 角色
+   node prisma/seed-holidays.js   # 写入节假日数据
+
+   # 创建管理员 admin / admin123（必须同时写 UserRole，权限判定只认这张表）
+   node -e "
+   const { PrismaClient } = require('@prisma/client');
+   const bcrypt = require('bcryptjs');
+   const prisma = new PrismaClient();
+   (async () => {
+     const r = await prisma.roleModel.findFirst({ where: { roleKey: 'ADMIN' } });
+     const u = await prisma.user.create({ data: {
+       username: 'admin', password: await bcrypt.hash('admin123', 10),
+       name: '管理员', email: 'admin@crm.com', roleId: r.id } });
+     await prisma.userRole.create({ data: { userId: u.id, roleId: r.id } });
+     console.log('管理员创建成功: admin / admin123');
+     await prisma.\$disconnect();
+   })();"
    ```
 
 5. **启动前端**

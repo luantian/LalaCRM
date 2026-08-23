@@ -1,8 +1,8 @@
 import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
-import { logOperation } from '../middleware/logOperation'
 import { applyDataScope } from '../middleware/dataScope'
+import { logOperation } from '../middleware/logOperation'
 import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
@@ -13,7 +13,7 @@ import { isAdmin } from '../utils/permission'
 const router = Router()
 
 // 获取所有出差记录
-router.get('/', authenticateToken, applyDataScope({ ownerField: 'ownerId' }), clampPagination(), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), clampPagination(), async (req: AuthRequest, res) => {
   try {
     const { page = '1', pageSize = '10', status = '', search = '' } = req.query
 
@@ -84,7 +84,7 @@ router.get('/', authenticateToken, applyDataScope({ ownerField: 'ownerId' }), cl
 })
 
 // 出差统计
-router.get('/stats/overview', authenticateToken, applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const trips = await prisma.businessTrip.findMany({ 
@@ -123,7 +123,7 @@ router.get('/stats/overview', authenticateToken, applyDataScope({ ownerField: 'o
 })
 
 // 获取单个出差记录
-router.get('/:id', authenticateToken, applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const dataScopeWhere = (req as any).dataScopeWhere || {}
@@ -508,7 +508,7 @@ const labelMap: Record<string, string> = {
   '天数': 'days'
 }
 
-router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('office:trip:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.businessTrip.findMany({

@@ -545,7 +545,11 @@ function BusinessTripList() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="purpose" label="出差目的">
+              <Form.Item
+                name="purpose"
+                label="出差目的"
+                rules={[{ required: true, message: '请输入出差目的' }]}
+              >
                 <Input />
               </Form.Item>
             </Col>

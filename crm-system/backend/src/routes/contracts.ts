@@ -1,13 +1,13 @@
 import prisma from '../lib/prisma'
 import { Router, Request } from 'express'
 import { isAdmin } from '../utils/permission'
-import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
+import { authenticateToken, authenticateFileToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
 import fs from 'fs'
 import path from 'path'
 import { sortValidation, clampPagination, dateValidation } from '../middleware/validation'
-import { applyDataScope } from '../middleware/dataScope'
+import { applyDataScope, getDataScopeWhere } from '../middleware/dataScope'
 import logger from '../utils/logger'
 import { exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
@@ -16,6 +16,20 @@ import { checkProjectArchived, checkContractProjectArchived } from '../utils/arc
 import { hasAmountPermission, filterContractAmount } from '../utils/amountPermission'
 
 const router = Router()
+
+// 数据权限：校验用户对合同的可访问性（合同负责人/项目负责人/团队成员或管理员），
+// 用于附件上传/下载/预览/删除等按 fileId 或 contractId 操作的端点
+async function canAccessContract(contractId: number, userId: number): Promise<boolean> {
+  const scopeWhere = await getDataScopeWhere(userId, undefined, {
+    ownerField: 'ownerId',
+    relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }]
+  })
+  const contract = await prisma.contract.findFirst({
+    where: { id: contractId, deletedAt: null, ...scopeWhere },
+    select: { id: true }
+  })
+  return !!contract
+}
 
 // 获取所有合同（支持分页、筛选）
 router.get('/', authenticateToken, checkPermission('project:contract:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), sortValidation(['name', 'amount', 'signDate', 'startDate', 'endDate', 'status', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
@@ -138,7 +152,7 @@ router.get('/stats/overview', authenticateToken, checkPermission('project:contra
 })
 
 // 下载合同文件
-router.get('/files/:fileId/download', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateFileToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -148,6 +162,11 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('projec
 
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 数据权限：通过附件所属合同校验访问权，防止 fileId 枚举越权下载
+    if (!(await canAccessContract(file.contractId, req.user!.id))) {
+      return res.status(403).json({ error: '无权访问该合同的附件' })
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)
@@ -164,16 +183,21 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('projec
 })
 
 // 预览合同附件（图片/PDF/Word/Excel）
-router.get('/files/:fileId/preview', authenticateToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateFileToken, checkPermission('project:contract:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    const file = await prisma.contractFile.findFirst({ 
+    const file = await prisma.contractFile.findFirst({
       where: { id: fileId, deletedAt: null }
     })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
-    
+
+    // 数据权限：通过附件所属合同校验访问权，防止 fileId 枚举越权预览
+    if (!(await canAccessContract(file.contractId, req.user!.id))) {
+      return res.status(403).json({ error: '无权访问该合同的附件' })
+    }
+
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
@@ -497,6 +521,11 @@ router.post('/:id/files', authenticateToken, checkPermission('project:contract:e
       return res.status(404).json({ error: '合同不存在' })
     }
 
+    // 数据权限：只有数据范围内可见的合同才能上传附件
+    if (!(await canAccessContract(contractId, req.user!.id))) {
+      return res.status(403).json({ error: '无权为该合同上传附件' })
+    }
+
     // 检查关联项目是否已归档
     const isArchived = await checkContractProjectArchived(contractId)
     if (isArchived) {
@@ -518,6 +547,17 @@ router.post('/:id/files', authenticateToken, checkPermission('project:contract:e
         })
       )
     )
+
+    // 自动写入工作日报（Notes）
+    autoWriteContractRecord(
+      req.user!.id,
+      contract.name,
+      'UPLOAD',
+      contractId,
+      contract.projectId,
+      undefined,
+      `上传文件：${files.map(f => f.originalname).join('、')}`
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
 
     res.status(201).json({
       message: `成功上传 ${files.length} 个文件`,
@@ -550,18 +590,24 @@ router.get('/:id/files', authenticateToken, checkPermission('project:contract:li
 router.delete('/:id/files/:fileId', authenticateToken, checkPermission('project:contract:edit'), logOperation('合同管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
+    const contractId = parseInt(req.params.id as string)
 
-    // 获取文件信息
+    // 获取文件信息（同时校验 fileId 与路由中的 contractId 匹配，防止跨合同越权）
     const file = await prisma.contractFile.findFirst({
-      where: { id: fileId, deletedAt: null }
+      where: { id: fileId, contractId, deletedAt: null }
     })
 
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
 
+    // 数据权限：只有数据范围内可见的合同才能删除附件
+    if (!(await canAccessContract(contractId, req.user!.id))) {
+      return res.status(403).json({ error: '无权删除该合同的附件' })
+    }
+
     // 检查关联项目是否已归档
-    const isArchived = await checkContractProjectArchived(file.contractId)
+    const isArchived = await checkContractProjectArchived(contractId)
     if (isArchived) {
       return res.status(403).json({ error: '项目已归档，无法删除合同附件' })
     }

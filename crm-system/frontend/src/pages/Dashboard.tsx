@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, Row, Col, Tag, Tabs, Button, Modal, Form, Input, Select, DatePicker, Badge, Popconfirm, App as AntApp, Upload, Typography, Divider, Dropdown, Pagination, Timeline } from 'antd'
 import {
@@ -34,8 +34,15 @@ function Dashboard() {
   const [completingTaskId, setCompletingTaskId] = useState<number | null>(null)
   const [completionNote, setCompletionNote] = useState('')
   const [searchKeyword, setSearchKeyword] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
+  // 三个任务 Tab 各自维护页码（此前共用一个页码，切换 Tab 后页码越界会显示空白）
+  const [tabPages, setTabPages] = useState<Record<'assigned' | 'delegated' | 'historical', number>>({
+    assigned: 1,
+    delegated: 1,
+    historical: 1,
+  })
   const pageSize = 6
+  // fetchTasks 请求序号（防搜索竞态）
+  const fetchTasksSeqRef = useRef(0)
 
   // 任务详情弹窗相关状态
   const [taskDetailVisible, setTaskDetailVisible] = useState(false)
@@ -92,16 +99,21 @@ function Dashboard() {
   }
 
   const fetchTasks = async () => {
+    // 请求序号防竞态：搜索防抖下若前一次响应后到，丢弃旧结果，避免覆盖新搜索
+    const seq = ++fetchTasksSeqRef.current
     try {
       const searchParams = searchKeyword ? { search: searchKeyword } : {}
       const [assigned, delegated, historical] = await Promise.all([
-        getTasks({ type: 'assigned', ...searchParams }) as any,
-        getTasks({ type: 'delegated', ...searchParams }) as any,
-        getTasks({ type: 'historical', ...searchParams }) as any,
+        getTasks({ type: 'assigned', pageSize: 100, ...searchParams }) as any,
+        getTasks({ type: 'delegated', pageSize: 100, ...searchParams }) as any,
+        getTasks({ type: 'historical', pageSize: 100, ...searchParams }) as any,
       ])
-      setTasks(Array.isArray(assigned) ? assigned : [])
-      setDelegatedTasks(Array.isArray(delegated) ? delegated : [])
-      setHistoricalTasks(Array.isArray(historical) ? historical : [])
+      if (seq !== fetchTasksSeqRef.current) return
+      // 兼容旧版（数组）与新版（{ data, pagination } 分页对象）两种返回格式
+      const pickList = (r: any) => (Array.isArray(r) ? r : Array.isArray(r?.data) ? r.data : [])
+      setTasks(pickList(assigned))
+      setDelegatedTasks(pickList(delegated))
+      setHistoricalTasks(pickList(historical))
     } catch (e) { /* ignore */ }
   }
 
@@ -371,6 +383,18 @@ function Dashboard() {
     return () => clearTimeout(timer)
   }, [searchKeyword])
 
+  // 收到 WebSocket 任务推送（由 Layout 广播）时自动刷新任务列表，无需手动刷新页面
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const msg = (e as CustomEvent).detail
+      if (msg && ['TASK_ASSIGNED', 'TASK_SUBMITTED', 'TASK_COMPLETED', 'TASK_REJECTED'].includes(msg.type)) {
+        fetchTasks()
+      }
+    }
+    window.addEventListener('crm:ws-message', handler as EventListener)
+    return () => window.removeEventListener('crm:ws-message', handler as EventListener)
+  }, [searchKeyword])
+
   // 时段问候
   const hour = dayjs().hour()
   const greeting = hour < 6 ? '夜深了' : hour < 9 ? '早上好' : hour < 12 ? '上午好' : hour < 14 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
@@ -392,7 +416,17 @@ function Dashboard() {
 
   let checkinStatusText = ''
 
-  if (hour < 12) {
+  // 非工作日（周末非调休/法定假日）：打卡记录为加班，不适用上下班规则
+  if (todayCheckIn?.isWorkdayToday === false) {
+    if (morningChecked || eveningChecked) {
+      const t = morningChecked
+        ? todayCheckIn?.morningRecord?.checkInTime
+        : todayCheckIn?.eveningRecord?.checkInTime
+      checkinStatusText = `🌙 ${t ? dayjs(t).format('HH:mm') : ''} 加班打卡中`
+    } else {
+      checkinStatusText = '🌙 今日休息 · 打卡将记录为加班'
+    }
+  } else if (hour < 12) {
     if (morningChecked) {
       const mc = todayCheckIn?.morningCount || 1
       checkinStatusText = `✓ ${todayCheckIn?.morningRecord ? dayjs(todayCheckIn.morningRecord.checkInTime).format('HH:mm') : ''} 已签到${mc > 1 ? ` (共${mc}次，以最早为准)` : ''}`
@@ -702,7 +736,9 @@ function Dashboard() {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                   <SunOutlined style={{ color: morningChecked ? '#f59e0b' : '#d1d5db', fontSize: 16 }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: morningChecked ? '#059669' : '#9ca3af' }}>上班打卡</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: morningChecked ? '#059669' : '#9ca3af' }}>
+                    {todayCheckIn?.isWorkdayToday === false ? '加班开始' : '上班打卡'}
+                  </span>
                 </div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: morningChecked ? '#059669' : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>
                   {morningChecked && todayCheckIn?.morningRecord
@@ -726,7 +762,9 @@ function Dashboard() {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                   <MoonOutlined style={{ color: eveningChecked ? '#6366f1' : '#d1d5db', fontSize: 16 }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: eveningChecked ? '#059669' : '#9ca3af' }}>下班打卡</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: eveningChecked ? '#059669' : '#9ca3af' }}>
+                    {todayCheckIn?.isWorkdayToday === false ? '加班结束' : '下班打卡'}
+                  </span>
                 </div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: eveningChecked ? '#059669' : '#d1d5db', fontVariantNumeric: 'tabular-nums' }}>
                   {eveningChecked && todayCheckIn?.eveningRecord
@@ -842,7 +880,7 @@ function Dashboard() {
                 : (
                   <>
                     <Row gutter={[14, 14]}>
-                      {sortTasks(activeTasks).slice((currentPage - 1) * pageSize, currentPage * pageSize).map((task: any) => (
+                      {sortTasks(activeTasks).slice((tabPages.assigned - 1) * pageSize, tabPages.assigned * pageSize).map((task: any) => (
                         <Col xs={24} sm={12} lg={8} xl={4} key={task.id}>
                           {renderTaskItem(task, false)}
                         </Col>
@@ -850,10 +888,10 @@ function Dashboard() {
                     </Row>
                     <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
                       <Pagination
-                        current={currentPage}
+                        current={tabPages.assigned}
                         pageSize={pageSize}
                         total={activeTasks.length}
-                        onChange={(page) => setCurrentPage(page)}
+                        onChange={(page) => setTabPages(p => ({ ...p, assigned: page }))}
                         showSizeChanger={false}
                         showQuickJumper
                         showTotal={(total) => `共 ${total} 条`}
@@ -881,7 +919,7 @@ function Dashboard() {
                 : (
                   <>
                     <Row gutter={[14, 14]}>
-                      {sortTasks(activeDelegated).slice((currentPage - 1) * pageSize, currentPage * pageSize).map((task: any) => (
+                      {sortTasks(activeDelegated).slice((tabPages.delegated - 1) * pageSize, tabPages.delegated * pageSize).map((task: any) => (
                         <Col xs={24} sm={12} lg={8} xl={4} key={task.id}>
                           {renderTaskItem(task, true)}
                         </Col>
@@ -889,10 +927,10 @@ function Dashboard() {
                     </Row>
                     <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
                       <Pagination
-                        current={currentPage}
+                        current={tabPages.delegated}
                         pageSize={pageSize}
                         total={activeDelegated.length}
-                        onChange={(page) => setCurrentPage(page)}
+                        onChange={(page) => setTabPages(p => ({ ...p, delegated: page }))}
                         showSizeChanger={false}
                         showQuickJumper
                         showTotal={(total) => `共 ${total} 条`}
@@ -920,7 +958,7 @@ function Dashboard() {
                 : (
                   <>
                     <Row gutter={[14, 14]}>
-                      {historicalTasks.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((task: any) => (
+                      {historicalTasks.slice((tabPages.historical - 1) * pageSize, tabPages.historical * pageSize).map((task: any) => (
                         <Col xs={24} sm={12} lg={8} xl={4} key={task.id}>
                           {renderTaskItem(task, task.assigner?.id === user.id)}
                         </Col>
@@ -928,10 +966,10 @@ function Dashboard() {
                     </Row>
                     <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
                       <Pagination
-                        current={currentPage}
+                        current={tabPages.historical}
                         pageSize={pageSize}
                         total={historicalTasks.length}
-                        onChange={(page) => setCurrentPage(page)}
+                        onChange={(page) => setTabPages(p => ({ ...p, historical: page }))}
                         showSizeChanger={false}
                         showQuickJumper
                         showTotal={(total) => `共 ${total} 条`}
@@ -1630,14 +1668,12 @@ function Dashboard() {
           beforeUpload={() => false}
           multiple
           onChange={(info) => {
+            // onChange 在移除文件后也会触发，fileList 即剩余文件，统一在此重建 FileList。
+            // （此前 onRemove 直接 setSubmitFiles(null)，移除 1 个附件会清空全部已选）
             const files = info.fileList.map(f => f.originFileObj).filter(Boolean) as File[]
             const dt = new DataTransfer()
             files.forEach(file => dt.items.add(file))
-            setSubmitFiles(dt.files)
-          }}
-          onRemove={() => {
-            setSubmitFiles(null)
-            return true
+            setSubmitFiles(dt.files.length > 0 ? dt.files : null)
           }}
           style={{ borderRadius: 8 }}
         >

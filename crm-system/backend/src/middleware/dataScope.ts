@@ -47,6 +47,11 @@ export async function getDataScopeWhere(
     include: { role: true }
   })
 
+  // 如果用户拥有管理员角色，直接返回所有数据（不过滤）
+  if (userRoles.some(ur => ur.role.roleKey === 'ADMIN')) {
+    return {}
+  }
+
   // 如果用户没有角色关联，查看旧的 roleId 字段
   let dataScopes: string[] = []
 

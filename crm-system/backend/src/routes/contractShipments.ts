@@ -5,10 +5,12 @@ import { authenticateToken, authenticateFileToken, AuthRequest, checkPermission 
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
 import logger from '../utils/logger'
+import { autoWriteShipmentRecord } from '../utils/autoDailyReport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import fs from 'fs'
 import path from 'path'
 import { checkContractProjectArchived } from '../utils/archive'
+import { getDataScopeWhere } from '../middleware/dataScope'
 
 const router = Router()
 
@@ -18,6 +20,20 @@ router.get('/', authenticateToken, checkPermission('project:contract:list'), asy
     const contractId = parseInt(req.query.contractId as string)
     if (!contractId) {
       return res.status(400).json({ error: '缺少合同ID' })
+    }
+
+    // 数据权限：校验用户对该合同的数据范围（与合同列表一致），
+    // 防止拿到他人合同 id 后越权读取发货记录
+    const contractScopeWhere = await getDataScopeWhere(req.user!.id, req.user?.role, {
+      ownerField: 'ownerId',
+      relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }]
+    })
+    const contract = await prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null, ...contractScopeWhere },
+      select: { id: true }
+    })
+    if (!contract) {
+      return res.status(404).json({ error: '合同不存在' })
     }
 
     const shipments = await prisma.contractShipment.findMany({
@@ -76,6 +92,20 @@ router.post('/', authenticateToken, checkPermission('project:contract:edit'), lo
       }
     })
 
+    // 自动写入工作日报（Notes）
+    autoWriteShipmentRecord(
+      req.user!.id,
+      contract.name,
+      'CREATE',
+      shipment.id,
+      contract.projectId,
+      [
+        content ? `发货内容：${content}` : '',
+        logisticsCompany ? `物流：${logisticsCompany}${logisticsNo ? ` ${logisticsNo}` : ''}` : '',
+        remarks && remarks.trim() ? `备注：${remarks.trim()}` : ''
+      ].filter(Boolean).join('\n')
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
+
     res.status(201).json(shipment)
   } catch (error) {
     logger.error('Create shipment error:', error)
@@ -122,6 +152,18 @@ router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), 
         remarks
       }
     })
+
+    // 自动写入工作日报（Notes）：状态变为已签收记为"确认收货"
+    const newStatus = status !== undefined ? status : existing.status
+    const received = newStatus === 'DELIVERED' && existing.status !== 'DELIVERED'
+    autoWriteShipmentRecord(
+      req.user!.id,
+      (await prisma.contract.findUnique({ where: { id: existing.contractId }, select: { name: true } }))?.name || '合同',
+      received ? 'RECEIVE' : 'UPDATE',
+      id,
+      existing.contract.projectId,
+      received && receiver ? `签收人：${receiver}` : ''
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
 
     res.json(shipment)
   } catch (error) {
@@ -173,6 +215,16 @@ router.post('/:id/files', authenticateToken, checkPermission('project:contract:e
         })
       )
     )
+
+    // 自动写入工作日报（Notes）
+    autoWriteShipmentRecord(
+      req.user!.id,
+      (await prisma.contract.findUnique({ where: { id: shipment.contractId }, select: { name: true } }))?.name || '合同',
+      'UPLOAD',
+      shipmentId,
+      shipment.contract.projectId,
+      `上传附件：${files.map(f => f.originalname).join('、')}`
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
 
     res.json({ message: '上传成功', files: createdFiles })
   } catch (error) {

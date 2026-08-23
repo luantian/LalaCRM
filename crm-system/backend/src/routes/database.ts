@@ -35,8 +35,74 @@ const generateBackupFileName = (): string => {
   return `backup_${timestamp}.sql`
 }
 
-// 导出单个表的 SQL
-const exportTableSQL = async (client: Client, schema: string, tableName: string): Promise<string> => {
+// 获取列的真实类型（处理 USER-DEFINED、数组、字符长度等）
+const getColumnDataType = async (
+  client: Client,
+  schema: string,
+  tableName: string,
+  columnName: string
+): Promise<string> => {
+  const result = await client.query(`
+    SELECT 
+      c.data_type,
+      c.udt_name,
+      c.character_maximum_length,
+      c.numeric_precision,
+      c.numeric_scale,
+      c.is_identity,
+      c.identity_generation,
+      pg_catalog.format_type(a.atttypid, a.atttypmod) as full_type
+    FROM information_schema.columns c
+    LEFT JOIN pg_catalog.pg_attribute a 
+      ON a.attrelid = (quote_ident(c.table_schema) || '.' || quote_ident(c.table_name))::regclass
+      AND a.attname = c.column_name
+    WHERE c.table_schema = $1 AND c.table_name = $2 AND c.column_name = $3
+  `, [schema, tableName, columnName])
+  
+  if (result.rows.length === 0) return 'text'
+  
+  const col = result.rows[0]
+  
+  // 处理数组类型（format_type 已经返回带 [] 的名称，无需再追加）
+  if (col.data_type === 'ARRAY') {
+    return col.full_type
+  }
+  
+  // 处理枚举类型
+  if (col.data_type === 'USER-DEFINED') {
+    return `"${col.udt_name}"`
+  }
+  
+  // 处理字符类型（varchar, char）
+  if (col.data_type === 'character varying' && col.character_maximum_length) {
+    return `character varying(${col.character_maximum_length})`
+  }
+  if (col.data_type === 'character' && col.character_maximum_length) {
+    return `character(${col.character_maximum_length})`
+  }
+  
+  // 处理 numeric 类型
+  if (col.data_type === 'numeric' && col.numeric_precision) {
+    if (col.numeric_scale && col.numeric_scale > 0) {
+      return `numeric(${col.numeric_precision}, ${col.numeric_scale})`
+    }
+    return `numeric(${col.numeric_precision})`
+  }
+  
+  // 处理 identity 列
+  if (col.is_identity === 'YES') {
+    return `${col.full_type} GENERATED ${col.identity_generation} AS IDENTITY`
+  }
+  
+  return col.data_type
+}
+
+// 导出单个表的 SQL（分离 DROP 和 CREATE）
+const exportTableSQL = async (
+  client: Client,
+  schema: string,
+  tableName: string
+): Promise<{ createSql: string; insertSql: string; foreignKeys: string[]; indexes: string[] }> => {
   const fullTableName = `"${schema}"."${tableName}"`
   
   // 获取表结构
@@ -47,16 +113,17 @@ const exportTableSQL = async (client: Client, schema: string, tableName: string)
     ORDER BY ordinal_position
   `, [schema, tableName])
   
-  let sql = `-- Table: ${fullTableName}\n`
-  sql += `DROP TABLE IF EXISTS ${fullTableName} CASCADE;\n`
-  sql += `CREATE TABLE ${fullTableName} (\n`
+  let createSql = `-- Table: ${fullTableName}\n`
+  createSql += `CREATE TABLE ${fullTableName} (\n`
   
-  const columns = columnsResult.rows.map((col: any) => {
-    let colDef = `  "${col.column_name}" ${col.data_type}`
+  const columns: string[] = []
+  for (const col of columnsResult.rows) {
+    const dataType = await getColumnDataType(client, schema, tableName, col.column_name)
+    let colDef = `  "${col.column_name}" ${dataType}`
     if (col.is_nullable === 'NO') colDef += ' NOT NULL'
     if (col.column_default) colDef += ` DEFAULT ${col.column_default}`
-    return colDef
-  })
+    columns.push(colDef)
+  }
   
   // 获取主键
   const pkResult = await client.query(`
@@ -72,10 +139,91 @@ const exportTableSQL = async (client: Client, schema: string, tableName: string)
     columns.push(`  PRIMARY KEY (${pkCols})`)
   }
   
-  sql += columns.join(',\n')
-  sql += '\n);\n\n'
+  // 获取 CHECK 约束
+  const checkResult = await client.query(`
+    SELECT conname, pg_get_constraintdef(oid) as definition
+    FROM pg_constraint
+    WHERE conrelid = (quote_ident($1) || '.' || quote_ident($2))::regclass
+    AND contype = 'c'
+  `, [schema, tableName])
   
-  // 导出数据
+  for (const row of checkResult.rows) {
+    columns.push(`  CONSTRAINT "${row.conname}" ${row.definition}`)
+  }
+  
+  // 获取 UNIQUE 约束
+  const uniqueResult = await client.query(`
+    SELECT 
+      tc.constraint_name,
+      string_agg('"' || kcu.column_name || '"', ', ' ORDER BY kcu.ordinal_position) as unique_cols
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+    WHERE tc.table_schema = $1 
+      AND tc.table_name = $2 
+      AND tc.constraint_type = 'UNIQUE'
+    GROUP BY tc.constraint_name
+  `, [schema, tableName])
+  
+  for (const row of uniqueResult.rows) {
+    columns.push(`  CONSTRAINT "${row.constraint_name}" UNIQUE (${row.unique_cols})`)
+  }
+  
+  // 获取外键约束（不放入 CREATE TABLE，后面单独添加）
+  const foreignKeys: string[] = []
+  const fkResult = await client.query(`
+    SELECT 
+      tc.constraint_name,
+      kcu.column_name,
+      ccu.table_schema as foreign_table_schema,
+      ccu.table_name as foreign_table_name,
+      ccu.column_name as foreign_column_name,
+      rc.update_rule,
+      rc.delete_rule
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+    JOIN information_schema.constraint_column_usage ccu
+      ON ccu.constraint_name = tc.constraint_name
+    JOIN information_schema.referential_constraints rc
+      ON rc.constraint_name = tc.constraint_name
+      AND rc.constraint_schema = tc.table_schema
+    WHERE tc.table_schema = $1 
+      AND tc.table_name = $2 
+      AND tc.constraint_type = 'FOREIGN KEY'
+  `, [schema, tableName])
+  
+  for (const row of fkResult.rows) {
+    const refTable = `"${row.foreign_table_schema}"."${row.foreign_table_name}"`
+    let fkSql = `ALTER TABLE ${fullTableName} ADD CONSTRAINT "${row.constraint_name}" FOREIGN KEY ("${row.column_name}") REFERENCES ${refTable}("${row.foreign_column_name}")`
+    if (row.update_rule && row.update_rule !== 'NO ACTION') {
+      fkSql += ` ON UPDATE ${row.update_rule}`
+    }
+    if (row.delete_rule && row.delete_rule !== 'NO ACTION') {
+      fkSql += ` ON DELETE ${row.delete_rule}`
+    }
+    fkSql += ';'
+    foreignKeys.push(fkSql)
+  }
+
+  // 获取索引（Prisma 的 @@unique/@index 生成的是独立索引而非表约束，需单独导出；
+  // pkey 索引由主键约束自动创建，跳过；IF NOT EXISTS 保证幂等）
+  const indexResult = await client.query(`
+    SELECT indexdef
+    FROM pg_indexes
+    WHERE schemaname = $1 AND tablename = $2
+  `, [schema, tableName])
+
+  const indexes: string[] = indexResult.rows
+    .map((r: any) => String(r.indexdef))
+    .filter((def: string) => !def.includes('_pkey'))
+    .map((def: string) => def.replace(/^CREATE (UNIQUE )?INDEX/, 'CREATE $1INDEX IF NOT EXISTS') + ';')
+
+  createSql += columns.join(',\n')
+  createSql += '\n);\n\n'
+  
+  // INSERT 语句
+  let insertSql = ''
   const dataResult = await client.query(`SELECT * FROM ${fullTableName}`)
   if (dataResult.rows.length > 0) {
     for (const row of dataResult.rows) {
@@ -86,12 +234,12 @@ const exportTableSQL = async (client: Client, schema: string, tableName: string)
         if (v instanceof Date) return `'${v.toISOString()}'`
         return `'${String(v).replace(/'/g, "''")}'`
       })
-      sql += `INSERT INTO ${fullTableName} (${Object.keys(row).map(k => `"${k}"`).join(', ')}) VALUES (${values.join(', ')});\n`
+      insertSql += `INSERT INTO ${fullTableName} (${Object.keys(row).map(k => `"${k}"`).join(', ')}) VALUES (${values.join(', ')});\n`
     }
-    sql += '\n'
+    insertSql += '\n'
   }
   
-  return sql
+  return { createSql, insertSql, foreignKeys, indexes }
 }
 
 // 导出数据库
@@ -106,7 +254,9 @@ const exportDatabase = async (): Promise<{ fileName: string; filePath: string; f
   sql += `-- Database backup: ${new Date().toISOString()}\n`
   sql += `-- Generated by CRM Backup System\n\n`
   
-  // 获取所有用户表
+  // ========== 1. 收集所有对象 ==========
+  
+  // 收集所有表
   const tablesResult = await client.query(`
     SELECT table_schema, table_name
     FROM information_schema.tables
@@ -115,13 +265,157 @@ const exportDatabase = async (): Promise<{ fileName: string; filePath: string; f
     ORDER BY table_schema, table_name
   `)
   
+  // 收集所有枚举类型
+  // 注意：pg 驱动对枚举标签的 array_agg 返回原始字符串 "{A,B}" 而非数组，
+  // 因此改用 string_agg + quote_literal 在数据库端直接拼好带引号的值列表
+  const typesResult = await client.query(`
+    SELECT t.typname AS type_name,
+           string_agg(quote_literal(e.enumlabel), ', ' ORDER BY e.enumsortorder) AS enum_labels
+    FROM pg_type t
+    JOIN pg_enum e ON t.oid = e.enumtypid
+    JOIN pg_namespace n ON t.typnamespace = n.oid
+    WHERE n.nspname = 'public'
+    GROUP BY t.typname
+    ORDER BY t.typname
+  `)
+  
+  // 收集所有序列（排除 SERIAL 列自动创建的序列，这些序列由 CREATE TABLE 中的 SERIAL 自动重建）
+  const sequencesResult = await client.query(`
+    SELECT 
+      s.sequence_name,
+      s.data_type,
+      s.start_value,
+      s.minimum_value,
+      s.maximum_value,
+      s.increment,
+      ps.seqcycle as is_cycle
+    FROM information_schema.sequences s
+    JOIN pg_sequence ps ON ps.seqrelid = (quote_ident(s.sequence_schema) || '.' || quote_ident(s.sequence_name))::regclass
+    WHERE s.sequence_schema = 'public'
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend d
+      JOIN pg_class c ON c.oid = d.objid
+      WHERE c.relkind = 'S'
+      AND c.oid = (quote_ident(s.sequence_schema) || '.' || quote_ident(s.sequence_name))::regclass
+      AND d.classid = 'pg_class'::regclass
+      AND d.refclassid = 'pg_class'::regclass
+      AND d.deptype = 'a'
+    )
+    ORDER BY s.sequence_name
+  `)
+  
+  // ========== 2. 导出 DROP 语句（先删除所有表，再删除类型和序列）==========
+  
+  // 2.1 删除所有表（CASCADE 会同时删除依赖的序列）
+  sql += `-- ============================================================\n`
+  sql += `-- Drop Tables\n`
+  sql += `-- ============================================================\n\n`
   for (const table of tablesResult.rows) {
-    sql += await exportTableSQL(client, table.table_schema, table.table_name)
+    const fullTableName = `"${table.table_schema}"."${table.table_name}"`
+    sql += `DROP TABLE IF EXISTS ${fullTableName} CASCADE;\n`
+  }
+  sql += '\n'
+  
+  // 2.2 删除所有枚举类型
+  sql += `-- ============================================================\n`
+  sql += `-- Drop Enum Types\n`
+  sql += `-- ============================================================\n\n`
+  for (const row of typesResult.rows) {
+    sql += `DROP TYPE IF EXISTS "${row.type_name}" CASCADE;\n`
+  }
+  sql += '\n'
+  
+  // 2.3 删除所有序列
+  sql += `-- ============================================================\n`
+  sql += `-- Drop Sequences\n`
+  sql += `-- ============================================================\n\n`
+  for (const row of sequencesResult.rows) {
+    sql += `DROP SEQUENCE IF EXISTS "${row.sequence_name}" CASCADE;\n`
+  }
+  sql += '\n'
+  
+  // ========== 3. 导出 CREATE 语句（按依赖顺序创建）==========
+  
+  // 3.1 创建枚举类型
+  sql += `-- ============================================================\n`
+  sql += `-- Create Enum Types\n`
+  sql += `-- ============================================================\n\n`
+  for (const row of typesResult.rows) {
+    const typeName = row.type_name
+    sql += `CREATE TYPE "${typeName}" AS ENUM (${row.enum_labels});\n`
+  }
+  sql += '\n'
+  
+  // 3.2 创建序列
+  sql += `-- ============================================================\n`
+  sql += `-- Create Sequences\n`
+  sql += `-- ============================================================\n\n`
+  for (const row of sequencesResult.rows) {
+    const seqName = row.sequence_name
+    // 查询序列的 is_called 状态
+    const currValResult = await client.query(`SELECT last_value, is_called FROM "${seqName}"`)
+    const lastValue = currValResult.rows[0]?.last_value || row.start_value
+    const isCalled = currValResult.rows[0]?.is_called || false
+    
+    sql += `CREATE SEQUENCE "${seqName}" AS ${row.data_type} START WITH ${row.start_value} INCREMENT BY ${row.increment} MINVALUE ${row.minimum_value} MAXVALUE ${row.maximum_value} ${row.is_cycle ? 'CYCLE' : 'NO CYCLE'};\n`
+    if (isCalled) {
+      sql += `SELECT setval('"${seqName}"', ${lastValue}, ${isCalled});\n`
+    }
+  }
+  sql += '\n'
+  
+  // 3.3 创建表（包含主键、CHECK、UNIQUE约束，但不含外键）
+  sql += `-- ============================================================\n`
+  sql += `-- Create Tables\n`
+  sql += `-- ============================================================\n\n`
+  
+  const allForeignKeys: string[] = []
+  const allInserts: string[] = []
+  const allIndexes: string[] = []
+
+  for (const table of tablesResult.rows) {
+    const result = await exportTableSQL(client, table.table_schema, table.table_name)
+    sql += result.createSql
+    allForeignKeys.push(...result.foreignKeys)
+    allInserts.push(result.insertSql)
+    allIndexes.push(...result.indexes)
+  }
+
+  // ========== 3.4 创建索引（表已创建、数据未插入，唯一索引可校验数据完整性）==========
+  if (allIndexes.length > 0) {
+    sql += `-- ============================================================\n`
+    sql += `-- Create Indexes\n`
+    sql += `-- ============================================================\n\n`
+
+    for (const idx of allIndexes) {
+      sql += `${idx}\n`
+    }
+    sql += '\n'
+  }
+
+  // ========== 4. 插入数据 ==========
+  sql += `-- ============================================================\n`
+  sql += `-- Insert Data\n`
+  sql += `-- ============================================================\n\n`
+  for (const insertSql of allInserts) {
+    sql += insertSql
+  }
+  
+  // ========== 5. 添加外键约束（所有表都已创建，可以安全添加外键）==========
+  if (allForeignKeys.length > 0) {
+    sql += `-- ============================================================\n`
+    sql += `-- Add Foreign Key Constraints\n`
+    sql += `-- ============================================================\n\n`
+    
+    for (const fk of allForeignKeys) {
+      sql += `${fk}\n`
+    }
+    sql += '\n'
   }
   
   await client.end()
   
-  // 使用异步文件写入，避免阻塞事件循环
+  // 使用异步文件写入,避免阻塞事件循环
   await fs.promises.writeFile(filePath, sql, 'utf-8')
   const stats = await fs.promises.stat(filePath)
   
@@ -136,21 +430,48 @@ const restoreDatabase = async (filePath: string): Promise<void> => {
   const client = new Client(getDbConfig())
   await client.connect()
   
-  // 按分号分割 SQL 语句，逐条执行
-  const statements = sql
-    .split(/;\n/)
-    .map(s => s.trim())
-    .filter(s => s && !s.startsWith('--'))
+  // 按行分割，智能识别 SQL 语句边界（处理字符串内的分号和换行）
+  const lines = sql.split('\n')
+  let currentStmt = ''
+  let inString = false
   
-  for (const stmt of statements) {
-    if (stmt.trim()) {
+  for (const line of lines) {
+    const trimmed = line.trim()
+    
+    // 跳过空行和纯注释行
+    if (!trimmed || trimmed.startsWith('--')) {
+      continue
+    }
+    
+    // 累积当前语句
+    currentStmt += (currentStmt ? ' ' : '') + trimmed
+    
+    // 检查是否到达语句结束（以分号结尾，且不在字符串内）
+    // 简单判断：统计引号数量，奇数表示在字符串内
+    const quoteCount = (currentStmt.match(/'/g) || []).length
+    inString = quoteCount % 2 !== 0
+    
+    if (trimmed.endsWith(';') && !inString) {
       try {
-        await client.query(stmt + ';')
+        await client.query(currentStmt)
       } catch (error: any) {
         // 忽略一些可以容忍的错误（如表不存在）
         if (!error.message.includes('does not exist') && !error.message.includes('already exists')) {
           logger.warn('SQL 执行警告:', error.message)
         }
+      }
+      currentStmt = ''
+      inString = false
+    }
+  }
+  
+  // 处理最后一条没有分号的语句
+  if (currentStmt.trim()) {
+    try {
+      await client.query(currentStmt)
+    } catch (error: any) {
+      if (!error.message.includes('does not exist') && !error.message.includes('already exists')) {
+        logger.warn('SQL 执行警告:', error.message)
       }
     }
   }
@@ -273,15 +594,10 @@ router.delete('/backups/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: '备份记录不存在' })
     }
     
-    // 删除物理文件（使用 execSync 绕过沙箱拦截）
+    // 删除物理文件（使用 fs.rmSync，不拼 shell 命令，避免路径被注入时执行任意命令）
     if (backup.filePath) {
       try {
-        const { execSync } = require('child_process')
-        if (process.platform === 'win32') {
-          execSync(`del /f /q "${backup.filePath}"`, { stdio: 'ignore' })
-        } else {
-          execSync(`rm -f "${backup.filePath}"`, { stdio: 'ignore' })
-        }
+        fs.rmSync(backup.filePath, { force: true })
       } catch (fileError: any) {
         logger.warn(`删除备份文件失败: ${backup.filePath}`, fileError.message)
         // 文件删除失败，但继续删除数据库记录

@@ -11,6 +11,9 @@ function Login() {
 
   const onFinish = async (values: { username: string; password: string }) => {
     setLoading(true)
+    // 提交前清除上一账号的残留缓存，避免响应缺 menus 字段时沿用旧账号的菜单/权限
+    localStorage.removeItem('user')
+    localStorage.removeItem('menus')
     try {
       const response: any = await login(values)
       localStorage.setItem('token', response.token)
@@ -19,10 +22,7 @@ function Login() {
       if (response.menus) {
         localStorage.setItem('menus', JSON.stringify(response.menus))
       }
-      // 存储权限列表
-      if (response.user?.permissions) {
-        localStorage.setItem('permissions', JSON.stringify(response.user.permissions))
-      }
+      // 注意：权限列表 permissions 已存在 user.permissions 中（user key），不单独存储
       // 通知权限 Hook 重新读取
       window.dispatchEvent(new Event('user-permissions-changed'))
       message.success('登录成功')

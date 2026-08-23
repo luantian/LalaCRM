@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Row, Col, Modal, Space, Popconfirm } from 'antd'
+import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Row, Col, Space, Popconfirm } from 'antd'
 import { ArrowLeftOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
@@ -35,13 +35,15 @@ const QuotationDetail: React.FC = () => {
     return false
   }
 
-  const handleDeleteFile = (fileId: number) => {
-    Modal.confirm({ title: '确认删除', content: '确定删除该文件？',
-      onOk: async () => {
-        try { await deleteQuotationFile(parseInt(id!), fileId); message.success('删除成功'); fetchDetail() }
-        catch (e: any) { message.error(e?.error || '删除失败') }
-      }
-    })
+  // 删除：外层按钮已包 Popconfirm 确认（见附件列表），直接执行，不叠加双重确认
+  const handleDeleteFile = async (fileId: number) => {
+    try {
+      await deleteQuotationFile(parseInt(id!), fileId)
+      message.success('删除成功')
+      fetchDetail()
+    } catch (e: any) {
+      message.error(e?.error || '删除失败')
+    }
   }
 
   const handleDownload = async (file: any) => {

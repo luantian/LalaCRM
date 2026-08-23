@@ -1,99 +1,69 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Tag, Card, Row, Col, Statistic, Tooltip, Descriptions, Empty, Divider, Popconfirm, TimePicker, Upload, Dropdown, Timeline } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, DownloadOutlined, EyeOutlined, CheckCircleOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, exportDailyReports, exportDailyReportsExcel, importDailyReports, getDailyReportItems, createDailyReportItem, updateDailyReportItem, deleteDailyReportItem, safeJsonParse } from '../services/api'
+import { Button, Modal, Form, Input, Select, DatePicker, message, Space, Tag, Card, Row, Col, Statistic, Table, Popconfirm, InputNumber, Upload, Dropdown, Empty } from 'antd'
+import { EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, DownloadOutlined, ImportOutlined, InboxOutlined, MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
+import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, getOrganizationsSimple, exportDailyReports, exportDailyReportsExcel, importDailyReports, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 import { usePermission } from '../hooks/usePermission'
 
 const { RangePicker } = DatePicker
+
+// 自动来源类型 → 展示标签
+const sourceTypeConfig: Record<string, { label: string; color: string }> = {
+  INVOICE: { label: '发票', color: 'purple' },
+  RECEIPT: { label: '回款', color: 'green' },
+  CONTRACT: { label: '合同', color: 'blue' },
+  SHIPMENT: { label: '发货', color: 'cyan' },
+  PROCUREMENT: { label: '采购', color: 'orange' },
+  PROCUREMENT_PAYMENT: { label: '采购付款', color: 'orange' },
+  TASK: { label: '任务', color: 'geekblue' },
+  NOTE: { label: '项目备注', color: 'default' },
+  OPPORTUNITY: { label: '售前', color: 'gold' },
+  QUOTATION: { label: '报价', color: 'gold' },
+  EXPENSE: { label: '报销', color: 'magenta' },
+  BUSINESS_TRIP: { label: '出差', color: 'volcano' },
+  PROJECT: { label: '项目', color: 'blue' },
+  ORGANIZATION: { label: '客户', color: 'geekblue' },
+}
 
 function DailyReportList() {
   const { checkPermission } = usePermission()
   const user = safeJsonParse(localStorage.getItem('user'), {})
   const [reports, setReports] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
+  const [organizations, setOrganizations] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
-  const [viewModalVisible, setViewModalVisible] = useState(false)
-  const [viewingReport, setViewingReport] = useState<any>(null)
   const [editingReport, setEditingReport] = useState<any>(null)
   const [form] = Form.useForm()
-  const [pagination, setPagination] = useState({
-    current: 1,
-    pageSize: 10,
-    total: 0
-  })
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
   const [stats, setStats] = useState<any>(null)
   const [searchText, setSearchText] = useState('')
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null)
   const [filterProjectId, setFilterProjectId] = useState<number | undefined>(undefined)
+  const [filterOrgId, setFilterOrgId] = useState<number | undefined>(undefined)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [importModalVisible, setImportModalVisible] = useState(false)
   const searchTextRef = useRef(searchText)
   const dateRangeRef = useRef(dateRange)
   const filterProjectIdRef = useRef(filterProjectId)
+  const filterOrgIdRef = useRef(filterOrgId)
   useEffect(() => { searchTextRef.current = searchText }, [searchText])
   useEffect(() => { dateRangeRef.current = dateRange }, [dateRange])
   useEffect(() => { filterProjectIdRef.current = filterProjectId }, [filterProjectId])
-
-  // 工作条目相关状态
-  const [items, setItems] = useState<any[]>([])
-  const [itemsLoading, setItemsLoading] = useState(false)
-  const [itemFormVisible, setItemFormVisible] = useState(false)
-  const [editingItem, setEditingItem] = useState<any>(null)
-  const [itemForm] = Form.useForm()
-
-  // 新建日报中的内联工作记录
-  const [formItems, setFormItems] = useState<any[]>([])
-  const [formItemModalVisible, setFormItemModalVisible] = useState(false)
-  const [editingFormItem, setEditingFormItem] = useState<any>(null)
-  const [formItemForm] = Form.useForm()
-  const [itemDetailVisible, setItemDetailVisible] = useState(false)
-  const [viewingItem, setViewItem] = useState<any>(null)
-
-  const typeMap: Record<string, { text: string; color: string }> = {
-    WORK: { text: '日常工作', color: 'default' },
-    PRE_SALES: { text: '售前支持', color: 'blue' },
-    PROJECT: { text: '项目实施', color: 'green' },
-    MEETING: { text: '会议', color: 'orange' },
-    TRAINING: { text: '培训', color: 'purple' },
-    OTHER: { text: '其他', color: 'default' }
-  }
-
-  const priorityConfig: Record<string, { label: string; color: string; icon: string }> = {
-    URGENT: { label: '紧急', color: '#f5222d', icon: '🔥' },
-    HIGH: { label: '高', color: '#ff4d4f', icon: '⬆' },
-    MEDIUM: { label: '中', color: '#1890ff', icon: '●' },
-    LOW: { label: '低', color: '#52c41a', icon: '⬇' },
-  }
-  const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
-    COMPLETED: { label: '已完成', color: '#52c41a', bg: '#f6ffed' },
-    IN_PROGRESS: { label: '进行中', color: '#1890ff', bg: '#e6f7ff' },
-    DELAYED: { label: '已延期', color: '#faad14', bg: '#fffbe6' },
-    CANCELLED: { label: '已取消', color: '#999', bg: '#fafafa' },
-  }
-  const timeTypeConfig: Record<string, { label: string; color: string; icon: string }> = {
-    NORMAL: { label: '正常', color: '#13c2c2', icon: '⏱' },
-    OVERTIME: { label: '加班', color: '#f5222d', icon: '🔥' },
-    LEAVE: { label: '请假', color: '#faad14', icon: '🏖' },
-    OTHER: { label: '其他', color: '#8c8c8c', icon: '📌' },
-  }
+  useEffect(() => { filterOrgIdRef.current = filterOrgId }, [filterOrgId])
 
   const fetchReports = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
     try {
       const params: any = { page, pageSize }
-      if (searchTextRef.current.trim()) {
-        params.search = searchTextRef.current.trim()
-      }
+      if (searchTextRef.current.trim()) params.search = searchTextRef.current.trim()
       const range = dateRangeRef.current
       if (range && range[0] && range[1]) {
         params.startDate = range[0].format('YYYY-MM-DD')
         params.endDate = range[1].format('YYYY-MM-DD')
       }
-      if (filterProjectIdRef.current) {
-        params.projectId = filterProjectIdRef.current
-      }
+      if (filterProjectIdRef.current) params.projectId = filterProjectIdRef.current
+      if (filterOrgIdRef.current) params.organizationId = filterOrgIdRef.current
       const response: any = await getDailyReports(params)
       setReports(response.data || [])
       setPagination({
@@ -117,6 +87,15 @@ function DailyReportList() {
     }
   }
 
+  const fetchOrganizations = async () => {
+    try {
+      const response: any = await getOrganizationsSimple()
+      setOrganizations(Array.isArray(response) ? response : (response?.data || []))
+    } catch (error) {
+      console.error('获取客户列表失败:', error)
+    }
+  }
+
   const fetchStats = async () => {
     try {
       const data = await getDailyReportStats()
@@ -128,6 +107,7 @@ function DailyReportList() {
 
   useEffect(() => {
     fetchProjects()
+    fetchOrganizations()
     fetchStats()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -135,49 +115,36 @@ function DailyReportList() {
     fetchReports()
   }, [refreshTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSearch = () => {
-    fetchReports(1, pagination.pageSize)
-  }
+  const handleSearch = () => fetchReports(1, pagination.pageSize)
 
   const handleReset = () => {
     setSearchText('')
     setDateRange(null)
     setFilterProjectId(undefined)
+    setFilterOrgId(undefined)
     setRefreshTrigger(prev => prev + 1)
-  }
-
-  const handleTableChange = (page: number, pageSize: number) => {
-    fetchReports(page, pageSize)
   }
 
   const handleAdd = () => {
     setEditingReport(null)
     form.resetFields()
-    form.setFieldsValue({ reportDate: dayjs() })
-    setFormItems([])
+    form.setFieldsValue({ reportDate: dayjs(), entries: [{ organizationId: undefined, projectId: undefined, content: '' }], todos: [''] })
     setModalVisible(true)
   }
 
-  const handleEdit = async (report: any) => {
+  const handleEdit = (report: any) => {
     setEditingReport(report)
+    // 只编辑手动条目；自动条目由系统各操作生成，在卡片中展示
+    const manualEntries = (report.entries || []).filter((e: any) => e.source === 'MANUAL')
     form.setFieldsValue({
-      ...report,
-      reportDate: dayjs(report.reportDate)
+      reportDate: dayjs(report.reportDate),
+      plan: report.plan || '',
+      todos: Array.isArray(report.todos) && report.todos.length > 0 ? report.todos : [''],
+      entries: manualEntries.length > 0
+        ? manualEntries.map((e: any) => ({ id: e.id, organizationId: e.organizationId ?? undefined, projectId: e.projectId ?? undefined, title: e.title || undefined, content: e.content || '', hours: e.hours != null ? Number(e.hours) : undefined }))
+        : [{ organizationId: undefined, projectId: undefined, content: '' }]
     })
-    // 加载已有的工作记录
-    try {
-      const response: any = await getDailyReportItems(report.id)
-      setFormItems(response || [])
-    } catch {
-      setFormItems([])
-    }
     setModalVisible(true)
-  }
-
-  const handleView = (report: any) => {
-    setViewingReport(report)
-    setViewModalVisible(true)
-    fetchItems(report.id)
   }
 
   const handleDelete = async (id: number) => {
@@ -194,60 +161,26 @@ function DailyReportList() {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
-      // 从工作记录汇总时长（处理浮点数精度）
-      const totalHours = Number(formItems.reduce((sum, item) => sum + (Number(item.hours) || 0), 0).toFixed(1))
+      const entries = (values.entries || [])
+        .map((e: any) => ({ ...e, content: (e?.content || '').trim() }))
+        .filter((e: any) => e.content)
+      const todos = (values.todos || []).map((t: string) => (t || '').trim()).filter(Boolean)
       const data = {
-        ...values,
         reportDate: values.reportDate.toDate(),
-        hours: totalHours || null,
-        content: formItems.map(i => i.title).join('；') || null
+        entries,
+        plan: values.plan || null,
+        todos
       }
 
-      let reportId: number
       if (editingReport) {
         await updateDailyReport(editingReport.id, data)
-        reportId = editingReport.id
-
-        // 删除已移除的工作项
-        const existingItemsRes: any = await getDailyReportItems(reportId)
-        const existingItems = existingItemsRes || []
-        const formItemIds = formItems.filter(i => i.id).map(i => i.id)
-        for (const existing of existingItems) {
-          if (!formItemIds.includes(existing.id)) {
-            await deleteDailyReportItem(reportId, existing.id)
-          }
-        }
-
         message.success('更新成功')
       } else {
-        const res: any = await createDailyReport(data)
-        reportId = res.id
+        await createDailyReport(data)
         message.success('创建成功')
       }
 
-      // 保存工作记录
-      for (const item of formItems) {
-        const itemData = {
-          title: item.title,
-          content: item.content,
-          projectId: item.projectId || null,
-          hours: item.hours || null,
-          timeType: item.timeType || 'NORMAL',
-          priority: item.priority || 'MEDIUM',
-          status: item.status || 'COMPLETED',
-          result: item.result || null,
-          startTime: item.startTime ? (dayjs.isDayjs(item.startTime) ? item.startTime.toDate() : new Date(item.startTime)) : null,
-          endTime: item.endTime ? (dayjs.isDayjs(item.endTime) ? item.endTime.toDate() : new Date(item.endTime)) : null
-        }
-        if (item.id) {
-          await updateDailyReportItem(reportId, item.id, itemData)
-        } else {
-          await createDailyReportItem(reportId, itemData)
-        }
-      }
-
       setModalVisible(false)
-      setFormItems([])
       fetchReports(pagination.current, pagination.pageSize)
       fetchStats()
     } catch (error: any) {
@@ -257,7 +190,6 @@ function DailyReportList() {
 
   const handleExport = async (type: 'csv' | 'excel') => {
     try {
-      // 注意：axios 拦截器已解包 response.data，responseType: 'blob' 时返回值直接就是 Blob
       const blob = type === 'csv' ? await exportDailyReports({ search: searchText }) : await exportDailyReportsExcel({ search: searchText })
       if (!blob || !(blob instanceof Blob)) {
         message.error('导出失败：响应格式异常')
@@ -286,245 +218,139 @@ function DailyReportList() {
     return false
   }
 
-  // 新建日报中的内联工作记录管理
-  const handleAddFormItem = () => {
-    setEditingFormItem(null)
-    formItemForm.resetFields()
-    formItemForm.setFieldsValue({ timeType: 'NORMAL', priority: 'MEDIUM', status: 'COMPLETED' })
-    setFormItemModalVisible(true)
+  // 条目内选择项目后自动带出客户（该条目客户为空时）
+  const handleEntryProjectChange = (index: number, projectId: number | undefined) => {
+    if (!projectId) return
+    const project = projects.find(p => p.id === projectId)
+    const currentOrg = form.getFieldValue(['entries', index, 'organizationId'])
+    if (project?.organization?.id && !currentOrg) {
+      form.setFieldValue(['entries', index, 'organizationId'], project.organization.id)
+    }
   }
 
-  const handleEditFormItem = (item: any) => {
-    setEditingFormItem(item)
-    formItemForm.setFieldsValue({
-      ...item,
-      startTime: item.startTime ? dayjs(item.startTime) : null,
-      endTime: item.endTime ? dayjs(item.endTime) : null
+  // 展平：一条事情=一行；同一天多行通过 daySpan 合并天级列
+  const tableRows: any[] = []
+  reports.forEach((report) => {
+    // 兜底：无条目但 content 有值（如导入未迁移的旧数据）按单条展示
+    const rawEntries = report.entries || []
+    const entries = rawEntries.length === 0 && report.content
+      ? [{ id: undefined, title: null, content: report.content, organization: report.organization, project: report.project, source: 'MANUAL', sourceType: null }]
+      : rawEntries
+    const list = entries.length > 0 ? entries : [{ id: undefined, title: null, content: '', organization: null, project: null, source: 'MANUAL', sourceType: null }]
+    list.forEach((entry: any, idx: number) => {
+      tableRows.push({
+        key: `${report.id}-${entry.id ?? idx}`,
+        daySpan: idx === 0 ? list.length : 0,
+        report,
+        entry
+      })
     })
-    setFormItemModalVisible(true)
-  }
-
-  const handleSaveFormItem = async () => {
-    try {
-      const values = await formItemForm.validateFields()
-      const itemData = {
-        ...values,
-        title: values.content ? (values.content.length > 30 ? values.content.slice(0, 30) + '...' : values.content) : '工作记录',
-        startTime: values.startTime ? values.startTime.toDate() : null,
-        endTime: values.endTime ? values.endTime.toDate() : null
-      }
-      if (editingFormItem) {
-        setFormItems(formItems.map(i => i === editingFormItem ? { ...editingFormItem, ...itemData } : i))
-      } else {
-        setFormItems([...formItems, itemData])
-      }
-      setFormItemModalVisible(false)
-    } catch { /* validation failed */ }
-  }
-
-  const handleDeleteFormItem = (index: number) => {
-    setFormItems(formItems.filter((_, i) => i !== index))
-  }
-
-  // 工作条目相关函数
-  const fetchItems = async (reportId: number) => {
-    setItemsLoading(true)
-    try {
-      const response: any = await getDailyReportItems(reportId)
-      setItems(response || [])
-    } catch (error) {
-      console.error('获取工作条目失败:', error)
-    } finally {
-      setItemsLoading(false)
-    }
-  }
-
-  const handleViewItem = (item: any) => {
-    setEditingItem(item)
-    itemForm.setFieldsValue({
-      ...item,
-      startTime: item.startTime ? dayjs(item.startTime) : null,
-      endTime: item.endTime ? dayjs(item.endTime) : null
-    })
-    setItemFormVisible(true)
-  }
-
-  const handleViewItemDetail = (item: any) => {
-    setViewItem(item)
-    setItemDetailVisible(true)
-  }
-
-  const handleAddItem = () => {
-    setEditingItem(null)
-    itemForm.resetFields()
-    setItemFormVisible(true)
-  }
-
-  const handleDeleteItem = async (itemId: number) => {
-    if (!viewingReport) return
-    try {
-      await deleteDailyReportItem(viewingReport.id, itemId)
-      message.success('删除成功')
-      await fetchItems(viewingReport.id)
-      
-      // 重新计算总工时并更新日报主表
-      setTimeout(async () => {
-        const updatedItems: any[] = (await getDailyReportItems(viewingReport.id)) as any
-        const totalHours = Number((updatedItems || []).reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0).toFixed(1))
-        
-        // 只传递后端需要的字段
-        await updateDailyReport(viewingReport.id, {
-          reportDate: viewingReport.reportDate,
-          type: viewingReport.type,
-          projectId: viewingReport.projectId,
-          content: viewingReport.content,
-          plan: viewingReport.plan,
-          issues: viewingReport.issues,
-          hours: totalHours
-        })
-        
-        // 更新 viewingReport 状态
-        setViewingReport((prev: any) => prev ? { ...prev, hours: totalHours } : prev)
-        fetchReports()
-      }, 100)
-    } catch (error: any) {
-      message.error(error?.error || '删除失败')
-    }
-  }
-
-  const handleSubmitItem = async () => {
-    if (!viewingReport) return
-    try {
-      const values = await itemForm.validateFields()
-      const data = {
-        ...values,
-        title: values.content ? (values.content.length > 30 ? values.content.slice(0, 30) + '...' : values.content) : '工作记录',
-        startTime: values.startTime ? values.startTime.toDate() : null,
-        endTime: values.endTime ? values.endTime.toDate() : null
-      }
-
-      if (editingItem) {
-        await updateDailyReportItem(viewingReport.id, editingItem.id, data)
-        message.success('更新成功')
-      } else {
-        await createDailyReportItem(viewingReport.id, data)
-        message.success('创建成功')
-      }
-      setItemFormVisible(false)
-      await fetchItems(viewingReport.id)
-      
-      // 重新计算总工时并更新日报主表
-      setTimeout(async () => {
-        const updatedItems: any[] = (await getDailyReportItems(viewingReport.id)) as any
-        const totalHours = Number((updatedItems || []).reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0).toFixed(1))
-        
-        // 只传递后端需要的字段
-        await updateDailyReport(viewingReport.id, {
-          reportDate: viewingReport.reportDate,
-          type: viewingReport.type,
-          projectId: viewingReport.projectId,
-          content: viewingReport.content,
-          plan: viewingReport.plan,
-          issues: viewingReport.issues,
-          hours: totalHours
-        })
-        
-        // 更新 viewingReport 状态
-        setViewingReport((prev: any) => prev ? { ...prev, hours: totalHours } : prev)
-        fetchReports()
-      }, 100)
-    } catch (error: any) {
-      message.error(error?.error || '操作失败')
-    }
-  }
+  })
 
   const columns = [
     {
       title: '日期',
-      dataIndex: 'reportDate',
-      key: 'reportDate',
-      render: (date: string) => dayjs(date).format('YYYY-MM-DD')
+      key: 'date',
+      width: 125,
+      onCell: (r: any) => ({ rowSpan: r.daySpan }),
+      render: (_: any, r: any) => (
+        <div>
+          <div style={{ fontWeight: 600 }}>{dayjs(r.report.reportDate).format('YYYY-MM-DD')}</div>
+          <div style={{ color: '#999', fontSize: 12 }}>{dayjs(r.report.reportDate).format('dddd')}</div>
+          {Number(r.report.hours) > 0 && (
+            <div style={{ color: '#722ed1', fontSize: 12, fontWeight: 600 }}>共 {Number(r.report.hours)}h</div>
+          )}
+        </div>
+      )
     },
     {
       title: '姓名',
-      key: 'userName',
-      width: 80,
-      render: (_: any, record: any) => record.user?.name || '-'
+      key: 'user',
+      width: 100,
+      onCell: (r: any) => ({ rowSpan: r.daySpan }),
+      render: (_: any, r: any) => <span style={{ fontWeight: 500 }}>{r.report.user?.name || '-'}</span>
+    },
+    {
+      title: '客户',
+      key: 'org',
+      width: 160,
+      render: (_: any, r: any) => r.entry.organization?.name || <span style={{ color: '#bbb' }}>—</span>
     },
     {
       title: '项目',
-      key: 'project',
-      width: 200,
-      render: (_: any, record: any) => {
-        // 收集所有关联项目：日报本身的项目 + 工作记录中的项目
-        const projectNames = new Set<string>()
-        if (record.project?.name) projectNames.add(record.project.name)
-        if (Array.isArray(record.items)) {
-          record.items.forEach((item: any) => {
-            if (item.project?.name) projectNames.add(item.project.name)
-          })
-        }
-        const names = Array.from(projectNames)
-        if (names.length === 0) return <span style={{ color: '#bbb' }}>—</span>
-        if (names.length === 1) return <Tag color="blue">{names[0]}</Tag>
-        return (
-          <Tooltip title={names.join('、')}>
-            <Space size={2} wrap>
-              {names.map((name, i) => (
-                <Tag key={i} color="blue" style={{ margin: '1px 2px' }}>{name}</Tag>
-              ))}
-            </Space>
-          </Tooltip>
-        )
+      key: 'proj',
+      width: 160,
+      render: (_: any, r: any) => r.entry.project?.name || <span style={{ color: '#bbb' }}>—</span>
+    },
+    {
+      title: '来源',
+      key: 'source',
+      width: 85,
+      render: (_: any, r: any) => {
+        const st = r.entry.sourceType ? sourceTypeConfig[r.entry.sourceType] : null
+        if (st) return <Tag color={st.color} style={{ margin: 0 }}>{st.label}</Tag>
+        if (r.entry.source === 'AUTO') return <Tag style={{ margin: 0 }}>自动</Tag>
+        return <span style={{ color: '#bbb', fontSize: 12 }}>手动</span>
       }
     },
     {
-      title: '类型',
-      dataIndex: 'type',
-      key: 'type',
-      render: (type: string) => {
-        const t = typeMap[type] || { text: type, color: 'default' }
-        return <Tag color={t.color}>{t.text}</Tag>
-      }
-    },
-    {
-      title: '工作内容',
-      dataIndex: 'content',
+      title: '工作内容 (Notes)',
       key: 'content',
-      render: (content: string) => {
-        if (!content) return '-'
-        const truncated = content.length > 50 ? content.slice(0, 50) + '...' : content
-        return (
-          <Tooltip title={content}>
-            <span>{truncated}</span>
-          </Tooltip>
-        )
-      }
+      render: (_: any, r: any) => (
+        <div style={{ minWidth: 260, color: '#595959', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {r.entry.content || r.entry.title || ''}
+        </div>
+      )
     },
     {
-      title: '时长',
-      dataIndex: 'hours',
+      title: '工时',
       key: 'hours',
-      render: (hours: number) => hours != null ? `${hours}小时` : '-'
+      width: 65,
+      align: 'center' as const,
+      render: (_: any, r: any) => r.entry.hours != null
+        ? <span style={{ fontWeight: 600, color: '#595959' }}>{Number(r.entry.hours)}h</span>
+        : <span style={{ color: '#bbb' }}>—</span>
+    },
+    {
+      title: '后续计划',
+      key: 'plan',
+      width: 150,
+      onCell: (r: any) => ({ rowSpan: r.daySpan }),
+      render: (_: any, r: any) => r.report.plan
+        ? <span style={{ whiteSpace: 'pre-wrap', fontSize: 13 }}>{r.report.plan}</span>
+        : <span style={{ color: '#bbb' }}>—</span>
+    },
+    {
+      title: '待办事项',
+      key: 'todos',
+      width: 165,
+      onCell: (r: any) => ({ rowSpan: r.daySpan }),
+      render: (_: any, r: any) => {
+        const todos = Array.isArray(r.report.todos) ? r.report.todos : []
+        if (todos.length === 0) return <span style={{ color: '#bbb' }}>—</span>
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {todos.map((t: string, i: number) => (
+              <span key={i} style={{ fontSize: 13, color: '#595959', lineHeight: 1.6 }}>{i + 1}. {t}</span>
+            ))}
+          </div>
+        )
+      }
     },
     {
       title: '操作',
       key: 'action',
-      width: 240,
-      fixed: 'right' as const,
-      render: (_: any, record: any) => {
-        const isOwner = record.userId === user?.id
+      width: 125,
+      onCell: (r: any) => ({ rowSpan: r.daySpan }),
+      render: (_: any, r: any) => {
+        const isOwner = r.report.userId === user?.id
+        if (!isOwner) return <span style={{ color: '#bbb', fontSize: 12 }}>-</span>
         return (
           <Space size={0}>
-            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleView(record)}>查看</Button>
-            {isOwner && (
-              <>
-                <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-                <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('office:dailyreport:delete')}>
-                  <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-                </Popconfirm>
-              </>
-            )}
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(r.report)}>编辑</Button>
+            <Popconfirm title="确定要删除这天的日报吗?" onConfirm={() => handleDelete(r.report.id)} disabled={!checkPermission('office:dailyreport:delete')}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            </Popconfirm>
           </Space>
         )
       }
@@ -533,7 +359,6 @@ function DailyReportList() {
 
   return (
     <div>
-      {/* 标题 */}
       <div style={{ marginBottom: 16 }}>
         <h2>工作日报</h2>
       </div>
@@ -541,15 +366,10 @@ function DailyReportList() {
       {/* 统计信息 */}
       <Card size="small" style={{ marginBottom: 16 }}>
         <Row gutter={16}>
-          <Col span={8}>
-            <Statistic title="本月日报数" value={stats?.totalReports || 0} suffix="条" />
-          </Col>
-          <Col span={8}>
-            <Statistic title="本月总工时" value={Number((stats?.totalHours || 0).toFixed(1))} precision={1} suffix="小时" />
-          </Col>
-          <Col span={8}>
-            <Statistic title="待提交" value={stats?.pending || 0} suffix="条" valueStyle={{ color: '#faad14' }} />
-          </Col>
+          <Col span={6}><Statistic title="本月日报数" value={stats?.totalReports || 0} suffix="条" /></Col>
+          <Col span={6}><Statistic title="本月记录条数" value={stats?.totalEntries || 0} suffix="条" valueStyle={{ color: '#1890ff' }} /></Col>
+          <Col span={6}><Statistic title="本月待办事项" value={stats?.totalTodos || 0} suffix="项" valueStyle={{ color: '#fa8c16' }} /></Col>
+          <Col span={6}><Statistic title="本月总工时" value={Number((stats?.totalHours || 0).toFixed(1))} precision={1} suffix="小时" /></Col>
         </Row>
       </Card>
 
@@ -558,7 +378,7 @@ function DailyReportList() {
         <Row gutter={16} align="middle">
           <Col xs={24} sm={6}>
             <Input
-              placeholder="搜索工作内容"
+              placeholder="搜索工作内容(Notes)"
               prefix={<SearchOutlined />}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
@@ -574,24 +394,17 @@ function DailyReportList() {
               placeholder={['开始日期', '结束日期']}
             />
           </Col>
-          <Col xs={24} sm={6}>
-            <Select
-              style={{ width: '100%' }}
-              placeholder="选择项目"
-              allowClear
-              value={filterProjectId}
-              onChange={(val) => setFilterProjectId(val)}
-              showSearch
-              optionFilterProp="children"
-            >
-              {projects.map(project => (
-                <Select.Option key={project.id} value={project.id}>
-                  {project.name}
-                </Select.Option>
-              ))}
+          <Col xs={24} sm={4}>
+            <Select style={{ width: '100%' }} placeholder="选择客户" allowClear value={filterOrgId} onChange={(val) => setFilterOrgId(val)} showSearch optionFilterProp="children">
+              {organizations.map((org: any) => <Select.Option key={org.id} value={org.id}>{org.name}</Select.Option>)}
             </Select>
           </Col>
-          <Col xs={24} sm={6}>
+          <Col xs={24} sm={4}>
+            <Select style={{ width: '100%' }} placeholder="选择项目" allowClear value={filterProjectId} onChange={(val) => setFilterProjectId(val)} showSearch optionFilterProp="children">
+              {projects.map(project => <Select.Option key={project.id} value={project.id}>{project.name}</Select.Option>)}
+            </Select>
+          </Col>
+          <Col xs={24} sm={4}>
             <Space>
               <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>搜索</Button>
               <Button icon={<ReloadOutlined />} onClick={handleReset}>重置</Button>
@@ -616,654 +429,115 @@ function DailyReportList() {
         </Space>
       </div>
 
+      {/* 日报列表：一行=一条事情，同一天多行合并天级列 */}
       <Table
         columns={columns}
-        dataSource={reports}
+        dataSource={tableRows}
         loading={loading}
-        rowKey="id"
-        scroll={{ x: 1200 }}
+        rowKey={(r: any) => r.key}
+        bordered
+        size="middle"
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,
           total: pagination.total,
           showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
-          onChange: handleTableChange
+          showTotal: (total) => `共 ${total} 天`,
+          onChange: (page, pageSize) => fetchReports(page, pageSize)
         }}
+        locale={{ emptyText: <Empty description="暂无日报" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />
 
-      {/* 新增/编辑 Modal */}
+      {/* 新增/编辑 Modal：一天多条事情 */}
       <Modal
         title={editingReport ? '编辑日报' : '新增日报'}
         open={modalVisible}
         onOk={handleSubmit}
-        onCancel={() => { form.resetFields(); setFormItems([]); setModalVisible(false) }}
-        width={700}
+        onCancel={() => { form.resetFields(); setModalVisible(false) }}
+        width={720}
       >
         <Form form={form} layout="vertical">
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="reportDate" label="日期" rules={[{ required: true, message: '请选择日期' }]}>
-                <DatePicker style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="type" label="类型" initialValue="WORK">
-                <Select>
-                  <Select.Option value="WORK">日常工作</Select.Option>
-                  <Select.Option value="PRE_SALES">售前支持</Select.Option>
-                  <Select.Option value="PROJECT">项目实施</Select.Option>
-                  <Select.Option value="MEETING">会议</Select.Option>
-                  <Select.Option value="TRAINING">培训</Select.Option>
-                  <Select.Option value="OTHER">其他</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item name="plan" label="明日计划">
-            <Input.TextArea rows={3} placeholder="请输入明日计划" />
+          <Form.Item name="reportDate" label="日期" rules={[{ required: true, message: '请选择日期' }]} style={{ marginBottom: 12 }}>
+            <DatePicker style={{ width: 240 }} />
           </Form.Item>
-          <Form.Item name="issues" label="问题与困难">
-            <Input.TextArea rows={3} placeholder="请输入问题与困难" />
-          </Form.Item>
-        </Form>
 
-        <Divider orientation="left" plain>
-          工作记录 ({formItems.length})
-          {formItems.length > 0 && (
-            <span style={{ fontWeight: 'normal', color: '#999', fontSize: 12, marginLeft: 8 }}>
-              共 {formItems.reduce((s, i) => s + (Number(i.hours) || 0), 0)} 小时
-            </span>
+          {editingReport && (editingReport.entries || []).some((e: any) => e.source === 'AUTO') && (
+            <div style={{ marginBottom: 12, padding: '6px 12px', background: '#f6ffed', borderRadius: 6, fontSize: 12, color: '#52c41a' }}>
+              当天有 {(editingReport.entries || []).filter((e: any) => e.source === 'AUTO').length} 条系统自动记录（开票/回款等操作自动生成），下方只需维护手动记录
+            </div>
           )}
-        </Divider>
-        <Button type="dashed" icon={<PlusOutlined />} onClick={handleAddFormItem} style={{ width: '100%', marginBottom: 12 }}>
-          添加工作记录
-        </Button>
-        {formItems.length > 0 && (
-          <div style={{ maxHeight: 200, overflow: 'auto' }}>
-            {formItems.map((item, index) => (
-              <div key={index} style={{
-                padding: '8px 12px',
-                marginBottom: 8,
-                background: '#f8fafc',
-                borderRadius: 8,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{item.content?.length > 30 ? item.content.slice(0, 30) + '...' : item.content}</div>
-                  <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>
-                    {item.hours && <span>{item.hours}小时</span>}
-                    {item.timeType && item.timeType !== 'NORMAL' && (
-                      <Tag color={item.timeType === 'OVERTIME' ? 'red' : 'orange'} style={{ marginLeft: 4, fontSize: 11 }}>
-                        {item.timeType === 'OVERTIME' ? '加班' : '请假'}
-                      </Tag>
-                    )}
-                    <Tag color={item.status === 'COMPLETED' ? 'green' : 'blue'} style={{ marginLeft: 4, fontSize: 11 }}>
-                      {item.status === 'COMPLETED' ? '已完成' : '进行中'}
-                    </Tag>
-                  </div>
-                </div>
-                <Space size={4}>
-                  <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEditFormItem(item)} />
-                  <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDeleteFormItem(index)} />
-                </Space>
-              </div>
-            ))}
-          </div>
-        )}
-      </Modal>
 
-      {/* 查看 Modal */}
-      <Modal
-        title="日报详情"
-        open={viewModalVisible}
-        onCancel={() => setViewModalVisible(false)}
-        footer={<Button onClick={() => setViewModalVisible(false)}>关闭</Button>}
-        width={900}
-      >
-        {viewingReport && (
-          <div>
-            {/* 基本信息 */}
-            <Descriptions column={2} bordered size="small">
-              <Descriptions.Item label="日期">
-                {dayjs(viewingReport.reportDate).format('YYYY-MM-DD')}
-              </Descriptions.Item>
-              <Descriptions.Item label="姓名">
-                {viewingReport.user?.name || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="关联项目" span={2}>
-                {(() => {
-                  // 日报本身的项目在基本信息中显示，工作记录的项目在工作记录中各自显示
-                  return viewingReport.project?.name
-                    ? <Tag color="blue">{viewingReport.project.name}</Tag>
-                    : <span style={{ color: '#bbb' }}>未关联（可在各工作记录中关联项目）</span>
-                })()}
-              </Descriptions.Item>
-              <Descriptions.Item label="类型">
-                {(() => {
-                  const t = typeMap[viewingReport.type] || { text: viewingReport.type, color: 'default' }
-                  return <Tag color={t.color}>{t.text}</Tag>
-                })()}
-              </Descriptions.Item>
-              <Descriptions.Item label="时长">
-                {(() => {
-                  // 优先从工作记录中计算总时长（更准确），无记录时回退到日报存储的时长
-                  if (items.length > 0) {
-                    const total = items.reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0)
-                    if (total > 0) return `${total}小时`
-                  }
-                  return viewingReport.hours != null ? `${viewingReport.hours}小时` : '-'
-                })()}
-              </Descriptions.Item>
-              <Descriptions.Item label="工作内容" span={2}>
-                {viewingReport.content || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="明日计划" span={2}>
-                {viewingReport.plan || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="问题与困难" span={2}>
-                {viewingReport.issues || '-'}
-              </Descriptions.Item>
-            </Descriptions>
-
-            {/* 工作记录 */}
-            <Divider orientation="left">
-              <Space>
-                <CheckCircleOutlined />
-                工作记录 ({items.length})
-                {items.length > 0 && (
-                  <span style={{ fontWeight: 'normal', color: '#999', fontSize: 12 }}>
-                    共 {items.reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0)} 小时
-                  </span>
-                )}
-              </Space>
-            </Divider>
-            {viewingReport?.userId === user?.id && (
-              <Button
-                type="primary"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={handleAddItem}
-                style={{ marginBottom: 16 }}
-              >
-                添加工作记录
-              </Button>
-            )}
-            {itemsLoading ? (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>加载中...</div>
-            ) : items.length === 0 ? (
-              <Empty description="暂无工作记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {items.map((item: any, index: number) => {
-                  const pc = priorityConfig[item.priority] || priorityConfig.MEDIUM
-                  const sc = statusConfig[item.status] || statusConfig.COMPLETED
-                  const tc = timeTypeConfig[item.timeType] || timeTypeConfig.NORMAL
-
-                  return (
-                    <div
-                      key={item.id || index}
-                      style={{
-                        background: '#fff',
-                        border: '1px solid #f0f0f0',
-                        borderRadius: 10,
-                        padding: '14px 18px',
-                        transition: 'all 0.2s',
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => handleViewItemDetail(item)}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.08)'
-                        e.currentTarget.style.borderColor = '#d9d9d9'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'
-                        e.currentTarget.style.borderColor = '#f0f0f0'
-                      }}
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>今日事情（可多条）</div>
+          <Form.List name="entries">
+            {(fields, { add, remove }) => (
+              <>
+                {fields.map(field => (
+                  <div key={field.key} style={{ padding: 12, marginBottom: 10, background: '#f8fafc', borderRadius: 8, border: '1px solid #f0f0f0' }}>
+                    <Row gutter={12}>
+                      <Col span={9}>
+                        <Form.Item name={[field.name, 'organizationId']} label="关联客户（可选）" style={{ marginBottom: 8 }}>
+                          <Select placeholder="选择客户" allowClear showSearch optionFilterProp="children">
+                            {organizations.map((org: any) => <Select.Option key={org.id} value={org.id}>{org.name}</Select.Option>)}
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                      <Col span={9}>
+                        <Form.Item name={[field.name, 'projectId']} label="关联项目（可选）" style={{ marginBottom: 8 }}>
+                          <Select placeholder="选择项目" allowClear showSearch optionFilterProp="children" onChange={(val) => handleEntryProjectChange(field.name, val)}>
+                            {projects.map(project => <Select.Option key={project.id} value={project.id}>{project.name}</Select.Option>)}
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                      <Col span={4}>
+                        <Form.Item name={[field.name, 'hours']} label="工时(h)" style={{ marginBottom: 8 }}>
+                          <InputNumber style={{ width: '100%' }} min={0} max={24} step={0.5} placeholder="0.5" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={2} style={{ textAlign: 'right', paddingTop: 30 }}>
+                        <MinusCircleOutlined onClick={() => remove(field.name)} style={{ color: '#999', cursor: 'pointer', fontSize: 16 }} />
+                      </Col>
+                    </Row>
+                    <Form.Item
+                      name={[field.name, 'content']}
+                      label="Notes 信息"
+                      style={{ marginBottom: 0 }}
+                      rules={[{ required: true, message: '请填写Notes信息' }]}
                     >
-                      {/* 顶部行：序号 + 标题 + 内容 + 操作 */}
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                        <div style={{
-                          minWidth: 24, height: 24, borderRadius: 6,
-                          background: '#f0f5ff', color: '#1890ff',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 12, fontWeight: 600, marginTop: 1
-                        }}>
-                          {index + 1}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          {/* 标题行（来自 title 字段） */}
-                          {item.title && (
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1890ff', lineHeight: 1.5, marginBottom: 4 }}>
-                              {item.title}
-                            </div>
-                          )}
-                          {/* 内容行：截断显示前2行，完整内容在详情弹窗中查看 */}
-                          <div style={{ fontSize: 14, fontWeight: 500, color: '#262626', lineHeight: 1.6, wordBreak: 'break-word', whiteSpace: 'pre-wrap', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as any}>
-                            {item.content}
-                          </div>
-                          {/* 标签行 */}
-                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 10px', marginTop: 8 }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
-                              <span style={{ color: '#999' }}>优先级</span>
-                              <span style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 3,
-                                padding: '1px 8px', borderRadius: 4,
-                                fontSize: 11, fontWeight: 500,
-                                color: pc.color, background: `${pc.color}10`,
-                                border: `1px solid ${pc.color}30`
-                              }}>
-                                <span style={{ fontSize: 10 }}>{pc.icon}</span>{pc.label}
-                              </span>
-                            </span>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
-                              <span style={{ color: '#999' }}>状态</span>
-                              <span style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 3,
-                                padding: '1px 8px', borderRadius: 4,
-                                fontSize: 11, fontWeight: 500,
-                                color: sc.color, background: sc.bg,
-                                border: `1px solid ${sc.color}30`
-                              }}>
-                                {sc.label}
-                              </span>
-                            </span>
-                            {item.timeType && item.timeType !== 'NORMAL' && (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
-                                <span style={{ color: '#999' }}>类型</span>
-                                <span style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                                  padding: '1px 8px', borderRadius: 4,
-                                  fontSize: 11, fontWeight: 500,
-                                  color: tc.color, background: `${tc.color}10`,
-                                  border: `1px solid ${tc.color}30`
-                                }}>
-                                  <span style={{ fontSize: 10 }}>{tc.icon}</span>{tc.label}
-                                </span>
-                              </span>
-                            )}
-                            {item.hours != null && Number(item.hours) > 0 && (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
-                                <span style={{ color: '#999' }}>工时</span>
-                                <span style={{
-                                  display: 'inline-flex', alignItems: 'center',
-                                  padding: '1px 8px', borderRadius: 4,
-                                  fontSize: 11, fontWeight: 600,
-                                  color: '#722ed1', background: '#f9f0ff',
-                                  border: '1px solid #d3adf7'
-                                }}>
-                                  ⏳ {item.hours}h
-                                </span>
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {viewingReport?.userId === user?.id && (
-                          <Space size={2} style={{ flexShrink: 0 }}>
-                            <Button type="text" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleViewItem(item) }} style={{ color: '#1890ff' }} />
-                            <Popconfirm title="确定删除此工作记录吗？" onConfirm={(e) => { e?.stopPropagation(); handleDeleteItem(item.id) }} onCancel={(e) => e?.stopPropagation()} okText="确定" cancelText="取消">
-                              <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
-                            </Popconfirm>
-                          </Space>
-                        )}
-                      </div>
-                      {/* 底部行：项目 + 时间 + 成果 */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 10, paddingLeft: 36, fontSize: 12, color: '#8c8c8c' }}>
-                        {item.project?.name && (
-                          <span>📁 {item.project.name}</span>
-                        )}
-                        {item.startTime && item.endTime && (
-                          <span>🕐 {dayjs(item.startTime).format('HH:mm')} – {dayjs(item.endTime).format('HH:mm')}</span>
-                        )}
-                        {item.result && (
-                          <span style={{ color: '#52c41a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300, display: 'inline-block' }}>✅ {item.result}</span>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+                      <Input.TextArea rows={3} placeholder="这件事做了什么" />
+                    </Form.Item>
+                    {/* 编辑时保留原条目ID与标题，后端据此做差量更新且不丢标题 */}
+                    <Form.Item name={[field.name, 'id']} hidden><Input /></Form.Item>
+                    <Form.Item name={[field.name, 'title']} hidden><Input /></Form.Item>
+                  </div>
+                ))}
+                <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ organizationId: undefined, projectId: undefined, content: '' })} style={{ width: '100%', marginBottom: 16 }}>
+                  添加一条
+                </Button>
+              </>
             )}
-          </div>
-        )}
-      </Modal>
+          </Form.List>
 
-      {/* 工作记录详情弹窗 */}
-      <Modal
-        title="工作记录详情"
-        open={itemDetailVisible}
-        onCancel={() => setItemDetailVisible(false)}
-        footer={null}
-        width={700}
-      >
-        {viewingItem && (
-          <div style={{ padding: '16px 0' }}>
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 18, fontWeight: 600, color: '#1890ff', marginBottom: 12 }}>
-                {viewingItem.title || '无标题'}
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', fontSize: 13 }}>
-                <span style={{ color: '#8c8c8c' }}>
-                  优先级：<span style={{ 
-                    color: priorityConfig[viewingItem.priority]?.color || priorityConfig.MEDIUM.color,
-                    fontWeight: 500
-                  }}>
-                    {priorityConfig[viewingItem.priority]?.icon || priorityConfig.MEDIUM.icon}
-                    {' '}{priorityConfig[viewingItem.priority]?.label || priorityConfig.MEDIUM.label}
-                  </span>
-                </span>
-                <span style={{ color: '#8c8c8c' }}>
-                  状态：<span style={{ 
-                    color: statusConfig[viewingItem.status]?.color || statusConfig.COMPLETED.color,
-                    fontWeight: 500
-                  }}>
-                    {statusConfig[viewingItem.status]?.label || statusConfig.COMPLETED.label}
-                  </span>
-                </span>
-                {viewingItem.timeType && viewingItem.timeType !== 'NORMAL' && (
-                  <span style={{ color: '#8c8c8c' }}>
-                    类型：<span style={{ 
-                      color: timeTypeConfig[viewingItem.timeType]?.color || timeTypeConfig.NORMAL.color,
-                      fontWeight: 500
-                    }}>
-                      {timeTypeConfig[viewingItem.timeType]?.icon || timeTypeConfig.NORMAL.icon}
-                      {' '}{timeTypeConfig[viewingItem.timeType]?.label || timeTypeConfig.NORMAL.label}
-                    </span>
-                  </span>
-                )}
-                {viewingItem.hours != null && Number(viewingItem.hours) > 0 && (
-                  <span style={{ color: '#8c8c8c' }}>
-                    工时：<span style={{ color: '#722ed1', fontWeight: 600 }}>⏳ {viewingItem.hours}h</span>
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#262626', marginBottom: 8 }}>
-                工作内容
-              </div>
-              <div style={{ 
-                fontSize: 14, 
-                color: '#595959', 
-                lineHeight: 1.8, 
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                padding: '12px 16px',
-                background: '#fafafa',
-                borderRadius: 6,
-                border: '1px solid #f0f0f0'
-              }}>
-                {viewingItem.content || '暂无内容'}
-              </div>
-            </div>
-
-            {viewingItem.result && (
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#262626', marginBottom: 8 }}>
-                  工作成果
-                </div>
-                <div style={{ 
-                  fontSize: 14, 
-                  color: '#52c41a', 
-                  lineHeight: 1.8,
-                  padding: '12px 16px',
-                  background: '#f6ffed',
-                  borderRadius: 6,
-                  border: '1px solid #b7eb8f'
-                }}>
-                  {viewingItem.result}
-                </div>
-              </div>
-            )}
-
-            {viewingItem.task?.rejectionReason && (
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#262626', marginBottom: 8 }}>
-                  驳回理由
-                </div>
-                <div style={{ 
-                  fontSize: 14, 
-                  color: '#f5222d', 
-                  lineHeight: 1.8,
-                  padding: '12px 16px',
-                  background: '#fff1f0',
-                  borderRadius: 6,
-                  border: '1px solid #ffa39e'
-                }}>
-                  {viewingItem.task.rejectionReason}
-                </div>
-              </div>
-            )}
-
-            {viewingItem.task?.records && viewingItem.task.records.length > 0 && (
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#262626', marginBottom: 8 }}>
-                  任务流转记录
-                </div>
-                <div style={{ padding: '12px 16px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
-                  <Timeline style={{ marginTop: 16 }} items={
-                    viewingItem.task.records.map((record: any) => {
-                      const typeConfig: Record<string, { color: string; icon: string }> = {
-                        'START': { color: '#1890ff', icon: '▶️' },
-                        'SUBMIT': { color: '#52c41a', icon: '✅' },
-                        'COMPLETE': { color: '#52c41a', icon: '🎉' },
-                        'REJECT': { color: '#f5222d', icon: '❌' },
-                        'NOTE': { color: '#8c8c8c', icon: '📝' },
-                        'CALL': { color: '#8c8c8c', icon: '📞' },
-                        'MEETING': { color: '#8c8c8c', icon: '👥' },
-                        'EMAIL': { color: '#8c8c8c', icon: '📧' },
-                        'VISIT': { color: '#8c8c8c', icon: '🏃' },
-                      }
-                      const config = typeConfig[record.type] || { color: '#8c8c8c', icon: '📌' }
-                      return {
-                        color: config.color,
-                        children: (
-                          <>
-                            <div>
-                              <span style={{ marginRight: 8 }}>{config.icon}</span>
-                              <span style={{ fontWeight: 500 }}>{record.content}</span>
-                            </div>
-                            <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
-                              {record.user?.name} · {dayjs(record.createdAt).format('YYYY-MM-DD HH:mm')}
-                            </div>
-                          </>
-                        )
-                      }
-                    })
-                  } />
-                </div>
-              </div>
-            )}
-
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(2, 1fr)', 
-              gap: '12px 24px',
-              fontSize: 13,
-              color: '#8c8c8c',
-              padding: '16px',
-              background: '#fafafa',
-              borderRadius: 6
-            }}>
-              {viewingItem.project?.name && (
-                <div>
-                  <span style={{ color: '#595959', fontWeight: 500 }}>关联项目：</span>
-                  <span>{viewingItem.project.name}</span>
-                </div>
+          <Form.Item name="plan" label="后续计划">
+            <Input.TextArea rows={2} placeholder="填写后续工作计划（可选）" />
+          </Form.Item>
+          <Form.Item label="待办事项" style={{ marginBottom: 0 }}>
+            <Form.List name="todos">
+              {(fields, { add, remove }) => (
+                <>
+                  {fields.map(field => (
+                    <Space key={field.key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
+                      <Form.Item name={field.name} noStyle>
+                        <Input placeholder={`待办事项 ${field.name + 1}`} style={{ width: 540 }} />
+                      </Form.Item>
+                      <MinusCircleOutlined onClick={() => remove(field.name)} style={{ color: '#999', cursor: 'pointer' }} />
+                    </Space>
+                  ))}
+                  <Button type="dashed" icon={<PlusOutlined />} onClick={() => add()} style={{ width: 580 }}>
+                    添加待办事项
+                  </Button>
+                </>
               )}
-              {viewingItem.startTime && viewingItem.endTime && (
-                <div>
-                  <span style={{ color: '#595959', fontWeight: 500 }}>工作时段：</span>
-                  <span>{dayjs(viewingItem.startTime).format('HH:mm')} – {dayjs(viewingItem.endTime).format('HH:mm')}</span>
-                </div>
-              )}
-              {viewingItem.createdAt && (
-                <div>
-                  <span style={{ color: '#595959', fontWeight: 500 }}>创建时间：</span>
-                  <span>{dayjs(viewingItem.createdAt).format('YYYY-MM-DD HH:mm')}</span>
-                </div>
-              )}
-              {viewingItem.updatedAt && (
-                <div>
-                  <span style={{ color: '#595959', fontWeight: 500 }}>更新时间：</span>
-                  <span>{dayjs(viewingItem.updatedAt).format('YYYY-MM-DD HH:mm')}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* 工作记录表单 Modal */}
-      <Modal
-        title={editingItem ? '编辑工作记录' : '添加工作记录'}
-        open={itemFormVisible}
-        onOk={handleSubmitItem}
-        onCancel={() => setItemFormVisible(false)}
-        width={600}
-      >
-        <Form form={itemForm} layout="vertical">
-          <Form.Item name="projectId" label="关联项目">
-            <Select placeholder="请选择项目（可选）" allowClear showSearch optionFilterProp="children">
-              {projects.map(project => (
-                <Select.Option key={project.id} value={project.id}>
-                  {project.name}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item name="content" label="工作内容" rules={[{ required: true, message: '请输入工作内容' }]}>
-            <Input.TextArea rows={3} placeholder="请输入工作内容" />
-          </Form.Item>
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="hours" label="工时（小时）">
-                <InputNumber style={{ width: '100%' }} min={0} max={24} step={0.5} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="timeType" label="工时类型" initialValue="NORMAL">
-                <Select>
-                  <Select.Option value="NORMAL">正常</Select.Option>
-                  <Select.Option value="OVERTIME">加班</Select.Option>
-                  <Select.Option value="LEAVE">请假</Select.Option>
-                  <Select.Option value="OTHER">其他</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="priority" label="优先级" initialValue="MEDIUM">
-                <Select>
-                  <Select.Option value="LOW">低</Select.Option>
-                  <Select.Option value="MEDIUM">中</Select.Option>
-                  <Select.Option value="HIGH">高</Select.Option>
-                  <Select.Option value="URGENT">紧急</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="status" label="状态" initialValue="COMPLETED">
-                <Select>
-                  <Select.Option value="COMPLETED">已完成</Select.Option>
-                  <Select.Option value="IN_PROGRESS">进行中</Select.Option>
-                  <Select.Option value="DELAYED">延期</Select.Option>
-                  <Select.Option value="CANCELLED">取消</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="startTime" label="开始时间">
-                <TimePicker format="HH:mm" style={{ width: '100%' }} placeholder="选择开始时间" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="endTime" label="结束时间">
-                <TimePicker format="HH:mm" style={{ width: '100%' }} placeholder="选择结束时间" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item name="result" label="工作成果">
-            <Input.TextArea rows={2} placeholder="请输入工作成果（可选）" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* 新建日报中的工作记录编辑弹窗 */}
-      <Modal
-        title={editingFormItem ? '编辑工作记录' : '添加工作记录'}
-        open={formItemModalVisible}
-        onOk={handleSaveFormItem}
-        onCancel={() => setFormItemModalVisible(false)}
-        width={550}
-        style={{ top: 20 }}
-      >
-        <Form form={formItemForm} layout="vertical">
-          <Form.Item name="projectId" label="关联项目">
-            <Select placeholder="可选" allowClear showSearch optionFilterProp="children">
-              {projects.map(p => (
-                <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item name="content" label="工作内容" rules={[{ required: true, message: '请输入工作内容' }]}>
-            <Input.TextArea rows={2} placeholder="具体做了什么" />
-          </Form.Item>
-          <Row gutter={16}>
-            <Col span={6}>
-              <Form.Item name="hours" label="工时">
-                <InputNumber style={{ width: '100%' }} min={0} max={24} step={0.5} placeholder="小时" />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item name="timeType" label="类型" initialValue="NORMAL">
-                <Select>
-                  <Select.Option value="NORMAL">正常</Select.Option>
-                  <Select.Option value="OVERTIME">加班</Select.Option>
-                  <Select.Option value="LEAVE">请假</Select.Option>
-                  <Select.Option value="OTHER">其他</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item name="priority" label="优先级" initialValue="MEDIUM">
-                <Select>
-                  <Select.Option value="LOW">低</Select.Option>
-                  <Select.Option value="MEDIUM">中</Select.Option>
-                  <Select.Option value="HIGH">高</Select.Option>
-                  <Select.Option value="URGENT">紧急</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item name="status" label="状态" initialValue="COMPLETED">
-                <Select>
-                  <Select.Option value="COMPLETED">已完成</Select.Option>
-                  <Select.Option value="IN_PROGRESS">进行中</Select.Option>
-                  <Select.Option value="DELAYED">延期</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="startTime" label="开始时间">
-                <TimePicker format="HH:mm" style={{ width: '100%' }} placeholder="可选" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="endTime" label="结束时间">
-                <TimePicker format="HH:mm" style={{ width: '100%' }} placeholder="可选" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item name="result" label="工作成果">
-            <Input.TextArea rows={2} placeholder="产出/成果（可选）" />
+            </Form.List>
           </Form.Item>
         </Form>
       </Modal>

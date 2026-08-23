@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { isAdmin } from './permission'
 
 
 /**
@@ -6,6 +7,9 @@ import prisma from '../lib/prisma'
  */
 export async function hasAmountPermission(userId: number): Promise<boolean> {
   try {
+    // 管理员默认可查看（按 roleKey 判定，不再硬编码 roleId=1）
+    if (await isAdmin(userId)) return true
+
     // 获取用户角色
     const userRoles = await prisma.userRole.findMany({
       where: { userId },
@@ -20,9 +24,6 @@ export async function hasAmountPermission(userId: number): Promise<boolean> {
     })
 
     const allowedRoleIds: number[] = config ? JSON.parse(config.value) : []
-
-    // 管理员默认可查看
-    if (userRoleIds.includes(1)) return true
 
     // 检查用户角色是否在允许列表中
     return userRoleIds.some((roleId: any) => allowedRoleIds.includes(roleId))

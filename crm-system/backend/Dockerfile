@@ -18,6 +18,9 @@ COPY package*.json ./
 RUN npm install --registry=https://registry.npmmirror.com
 
 COPY . .
+# 根据 schema 生成与当前代码匹配的 Prisma Client（npm install 时 schema 尚未拷入，
+# 生成的空壳 client 会导致 tsc 报 TS2339）
+RUN npx prisma generate
 RUN npm run build
 
 EXPOSE 3001

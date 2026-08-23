@@ -1,10 +1,10 @@
 import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { isAdmin } from '../utils/permission'
-import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
+import { authenticateToken, authenticateFileToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { upload } from '../middleware/upload'
-import { applyDataScope } from '../middleware/dataScope'
+import { applyDataScope, getDataScopeWhere } from '../middleware/dataScope'
 import logger from '../utils/logger'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import { autoWriteProcurementRecord } from '../utils/autoDailyReport'
@@ -12,6 +12,20 @@ import path from 'path'
 import fs from 'fs'
 
 const router = Router()
+
+// 数据权限：校验用户对采购单的可访问性（采购负责人/项目负责人/团队成员或管理员），
+// 用于附件下载/预览/删除等按 fileId 操作的端点，防止 fileId 枚举越权
+async function canAccessProcurement(procurementId: number, userId: number): Promise<boolean> {
+  const scopeWhere = await getDataScopeWhere(userId, undefined, {
+    ownerField: 'assignedTo',
+    relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }]
+  })
+  const procurement = await prisma.procurement.findFirst({
+    where: { id: procurementId, deletedAt: null, ...scopeWhere },
+    select: { id: true }
+  })
+  return !!procurement
+}
 
 // GET /stats/overview - Stats (before /:id)
 router.get('/stats/overview', authenticateToken, checkPermission('project:procurement:list'), applyDataScope({ ownerField: 'assignedTo', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
@@ -211,6 +225,22 @@ router.put('/:id', authenticateToken, checkPermission('project:procurement:edit'
     }
     if (status && status !== current.status) {
       return res.status(400).json({ error: '状态变更必须通过审批接口 POST /:id/approve' })
+    }
+
+    // 权限校验：管理员、采购负责人或项目负责人可以编辑
+    if (!(await isAdmin(req.user!.id))) {
+      const isAssignee = current.assignedTo === req.user!.id
+      let isProjectOwner = false
+      if (!isAssignee && current.projectId) {
+        const project = await prisma.project.findFirst({
+          where: { id: current.projectId, deletedAt: null },
+          select: { ownerId: true }
+        })
+        isProjectOwner = project?.ownerId === req.user!.id
+      }
+      if (!isAssignee && !isProjectOwner) {
+        return res.status(403).json({ error: '只有采购负责人或项目负责人才能编辑采购单' })
+      }
     }
 
     const procurement = await prisma.procurement.update({
@@ -428,13 +458,18 @@ router.get('/:id/files', authenticateToken, checkPermission('project:procurement
 })
 
 // 下载采购附件
-router.get('/files/:fileId/download', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateFileToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementFile.findFirst({ where: { id: fileId, deletedAt: null } })
 
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 数据权限：通过附件所属采购单校验访问权
+    if (!(await canAccessProcurement(file.procurementId, req.user!.id))) {
+      return res.status(403).json({ error: '无权访问该采购单的附件' })
     }
 
     const filePath = path.join(__dirname, '../uploads', file.filePath)
@@ -450,13 +485,19 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('projec
 })
 
 // 预览采购附件（图片/PDF/Word/Excel）
-router.get('/files/:fileId/preview', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateFileToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementFile.findFirst({ where: { id: fileId, deletedAt: null } })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
     }
+
+    // 数据权限：通过附件所属采购单校验访问权
+    if (!(await canAccessProcurement(file.procurementId, req.user!.id))) {
+      return res.status(403).json({ error: '无权访问该采购单的附件' })
+    }
+
     const filePath = path.resolve(path.join(__dirname, '../uploads', file.filePath))
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在于磁盘' })
@@ -473,10 +514,15 @@ router.get('/files/:fileId/preview', authenticateToken, checkPermission('project
 router.delete('/files/:fileId', authenticateToken, checkPermission('project:procurement:edit'), logOperation('采购管理', 'DELETE_FILE'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
-    
+
     const file = await prisma.procurementFile.findFirst({ where: { id: fileId, deletedAt: null } })
     if (!file) {
       return res.status(404).json({ error: '文件不存在' })
+    }
+
+    // 数据权限：只有数据范围内可见的采购单才能删除附件
+    if (!(await canAccessProcurement(file.procurementId, req.user!.id))) {
+      return res.status(403).json({ error: '无权删除该采购单的附件' })
     }
 
     await prisma.procurementFile.update({ where: { id: fileId }, data: { deletedAt: new Date() } })
@@ -546,7 +592,7 @@ router.get('/items/:itemId/files', authenticateToken, checkPermission('project:p
 })
 
 // 下载采购明细附件
-router.get('/item-files/:fileId/download', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
+router.get('/item-files/:fileId/download', authenticateFileToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementItemFile.findFirst({ where: { id: fileId, deletedAt: null } })
@@ -568,7 +614,7 @@ router.get('/item-files/:fileId/download', authenticateToken, checkPermission('p
 })
 
 // 预览采购明细附件（图片/PDF/Word/Excel）
-router.get('/item-files/:fileId/preview', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
+router.get('/item-files/:fileId/preview', authenticateFileToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementItemFile.findFirst({ where: { id: fileId, deletedAt: null } })
@@ -664,7 +710,7 @@ router.get('/payments/:paymentId/files', authenticateToken, checkPermission('pro
 })
 
 // 下载采购付款记录附件
-router.get('/payment-files/:fileId/download', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
+router.get('/payment-files/:fileId/download', authenticateFileToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementPaymentFile.findFirst({ 
@@ -688,7 +734,7 @@ router.get('/payment-files/:fileId/download', authenticateToken, checkPermission
 })
 
 // 预览采购付款记录附件（图片/PDF/Word/Excel）
-router.get('/payment-files/:fileId/preview', authenticateToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
+router.get('/payment-files/:fileId/preview', authenticateFileToken, checkPermission('project:procurement:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.procurementPaymentFile.findFirst({ 

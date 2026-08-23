@@ -35,7 +35,9 @@ export function useWebSocket(onMessage: MessageHandler, enabled: boolean = true)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     // 开发环境连接后端 WebSocket 端口，生产环境通过 nginx 代理
     const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    const wsHost = isDev ? `${window.location.hostname}:5000` : window.location.hostname
+    // 生产环境跟随当前页面的端口（如群晖 8880），标准端口 80/443 时不带后缀
+    const port = window.location.port ? `:${window.location.port}` : ''
+    const wsHost = isDev ? `${window.location.hostname}:5000` : `${window.location.hostname}${port}`
     const wsUrl = `${protocol}//${wsHost}/ws?token=${encodeURIComponent(token)}&userId=${user.id}`
 
     try {

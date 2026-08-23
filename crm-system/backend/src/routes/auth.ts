@@ -93,7 +93,7 @@ async function getUserMenus(userId: number) {
 }
 
 // 登录
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body
 

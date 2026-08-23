@@ -1,7 +1,7 @@
 import prisma from '../lib/prisma'
 import { Router, Request } from 'express'
 import { isAdmin } from '../utils/permission'
-import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
+import { authenticateToken, authenticateFileToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
 import { logOperation } from '../middleware/logOperation'
 
@@ -26,6 +26,7 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), appl
       status = '',
       statusNot = '',
       organizationId = '',
+      contactId = '',
       search = '',
       isArchived = '',
       fullyPaid = '',
@@ -60,6 +61,11 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), appl
       where.organizationId = parseInt(organizationId as string)
     }
 
+    // 客户联系人筛选（项目管理/归档页下拉精确到联系人）
+    if (contactId) {
+      where.contactId = parseInt(contactId as string)
+    }
+
     // 搜索条件：用 AND 合并，避免覆盖上面的权限 OR 条件
     const conditions: any[] = []
     if (search) {
@@ -82,6 +88,31 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), appl
       const baseConditions = ['p."deletedAt" IS NULL']
       const params: any[] = []
       let paramIndex = 1
+
+      // 数据权限：先用 Prisma 解析当前用户可见的项目 id 集合。
+      // 原生 SQL 无法表达 dataScope 的 OR/嵌套团队条件，此前该分支会
+      // 静默丢弃这些条件导致越权（如 DEPARTMENT/TEAM 范围用户看到全部完结项目）
+      const scopeWhere = (req as any).dataScopeWhere || {}
+      if (Object.keys(scopeWhere).length > 0) {
+        const scoped = await prisma.project.findMany({
+          where: { deletedAt: null, ...scopeWhere },
+          select: { id: true }
+        })
+        const scopedIds = scoped.map(p => p.id)
+        if (scopedIds.length === 0) {
+          return res.json({
+            data: [],
+            pagination: {
+              total: 0,
+              page: parseInt(page as string),
+              pageSize: parseInt(pageSize as string),
+              totalPages: 0
+            }
+          })
+        }
+        baseConditions.push(`p.id IN (${scopedIds.map(() => `$${paramIndex++}`).join(',')})`)
+        params.push(...scopedIds)
+      }
 
       if (where.ownerId) {
         baseConditions.push(`p."ownerId" = $${paramIndex++}`)
@@ -107,6 +138,11 @@ router.get('/', authenticateToken, checkPermission('project:project:list'), appl
       if (organizationId) {
         baseConditions.push(`p."organizationId" = $${paramIndex++}`)
         params.push(parseInt(organizationId as string))
+      }
+
+      if (contactId) {
+        baseConditions.push(`p."contactId" = $${paramIndex++}`)
+        params.push(parseInt(contactId as string))
       }
 
       const whereClause = baseConditions.length > 0 ? `WHERE ${baseConditions.join(' AND ')}` : ''
@@ -436,6 +472,17 @@ router.put('/:id', authenticateToken, checkPermission('project:project:edit'), l
       return res.status(403).json({ error: '已归档项目不能编辑' })
     }
 
+    // 所有权校验：只有项目负责人、团队成员或管理员可以编辑
+    if (!(await isAdmin(req.user!.id))) {
+      const isOwner = currentProject.ownerId === req.user!.id
+      const isTeamMember = await prisma.projectTeamMember.findFirst({
+        where: { projectId: parseInt(id), userId: req.user!.id, deletedAt: null }
+      })
+      if (!isOwner && !isTeamMember) {
+        return res.status(403).json({ error: '只有项目负责人或团队成员才能编辑' })
+      }
+    }
+
     // 项目状态流转规则
     const validTransitions: Record<string, string[]> = {
       'IN_PROGRESS': ['COMPLETED', 'CANCELLED'],
@@ -464,8 +511,9 @@ router.put('/:id', authenticateToken, checkPermission('project:project:edit'), l
       contactId: contactId !== undefined ? (contactId || null) : undefined,
       status,
       budget,
-      startDate: startDate ? new Date(startDate) : null,
-      endDate: endDate ? new Date(endDate) : null,
+      // 未传字段保持原值（undefined 时 Prisma 跳过更新），显式传空才清除
+      startDate: startDate !== undefined ? (startDate ? new Date(startDate) : null) : undefined,
+      endDate: endDate !== undefined ? (endDate ? new Date(endDate) : null) : undefined,
       description
     }
 
@@ -525,6 +573,15 @@ router.put('/:id/archive', authenticateToken, checkPermission('project:project:e
         archivedAt: isArchived ? new Date() : null
       }
     })
+
+    // 自动写入工作日报（Notes）：归档/取消归档是里程碑事件
+    autoWriteProjectRecord(
+      req.user!.id,
+      project.name,
+      'ARCHIVE',
+      id,
+      isArchived ? undefined : '取消归档，恢复进行中'
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
 
     res.json(updatedProject)
   } catch (error) {
@@ -599,7 +656,7 @@ router.delete('/:id', authenticateToken, checkPermission('project:project:edit')
 })
 
 // 下载项目文件
-router.get('/files/:fileId/download', authenticateToken, checkPermission('project:project:list'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateFileToken, checkPermission('project:project:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -637,7 +694,7 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('projec
 })
 
 // 预览项目文件（图片/PDF/Word/Excel）
-router.get('/files/:fileId/preview', authenticateToken, checkPermission('project:project:list'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateFileToken, checkPermission('project:project:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -710,6 +767,15 @@ router.post('/:id/files', authenticateToken, checkPermission('project:project:ed
         })
       )
     )
+
+    // 自动写入工作日报（Notes）
+    autoWriteProjectRecord(
+      req.user!.id,
+      project.name,
+      'UPLOAD',
+      projectId,
+      `上传文件：${files.map(f => f.originalname).join('、')}`
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
 
     res.status(201).json({
       message: `成功上传 ${files.length} 个文件`,
@@ -829,6 +895,21 @@ router.get('/:id/team', authenticateToken, checkPermission('project:project:list
 })
 
 // 添加项目团队成员
+// 团队管理权限：项目负责人、团队成员或管理员
+async function canManageProjectTeam(projectId: number, userId: number): Promise<boolean> {
+  if (await isAdmin(userId)) return true
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null },
+    select: { ownerId: true }
+  })
+  if (!project) return false
+  if (project.ownerId === userId) return true
+  const member = await prisma.projectTeamMember.findFirst({
+    where: { projectId, userId, deletedAt: null }
+  })
+  return !!member
+}
+
 router.post('/:id/team', authenticateToken, checkPermission('project:project:edit'), logOperation('项目管理', 'CREATE'), async (req: AuthRequest, res) => {
   try {
     const projectId = parseInt(req.params.id as string)
@@ -842,6 +923,11 @@ router.post('/:id/team', authenticateToken, checkPermission('project:project:edi
     const project = await prisma.project.findFirst({ where: { id: projectId, deletedAt: null } })
     if (!project) {
       return res.status(404).json({ error: '项目不存在' })
+    }
+
+    // 所有权校验：只有项目负责人、团队成员或管理员可以管理团队
+    if (!(await canManageProjectTeam(projectId, req.user!.id))) {
+      return res.status(403).json({ error: '只有项目负责人或团队成员才能管理项目团队' })
     }
 
     // 检查用户是否存在
@@ -891,6 +977,15 @@ router.post('/:id/team', authenticateToken, checkPermission('project:project:edi
       })
     }
 
+    // 自动写入工作日报（Notes）
+    autoWriteProjectRecord(
+      req.user!.id,
+      project.name,
+      'ADD_MEMBER',
+      projectId,
+      `新成员：${member.user?.name || user.name}${responsibility ? `（${responsibility}）` : ''}`
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
+
     res.status(201).json(member)
   } catch (error) {
     logger.error('Add project team member error:', error)
@@ -902,11 +997,18 @@ router.post('/:id/team', authenticateToken, checkPermission('project:project:edi
 router.put('/:id/team/:memberId', authenticateToken, checkPermission('project:project:edit'), logOperation('项目管理', 'UPDATE'), async (req: AuthRequest, res) => {
   try {
     const memberId = parseInt(req.params.memberId as string)
+    const projectId = parseInt(req.params.id as string)
     const { responsibility, leaveDate } = req.body
 
-    const member = await prisma.projectTeamMember.findFirst({ where: { id: memberId, deletedAt: null } })
+    // 同时校验 memberId 与路由中的 projectId 匹配，防止跨项目越权操作
+    const member = await prisma.projectTeamMember.findFirst({ where: { id: memberId, projectId, deletedAt: null } })
     if (!member) {
       return res.status(404).json({ error: '团队成员不存在' })
+    }
+
+    // 所有权校验：只有项目负责人、团队成员或管理员可以管理团队
+    if (!(await canManageProjectTeam(projectId, req.user!.id))) {
+      return res.status(403).json({ error: '只有项目负责人或团队成员才能管理项目团队' })
     }
 
     const updated = await prisma.projectTeamMember.update({
@@ -931,10 +1033,17 @@ router.put('/:id/team/:memberId', authenticateToken, checkPermission('project:pr
 router.delete('/:id/team/:memberId', authenticateToken, checkPermission('project:project:edit'), logOperation('项目管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const memberId = parseInt(req.params.memberId as string)
+    const projectId = parseInt(req.params.id as string)
 
-    const member = await prisma.projectTeamMember.findFirst({ where: { id: memberId, deletedAt: null } })
+    // 同时校验 memberId 与路由中的 projectId 匹配，防止跨项目越权操作
+    const member = await prisma.projectTeamMember.findFirst({ where: { id: memberId, projectId, deletedAt: null } })
     if (!member) {
       return res.status(404).json({ error: '团队成员不存在' })
+    }
+
+    // 所有权校验：只有项目负责人、团队成员或管理员可以管理团队
+    if (!(await canManageProjectTeam(projectId, req.user!.id))) {
+      return res.status(403).json({ error: '只有项目负责人或团队成员才能管理项目团队' })
     }
 
     await prisma.projectTeamMember.update({ where: { id: memberId }, data: { deletedAt: new Date() } })
@@ -964,7 +1073,7 @@ const projectLabelMap: Record<string, string> = {
 }
 
 // 导出项目 Excel
-router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('project:project:list'), applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.project.findMany({
@@ -972,7 +1081,10 @@ router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'own
       include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
-    exportExcel(res, '项目列表.xlsx', '项目', projectColumns, data)
+    // 金额权限：与列表接口一致，无权限用户导出的预算列脱敏
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    const processed = canSeeAmount ? data : data.map(filterProjectAmount)
+    exportExcel(res, '项目列表.xlsx', '项目', projectColumns, processed)
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })
@@ -980,7 +1092,7 @@ router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'own
 })
 
 // 导出项目 CSV
-router.get('/export/csv', authenticateToken, applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
+router.get('/export/csv', authenticateToken, checkPermission('project:project:list'), applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.project.findMany({
@@ -988,7 +1100,10 @@ router.get('/export/csv', authenticateToken, applyDataScope({ ownerField: 'owner
       include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
-    exportCSV(res, '项目列表.csv', projectColumns, data)
+    // 金额权限：与列表接口一致，无权限用户导出的预算列脱敏
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    const processed = canSeeAmount ? data : data.map(filterProjectAmount)
+    exportCSV(res, '项目列表.csv', projectColumns, processed)
   } catch (error) {
     logger.error('Export CSV error:', error)
     res.status(500).json({ error: '导出失败' })

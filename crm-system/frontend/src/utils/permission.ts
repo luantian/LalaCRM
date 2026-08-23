@@ -1,6 +1,9 @@
 /**
  * 权限工具函数
  * 基于若依模式的前端权限控制
+ * 
+ * 注意：此文件为纯函数版（非Hook），供无法使用Hook的场景调用。
+ * 管理员判断统一为：permissions 含 '*' 或 role/roleKey 为 ADMIN（两者取并集）
  */
 
 import { ROLE_ADMIN } from '../constants'
@@ -17,13 +20,15 @@ export const checkPermission = (permission: string): boolean => {
   try {
     const user = JSON.parse(userStr)
     
-    // 管理员拥有所有权限
+    // 检查权限列表（管理员在 permissions 中以 '*' 表示）
+    const permissions: string[] = user.permissions || []
+    if (permissions.includes('*')) return true
+
+    // 兼容旧逻辑：role/roleKey 为 ADMIN 也视为有全部权限
     if (user.role === ROLE_ADMIN || user.roleKey === ROLE_ADMIN) {
       return true
     }
 
-    // 检查权限列表
-    const permissions: string[] = user.permissions || []
     return permissions.includes(permission)
   } catch (error) {
     console.error('权限检查失败:', error)
@@ -53,6 +58,7 @@ export const checkAllPermissions = (permissions: string[]): boolean => {
 
 /**
  * 检查用户是否是管理员
+ * 统一逻辑：permissions 含 '*' 或 role/roleKey 为 ADMIN
  * @returns boolean
  */
 export const isAdmin = (): boolean => {
@@ -61,6 +67,7 @@ export const isAdmin = (): boolean => {
 
   try {
     const user = JSON.parse(userStr)
+    if (user.permissions && user.permissions.includes('*')) return true
     return user.role === ROLE_ADMIN || user.roleKey === ROLE_ADMIN
   } catch (error) {
     console.error('管理员检查失败:', error)

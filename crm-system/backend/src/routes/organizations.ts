@@ -2,9 +2,9 @@ import prisma from '../lib/prisma'
 import { Router, Request, Response } from 'express'
 import { body, param, query } from 'express-validator'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
+import { applyDataScope } from '../middleware/dataScope'
 import { validate } from '../middleware/validation'
 import { logOperation } from '../middleware/logOperation'
-import { applyDataScope } from '../middleware/dataScope'
 import logger from '../utils/logger'
 import { autoWriteOrganizationRecord } from '../utils/autoDailyReport'
 
@@ -415,9 +415,9 @@ router.get(
 router.get(
   '/:id',
   authenticateToken,
-  applyDataScope({ ownerField: 'ownerId' }),
   param('id').isInt({ min: 1 }).withMessage('ID必须是正整数'),
   validate,
+  applyDataScope({ ownerField: 'ownerId' }),
   async (req: AuthRequest, res: Response) => {
     try {
       const id = Number(req.params.id)

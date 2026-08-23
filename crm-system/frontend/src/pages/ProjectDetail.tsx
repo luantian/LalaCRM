@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Avatar, Empty, Spin, Result, Switch } from 'antd'
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, EyeOutlined } from '@ant-design/icons'
-import { getProjectDetail, createContract, updateContract, deleteContract, getProjectFiles, updateProject, getOrganizationsSimple, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getReceipts, createReceipt, updateReceipt, deleteReceipt, uploadReceiptFiles, deleteReceiptFile, downloadReceiptFileUrl, previewReceiptFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, downloadProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, downloadProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, downloadProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, updateProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, openFilePreview, isPreviewableFile, downloadFile } from '../services/api'
+import { getProjectDetail, createContract, updateContract, deleteContract, updateProject, getOrganizationsSimple, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getReceipts, createReceipt, updateReceipt, deleteReceipt, uploadReceiptFiles, deleteReceiptFile, downloadReceiptFileUrl, previewReceiptFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, downloadProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, downloadProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, downloadProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, openFilePreview, isPreviewableFile, downloadFile } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
+import { TeamMembersPanel } from '../components/TeamMembersPanel'
 import { usePermission } from '../hooks/usePermission'
 
 const { TextArea } = Input
@@ -63,8 +64,7 @@ function ProjectDetail() {
   const [contractFileUploading, setContractFileUploading] = useState<Record<number, boolean>>({})
 
   // 文件管理状态
-  const [, setFiles] = useState<any[]>([])
-  const currentPhase = 'PRE_SALES'
+  // （此前的 files/currentPhase 为死代码：每次挂载都请求文件列表但结果从未渲染，已移除）
 
   // 采购管理状态
   const [procurements, setProcurements] = useState<any[]>([])
@@ -110,9 +110,6 @@ function ProjectDetail() {
 
   // 项目团队状态
   const [teamMembers, setTeamMembers] = useState<any[]>([])
-  const [teamModalVisible, setTeamModalVisible] = useState(false)
-  const [editingMember, setEditingMember] = useState<any>(null)
-  const [teamForm] = Form.useForm()
   const [allUsers, setAllUsers] = useState<any[]>([])
 
 
@@ -139,9 +136,10 @@ function ProjectDetail() {
         setProject(data)
       } catch (error: any) {
         console.error('获取项目详情失败:', error)
-        if (error?.response?.status === 404) {
+        // 拦截器 reject 的对象带 status 字段（404 不存在 / 403 数据范围外 / 其他错误）
+        if (error?.status === 404) {
           setError(true)
-        } else if (error?.response?.status === 403) {
+        } else if (error?.status === 403) {
           setError(true)
         } else {
           setError(true)
@@ -161,16 +159,8 @@ function ProjectDetail() {
     } catch (error) { console.error('获取组织列表失败:', error) }
   }
 
-  const fetchFiles = async () => {
-    try {
-      const data: any = await getProjectFiles(parseInt(id!), currentPhase)
-      setFiles(data || [])
-    } catch (error) { console.error('获取文件列表失败:', error) }
-  }
-
   useEffect(() => {
     if (id) {
-      fetchFiles()
       fetchOrganizations()
       fetchInfoRecords()
       // 只有有采购权限才加载采购数据
@@ -179,10 +169,6 @@ function ProjectDetail() {
       }
     }
   }, [id])
-
-  useEffect(() => {
-    if (id) fetchFiles()
-  }, [currentPhase])
 
   const refreshProject = async () => {
     try {
@@ -449,7 +435,7 @@ function ProjectDetail() {
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
         <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingOrderItem(r); orderForm.setFieldsValue({ ...r, unitPrice: Number(r.unitPrice), deliveryDate: r.deliveryDate ? dayjs(r.deliveryDate) : null }); setOrderModalVisible(true) }} disabled={isArchived}>编辑</Button>
-        <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteOrderItem(r.id); if (orderContractId) fetchOrderItems(orderContractId) }}>
+        <Popconfirm title="确定要删除吗?" onConfirm={async () => { try { await deleteOrderItem(r.id); if (orderContractId) fetchOrderItems(orderContractId) } catch (e: any) { message.error(e?.error || '删除失败') } }}>
           <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
         </Popconfirm>
       </Space>
@@ -478,7 +464,7 @@ function ProjectDetail() {
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
         <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingReceipt(r); receiptForm.setFieldsValue({ ...r, amount: Number(r.amount), receiptDate: dayjs(r.receiptDate) }); setReceiptModalVisible(true) }} disabled={isArchived}>编辑</Button>
-        <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteReceipt(r.id); if (receiptContractId) fetchReceipts(receiptContractId) }}>
+        <Popconfirm title="确定要删除吗?" onConfirm={async () => { try { await deleteReceipt(r.id); if (receiptContractId) fetchReceipts(receiptContractId) } catch (e: any) { message.error(e?.error || '删除失败') } }}>
           <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
         </Popconfirm>
       </Space>
@@ -509,7 +495,7 @@ function ProjectDetail() {
     { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
       <Space size={0}>
         <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setEditingShipment(r); shipmentForm.setFieldsValue({ ...r, shipDate: dayjs(r.shipDate), receiveDate: r.receiveDate ? dayjs(r.receiveDate) : null }); setShipmentModalVisible(true) }} disabled={isArchived}>编辑</Button>
-        <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteShipment(r.id); if (shipmentContractId) fetchShipments(shipmentContractId) }}>
+        <Popconfirm title="确定要删除吗?" onConfirm={async () => { try { await deleteShipment(r.id); if (shipmentContractId) fetchShipments(shipmentContractId) } catch (e: any) { message.error(e?.error || '删除失败') } }}>
           <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
         </Popconfirm>
       </Space>
@@ -594,56 +580,26 @@ function ProjectDetail() {
   // ===== 项目团队 =====
   const fetchTeamMembers = async () => {
     try {
-      const res: any = await getProjectTeam(parseInt(id!))
+      // 同时拉取成员列表与候选用户（共享组件 TeamMembersPanel 的数据源）
+      const [res, users]: any[] = await Promise.all([
+        getProjectTeam(parseInt(id!)),
+        getUserDropdown().catch(() => null),
+      ])
       setTeamMembers(res || [])
+      if (Array.isArray(users)) setAllUsers(users)
+      else if (Array.isArray(users?.data)) setAllUsers(users.data)
     } catch (e) { console.error('获取团队成员失败:', e) }
   }
-  const fetchAllUsers = async () => {
-    try {
-      const res: any = await getUserDropdown()
-      setAllUsers(Array.isArray(res) ? res : (res.data || []))
-    } catch (e) { console.error('获取用户列表失败:', e) }
-  }
-  const handleAddTeamMember = () => {
-    setEditingMember(null)
-    teamForm.resetFields()
-    fetchAllUsers()
-    setTeamModalVisible(true)
-  }
-  const handleEditTeamMember = (member: any) => {
-    setEditingMember(member)
-    teamForm.setFieldsValue(member)
-    fetchAllUsers()
-    setTeamModalVisible(true)
-  }
-  const handleTeamSubmit = async () => {
-    try {
-      const values = await teamForm.validateFields()
-      if (editingMember) {
-        await updateProjectTeamMember(parseInt(id!), editingMember.id, values)
-        message.success('更新成功')
-      } else {
-        // 多选：批量添加
-        const userIds = Array.isArray(values.userId) ? values.userId : [values.userId]
-        for (const uid of userIds) {
-          await addProjectTeamMember(parseInt(id!), { userId: uid, responsibility: values.responsibility })
-        }
-        message.success(`成功添加 ${userIds.length} 名成员`)
-      }
-      setTeamModalVisible(false)
-      teamForm.resetFields()
-      fetchTeamMembers()
-    } catch (error: any) {
-      if (error?.errorFields) return // 表单校验失败，不提示
-      message.error(error?.error || '操作失败')
+  // 团队成员操作（共享组件回调）
+  const handleTeamAdd = async (userIds: number[]) => {
+    for (const uid of userIds) {
+      await addProjectTeamMember(parseInt(id!), { userId: uid })
     }
+    fetchTeamMembers()
   }
-  const handleRemoveMember = async (memberId: number) => {
-    try {
-      await removeProjectTeamMember(parseInt(id!), memberId)
-      message.success('已移除')
-      fetchTeamMembers()
-    } catch (e: any) { message.error(e?.error || '移除失败') }
+  const handleTeamRemove = async (memberId: number) => {
+    await removeProjectTeamMember(parseInt(id!), memberId)
+    fetchTeamMembers()
   }
 
   const handleAddProcurement = () => {
@@ -1209,7 +1165,7 @@ function ProjectDetail() {
                         },
                         { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
                           <Space size={0}>
-                            <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteProcurementItem(r.id); handleViewProcurement(record) }}>
+                            <Popconfirm title="确定要删除吗?" onConfirm={async () => { try { await deleteProcurementItem(r.id); handleViewProcurement(record) } catch (e: any) { message.error(e?.error || '删除失败') } }}>
                               <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
                             </Popconfirm>
                           </Space>
@@ -1292,7 +1248,7 @@ function ProjectDetail() {
                         { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
                           <Space size={0}>
                             <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setCurrentProcurement(record); setEditingProcPayment(r); procPaymentForm.setFieldsValue({ ...r, amount: Number(r.amount), paymentDate: dayjs(r.paymentDate) }); setProcPaymentModalVisible(true) }} disabled={isArchived}>编辑</Button>
-                            <Popconfirm title="确定要删除吗?" onConfirm={async () => { await deleteProcurementPayment(r.id); fetchProcPayments(record.id) }}>
+                            <Popconfirm title="确定要删除吗?" onConfirm={async () => { try { await deleteProcurementPayment(r.id); fetchProcPayments(record.id) } catch (e: any) { message.error(e?.error || '删除失败') } }}>
                               <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
                             </Popconfirm>
                           </Space>
@@ -1332,7 +1288,7 @@ function ProjectDetail() {
             { title: '操作', key: 'action', width: 160, render: (_: any, record: any) => (
               <Space size={0}>
                 <Button type="link" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEditProcurement(record) }} disabled={isArchived}>编辑</Button>
-                <Popconfirm title="确定删除此采购单？" onConfirm={async (e) => { e?.stopPropagation(); await deleteProcurement(record.id); fetchProcurements() }}>
+                <Popconfirm title="确定删除此采购单？" onConfirm={async (e) => { e?.stopPropagation(); try { await deleteProcurement(record.id); fetchProcurements() } catch (err: any) { message.error(err?.error || '删除失败') } }}>
                   <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} disabled={isArchived}>删除</Button>
                 </Popconfirm>
               </Space>
@@ -1342,37 +1298,13 @@ function ProjectDetail() {
       </div>
     )},
     { key: 'team', label: '团队成员', children: (
-      <div>
-        <div style={{ marginBottom: 16 }}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { handleAddTeamMember(); fetchTeamMembers() }} disabled={isArchived}>添加成员</Button>
-        </div>
-        <Table
-          columns={[
-            { title: '姓名', key: 'name', render: (_: any, r: any) => r.user?.name || '-' },
-            { title: '邮箱', key: 'email', render: (_: any, r: any) => r.user?.email || '-' },
-            { title: '系统角色', key: 'role', render: (_: any, r: any) => {
-              const roles = r.user?.roles || []
-              if (roles.length > 0) {
-                return roles.map((role: any) => role.displayName || role.name).join('、')
-              }
-              return '-'
-            }},
-            // 职责列暂时隐藏
-            // { title: '职责', dataIndex: 'responsibility', key: 'responsibility', ellipsis: true },
-            { title: '加入时间', dataIndex: 'joinDate', key: 'joinDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
-            { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
-              <Space size={0}>
-                <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditTeamMember(r)} disabled={isArchived}>编辑</Button>
-                <Popconfirm title="确定要删除吗?" onConfirm={() => handleRemoveMember(r.id)}>
-                  <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>移除</Button>
-                </Popconfirm>
-              </Space>
-            )}
-          ]}
-          dataSource={teamMembers} rowKey="id" pagination={false}
-          locale={{ emptyText: '暂无团队成员，点击"添加成员"开始组建项目团队' }}
-        />
-      </div>
+      <TeamMembersPanel
+        members={teamMembers}
+        users={allUsers}
+        onAdd={handleTeamAdd}
+        onRemove={handleTeamRemove}
+        disabled={isArchived}
+      />
     )}
   ]
 
@@ -1658,29 +1590,7 @@ function ProjectDetail() {
         </Form>
       </Modal>
 
-      {/* 团队成员 Modal */}
-      <Modal title={editingMember ? '编辑成员' : '添加团队成员'} open={teamModalVisible} onOk={handleTeamSubmit} onCancel={() => { setTeamModalVisible(false); teamForm.resetFields() }}>
-        <Form form={teamForm} layout="vertical">
-          <Form.Item name="userId" label="选择成员" rules={[{ required: true, message: '请选择成员' }]}>
-            <Select
-              mode={editingMember ? undefined : 'multiple'}
-              showSearch
-              optionFilterProp="children"
-              placeholder={editingMember ? '搜索选择成员' : '可多选，搜索选择成员'}
-              disabled={!!editingMember}
-              maxTagCount={5}
-            >
-              {allUsers.filter((u: any) => !editingMember && !teamMembers.some((m: any) => m.userId === u.id)).map((u: any) => (
-                <Select.Option key={u.id} value={u.id}>{u.name} ({u.username})</Select.Option>
-              ))}
-              {editingMember && allUsers.map((u: any) => (
-                <Select.Option key={u.id} value={u.id}>{u.name} ({u.username})</Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item name="responsibility" label="职责描述" style={{ display: 'none' }}><TextArea rows={2} placeholder="描述该成员在项目中的职责" /></Form.Item>
-        </Form>
-      </Modal>
+      {/* 团队成员弹窗由共享组件 TeamMembersPanel 内部管理 */}
     </div>
   )
 }

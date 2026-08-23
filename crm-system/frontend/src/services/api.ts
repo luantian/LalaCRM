@@ -66,8 +66,10 @@ api.interceptors.response.use(
       }
     }
 
-    // 401 或 403（令牌无效/过期）→ 清除登录信息并跳转登录页
-    if (status === 401 || (status === 403 && (msg.includes('认证令牌') || msg.includes('登录')))) {
+    // 401（令牌缺失/无效/过期/用户不存在）→ 清除登录信息并跳转登录页。
+    // 此前 403 分支靠中文文案匹配判断，后端调整文案即失效；403 是明确的
+    // "权限不足"，不应触发登出
+    if (status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       localStorage.removeItem('menus')
@@ -76,12 +78,19 @@ api.interceptors.response.use(
         window.location.href = '/login'
       }
     }
-    // 保留 error.response?.data?.error 的访问路径，同时保留 e?.error 的向后兼容
+    // 构造统一的 reject 对象：保留响应体原有字段（e.error / e.xxx 向后兼容），
+    // 并附加 status，供组件按 error.status 区分 403/404 等场景
     if (error.response?.data) {
-      error.response.data.error = error.response.data.error || msg
-      return Promise.reject(error.response.data)
+      const body = typeof error.response.data === 'object' && error.response.data !== null
+        ? { ...error.response.data }
+        : { data: error.response.data }
+      body.status = status
+      body.error = body.error || msg || '请求失败'
+      return Promise.reject(body)
     }
-    return Promise.reject(error)
+    const fallback: any = new Error(msg || '网络请求失败')
+    fallback.status = status
+    return Promise.reject(fallback)
   }
 )
 
@@ -334,6 +343,8 @@ export const getTodayCheckIn = () => api.get('/check-ins/today')
 export const checkIn = (data: { period?: 'MORNING' | 'EVENING' } = {}) => api.post('/check-ins', data)
 export const makeupCheckIn = (data: { date: string; notes?: string }) => api.post('/check-ins/makeup', data)
 export const getCheckInStats = (params?: any) => api.get('/check-ins/stats', { params })
+export const getTeamCheckInStats = (params?: any) => api.get('/check-ins/team-stats', { params })
+export const getTodayTeamCheckIn = (params?: any) => api.get('/check-ins/today-team', { params })
 export const getHolidays = (params?: any) => api.get('/check-ins/holidays', { params })
 
 // 用户和角色
@@ -417,6 +428,7 @@ export const deleteOrganizationContact = (orgId: number, contactId: number) => a
 // ==================== 任务管理 ====================
 export const getTasks = (params?: any) => api.get('/tasks', { params })
 export const createTask = (data: any) => api.post('/tasks', data)
+export const getTaskById = (id: number) => api.get(`/tasks/${id}`)
 export const updateTask = (id: number, data: any) => api.put(`/tasks/${id}`, data)
 export const deleteTask = (id: number) => api.delete(`/tasks/${id}`)
 

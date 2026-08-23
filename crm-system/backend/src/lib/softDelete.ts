@@ -58,42 +58,46 @@ export const softDeleteExtension = Prisma.defineExtension({
       async findMany({ model, args, query }) {
         if (SOFT_DELETE_MODELS.has(model) && !hasDeletedAtFilter(args?.where)) {
           args = args ?? {}
-          args.where = { ...args.where, deletedAt: null }
+          if (!args.where) args.where = {}
+          args.where = Object.assign({}, args.where, { deletedAt: null })
         }
         return query(args)
       },
       async findFirst({ model, args, query }) {
         if (SOFT_DELETE_MODELS.has(model) && !hasDeletedAtFilter(args?.where)) {
           args = args ?? {}
-          args.where = { ...args.where, deletedAt: null }
+          if (!args.where) args.where = {}
+          args.where = Object.assign({}, args.where, { deletedAt: null })
         }
         return query(args)
       },
       async findUnique({ model, args, query }) {
         if (SOFT_DELETE_MODELS.has(model) && !hasDeletedAtFilter(args?.where)) {
           args = args ?? {}
-          args.where = { ...args.where, deletedAt: null }
+          ;(args as any).where = Object.assign({}, args?.where, { deletedAt: null })
         }
         return query(args)
       },
       async count({ model, args, query }) {
         if (SOFT_DELETE_MODELS.has(model) && !hasDeletedAtFilter(args?.where)) {
           args = args ?? {}
-          args.where = { ...args.where, deletedAt: null }
+          if (!args.where) args.where = {}
+          args.where = Object.assign({}, args.where, { deletedAt: null })
         }
         return query(args)
       },
       async update({ model, args, query }) {
         if (SOFT_DELETE_MODELS.has(model) && !hasDeletedAtFilter(args?.where)) {
           args = args ?? {}
-          args.where = { ...args.where, deletedAt: null }
+          ;(args as any).where = Object.assign({}, args?.where, { deletedAt: null })
         }
         return query(args)
       },
       async updateMany({ model, args, query }) {
         if (SOFT_DELETE_MODELS.has(model) && !hasDeletedAtFilter(args?.where)) {
           args = args ?? {}
-          args.where = { ...args.where, deletedAt: null }
+          if (!args.where) args.where = {}
+          args.where = Object.assign({}, args.where, { deletedAt: null })
         }
         return query(args)
       },

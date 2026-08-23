@@ -1,9 +1,9 @@
 import prisma from '../lib/prisma'
 import { Router, Request } from 'express'
 import { isAdmin } from '../utils/permission'
-import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
-import { upload } from '../middleware/upload'
+import { authenticateToken, authenticateFileToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { applyDataScope } from '../middleware/dataScope'
+import { upload } from '../middleware/upload'
 import { logOperation } from '../middleware/logOperation'
 import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
@@ -17,7 +17,7 @@ import path from 'path'
 const router = Router()
 
 // 获取报价单列表（支持分页、筛选）
-router.get('/', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId' }), sortValidation(['name', 'version', 'totalAmount', 'status', 'validUntil', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'opportunity', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), sortValidation(['name', 'version', 'totalAmount', 'status', 'validUntil', 'createdAt', 'updatedAt']), async (req: AuthRequest, res) => {
   try {
     const {
       page = '1',
@@ -83,7 +83,7 @@ router.get('/', authenticateToken, checkPermission('crm:quotation:list'), applyD
 })
 
 // 报价单统计
-router.get('/stats/overview', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
+router.get('/stats/overview', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'opportunity', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const [total, draft, submitted, approved, rejected, won, lost] = await Promise.all([
@@ -137,7 +137,7 @@ router.get('/opportunity/:oppId/versions', authenticateToken, checkPermission('c
 })
 
 // 获取报价单详情
-router.get('/:id', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
+router.get('/:id', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'opportunity', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
     const dataScopeWhere = (req as any).dataScopeWhere || {}
@@ -233,7 +233,7 @@ router.post('/', authenticateToken, checkPermission('crm:quotation:edit'), logOp
     })
 
     if (req.user?.id) {
-      autoWriteQuotationRecord(req.user.id, quotation.name, 'CREATE', quotation.id, quotation.opportunityId).catch((err) => logger.warn('Auto daily report failed:', err.message))
+      autoWriteQuotationRecord(req.user.id, quotation.name, 'CREATE', quotation.id, quotation.opportunityId, quotation.notes).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
     res.status(201).json(quotation)
   } catch (error) {
@@ -490,7 +490,7 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('crm:quot
 })
 
 // 下载报价单附件
-router.get('/files/:fileId/download', authenticateToken, checkPermission('crm:quotation:list'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateFileToken, checkPermission('crm:quotation:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.quotationFile.findFirst({ 
@@ -520,7 +520,7 @@ router.get('/files/:fileId/download', authenticateToken, checkPermission('crm:qu
 })
 
 // 预览报价单附件（图片/PDF/Word/Excel）
-router.get('/files/:fileId/preview', authenticateToken, checkPermission('crm:quotation:list'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/preview', authenticateFileToken, checkPermission('crm:quotation:list'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.quotationFile.findFirst({ 
@@ -571,7 +571,7 @@ const quotationLabelMap: Record<string, string> = {
 }
 
 // 导出报价单 Excel
-router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'opportunity', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.quotation.findMany({
@@ -579,7 +579,10 @@ router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'own
       include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
-    exportExcel(res, '报价单列表.xlsx', '报价单', quotationColumns, data)
+    // 金额权限：与列表接口一致，无权限用户导出的金额列脱敏
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    const processed = canSeeAmount ? data : data.map(filterQuotationAmount)
+    exportExcel(res, '报价单列表.xlsx', '报价单', quotationColumns, processed)
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })
@@ -587,7 +590,7 @@ router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'own
 })
 
 // 导出报价单 CSV
-router.get('/export/csv', authenticateToken, applyDataScope({ ownerField: 'ownerId' }), async (req: AuthRequest, res) => {
+router.get('/export/csv', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'opportunity', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.quotation.findMany({
@@ -595,7 +598,10 @@ router.get('/export/csv', authenticateToken, applyDataScope({ ownerField: 'owner
       include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
-    exportCSV(res, '报价单列表.csv', quotationColumns, data)
+    // 金额权限：与列表接口一致，无权限用户导出的金额列脱敏
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    const processed = canSeeAmount ? data : data.map(filterQuotationAmount)
+    exportCSV(res, '报价单列表.csv', quotationColumns, processed)
   } catch (error) {
     logger.error('Export CSV error:', error)
     res.status(500).json({ error: '导出失败' })

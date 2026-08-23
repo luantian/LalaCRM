@@ -36,15 +36,19 @@ export default defineConfig({
     }
   },
   build: {
-    // 提高 chunk 大小 警告阈值（antd 本身很大）
-    chunkSizeWarningLimit: 1000,
+    // antd + rc-* + icons 存在双向依赖，强行拆分会触发 rollup 循环 chunk
+    // 警告（有运行时初始化顺序风险），因此整块打包为 vendor-antd。
+    // 该 chunk 内容稳定、浏览器长缓存，且 gzip 后约 360kB，非首屏瓶颈
+    chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
-        // 将大型第三方库单独打包，利用浏览器缓存
+        // 将大型第三方库单独打包，利用浏览器缓存。
+        // 图表库（recharts/d3）仅 Dashboard 异步引用，自动进入异步 chunk，不阻塞首屏
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
           'vendor-antd': ['antd', '@ant-design/icons'],
-          'vendor-utils': ['axios', 'dayjs', 'recharts']
+          'vendor-utils': ['axios', 'dayjs'],
+          'vendor-charts': ['recharts']
         }
       }
     }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { TreeSelect } from 'antd'
+import { Select } from 'antd'
 import { getOrganizationsSimple } from '../services/api'
 
 interface OrgTreeSelectProps {
@@ -18,7 +18,10 @@ interface OrgNode {
 
 /**
  * 组织选择器
- * 使用 Select 展示扁平化的组织列表（无需权限）
+ * 数据源为平铺组织列表（/organizations/simple，无层级），使用普通 Select 渲染。
+ * 此前误用 TreeSelect：树形组件每行自带 28px 开关图标占位 + 缩进容器，
+ * 导致选项名称前出现大片空白（数据并无层级，占位毫无意义）。
+ * 组件名保留 OrgTreeSelect 以兼容既有引用。
  */
 export function OrgTreeSelect({
   value,
@@ -46,17 +49,16 @@ export function OrgTreeSelect({
   }, [])
 
   return (
-    <TreeSelect
+    <Select
       value={value || undefined}
       onChange={(v) => onChange?.(v ?? null)}
-      treeData={treeData}
+      options={treeData}
       placeholder={placeholder}
       disabled={disabled}
       loading={loading}
       allowClear={allowClear}
       showSearch
-      treeNodeFilterProp="title"
-      treeDefaultExpandAll
+      optionFilterProp="label"
       style={{ width: '100%', ...style }}
       notFoundContent={loading ? '加载中...' : '暂无组织'}
     />

@@ -37,7 +37,8 @@ export const routeComponents: Record<string, React.LazyExoticComponent<any>> = {
   '/business-trips': lazy(() => import('../pages/BusinessTripList')),
   '/business-trips/:id': lazy(() => import('../pages/BusinessTripDetail')),
   '/check-ins': lazy(() => import('../pages/CheckInList')),
-  
+  '/attendance-stats': lazy(() => import('../pages/AttendanceStats')),
+
   // 系统管理
   '/users': lazy(() => import('../pages/UserManagement')),
   '/roles': lazy(() => import('../pages/RoleManagement')),
@@ -52,26 +53,9 @@ export const routeComponents: Record<string, React.LazyExoticComponent<any>> = {
 }
 
 // 权限标识与路由路径的映射
-export const routePermissionMap: Record<string, string> = {
-  '/': 'portal:dashboard:view',
-  '/organizations': 'crm:organization:list',
-  '/opportunities': 'crm:opportunity:list',
-  '/quotations': 'crm:quotation:list',
-  '/projects': 'project:project:list',
-  '/sales': 'project:archive:list',
-  '/expenses': 'finance:expense:list',
-  '/daily-reports': 'office:dailyreport:list',
-  '/business-trips': 'office:trip:list',
-  '/check-ins': 'office:checkin:list',
-  '/users': 'system:user:list',
-  '/roles': 'system:role:list',
-  '/menus': 'system:menu:list',
-  '/departments': 'system:dept:list',
-  '/dicts': 'system:dict:list',
-  '/database-backup': 'system:backup:list',
-  '/operation-logs': 'monitor:operlog:list',
-  '/login-logs': 'monitor:loginlog:list',
-}
+// 注意：此 map 已废弃（死代码），canAccessRoute 走菜单 path 匹配，不读此 map。
+// 如需维护权限标识，请以后端 routes/*.ts 的 checkPermission(...) 和数据库 MenuItem.perm 为准。
+// export const routePermissionMap: Record<string, string> = { ... }
 
 /**
  * 从 localStorage 获取用户可见的路由
@@ -108,11 +92,12 @@ export function getVisibleRoutes(): string[] {
  * 检查用户是否有权访问指定路由
  */
 export function canAccessRoute(path: string): boolean {
-  // 管理员拥有所有路由权限
+  // 管理员拥有所有路由权限（统一逻辑：permissions 含 '*' 或 role/roleKey 为 ADMIN）
   const userStr = localStorage.getItem('user')
   if (userStr) {
     try {
       const user = JSON.parse(userStr)
+      if (user.permissions && user.permissions.includes('*')) return true
       if (user.role === ROLE_ADMIN || user.roleKey === ROLE_ADMIN) {
         return true
       }

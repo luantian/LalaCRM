@@ -1,3 +1,0 @@
--- 清空所有业务数据，保留系统配置数据
-TRUNCATE TABLE "DailyReportComment", "DailyReportTimeEntry", "DailyReport", "CheckIn", "TaskRecord", "Task", "ExpenseItem", "Expense", "BusinessTrip", "ContractPayment", "ContractShipment", "ContractOrderItem", "Contract", "InvoiceFile", "Invoice", "ProcurementPaymentFile", "ProcurementPayment", "ProcurementItemFile", "ProcurementItem", "Procurement", "QuotationItem", "Quotation", "OpportunityFollowUp", "OpportunityTeam", "Opportunity", "ProjectVersion", "ProjectTeam", "ProjectNote", "ProjectFile", "Project", "OrgContact", "Organization", "Notification", "OperationLog", "LoginLog" RESTART IDENTITY CASCADE;
-DELETE FROM "User" WHERE username != 'admin';

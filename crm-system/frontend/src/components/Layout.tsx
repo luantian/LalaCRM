@@ -19,7 +19,7 @@ import { useEffect, useState, useCallback } from 'react'
 import api from '../services/api'
 import { getIcon } from '../utils/iconRegistry'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { getNotifications, markNotificationRead, markAllNotificationsRead, getTasks, updateTask, safeJsonParse } from '../services/api'
+import { getNotifications, markNotificationRead, markAllNotificationsRead, getTaskById, updateTask, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 
 const { Header, Sider, Content } = AntLayout
@@ -124,6 +124,8 @@ function Layout() {
   }
 
   const handleWebSocketMessage = useCallback((data: any) => {
+    // 广播给页面组件（Dashboard 监听后自动刷新任务列表）
+    window.dispatchEvent(new CustomEvent('crm:ws-message', { detail: data }))
     if (['TASK_ASSIGNED', 'TASK_SUBMITTED', 'TASK_COMPLETED', 'TASK_REJECTED'].includes(data.type)) {
       fetchNotifications()
       const msgMap: Record<string, string> = {
@@ -145,9 +147,9 @@ function Layout() {
     if (!n.isRead) { await markNotificationRead(n.id); fetchNotifications() }
     if (n.taskId) {
       try {
-        const tasks: any = await getTasks()
-        const task = (Array.isArray(tasks) ? tasks : []).find((t: any) => t.id === n.taskId)
-        if (task) { setTaskDetail(task); setTaskDetailVisible(true) }
+        // 直接查单个任务（委派人和被指派人都能查到），避免列表查询漏掉自己委派的任务
+        const task: any = await getTaskById(n.taskId)
+        if (task?.id) { setTaskDetail(task); setTaskDetailVisible(true) }
       } catch (e) { /* ignore */ }
     }
   }
@@ -216,13 +218,16 @@ function Layout() {
     } catch (e: any) { message.error(e?.error || '提交失败') }
   }
 
+  // 统一的菜单过滤规则：隐藏的菜单、按钮类型、contracts（合同作为项目子tab不独立显示）
+  const isMenuVisible = (menu: MenuItem): boolean => {
+    if (menu.key === 'contracts') return false
+    if (menu.menuType === 'BUTTON') return false
+    return menu.isVisible
+  }
+
   const buildMenuItems = (menuList: MenuItem[]): MenuProps['items'] => {
     return menuList
-      .filter(menu => {
-        if (menu.menuType === 'BUTTON') return false
-        if (menu.key === 'contracts') return false
-        return menu.isVisible
-      })
+      .filter(isMenuVisible)
       .sort((a, b) => a.order - b.order)
       .map(menu => {
         const menuItem: any = {
@@ -238,7 +243,7 @@ function Layout() {
   }
 
   const menuItems = buildMenuItems(menus.filter(m => m.parentId === null).map(m => {
-    const children = menus.filter(c => c.parentId === m.id && c.isVisible && c.menuType !== 'BUTTON')
+    const children = menus.filter(c => c.parentId === m.id && isMenuVisible(c))
     return {
       ...m,
       // 只有真正有子菜单时才设置 children，否则不显示展开箭头
@@ -254,7 +259,6 @@ function Layout() {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     localStorage.removeItem('menus')
-    localStorage.removeItem('permissions')
     // 通知权限 Hook 清空
     window.dispatchEvent(new Event('user-permissions-changed'))
     message.success('已退出登录')
@@ -276,7 +280,7 @@ function Layout() {
       message.success('密码修改成功')
       setPasswordModalVisible(false)
     } catch (error: any) {
-      message.error(error.response?.data?.error || '密码修改失败')
+      message.error((error as any)?.error || '密码修改失败')
     }
   }
 

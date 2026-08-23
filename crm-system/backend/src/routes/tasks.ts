@@ -1,13 +1,13 @@
 import prisma from '../lib/prisma'
 import { Router, Response } from 'express'
-import { authenticateToken, AuthRequest } from '../middleware/auth'
+import { authenticateToken, authenticateFileToken, AuthRequest } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 import { sendToUser, sendToUsers } from '../websocket'
 import { upload } from '../middleware/upload'
 import path from 'path'
 import fs from 'fs'
-import { autoWriteTaskCompletion, autoWriteTaskRecord, autoWriteTaskFlow } from '../utils/autoDailyReport'
+import { autoWriteTaskCompletion, autoWriteTaskRecord, autoWriteTaskFlow, autoWriteTaskCreate, autoWriteFileUploadRecord } from '../utils/autoDailyReport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 
 const router = Router()
@@ -183,6 +183,16 @@ router.post('/', authenticateToken, logOperation('任务管理', 'CREATE'), asyn
         content: `${task.assigner.name} 创建了任务${description ? `：${description}` : ''}`
       }
     })
+
+    // 自动写入工作日报（Notes）
+    autoWriteTaskCreate(
+      req.user!.id,
+      task.title,
+      task.assignees.map(a => a.name),
+      task.id,
+      task.projectId,
+      task.dueDate
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
 
     res.status(201).json(task)
   } catch (error) {
@@ -552,6 +562,20 @@ router.put('/:id/records/:recordId', authenticateToken, logOperation('任务管�
       }
     })
 
+    // 自动写入工作日报（Notes）
+    const taskForReport = await prisma.task.findUnique({
+      where: { id: id },
+      select: { title: true }
+    })
+    autoWriteTaskRecord(
+      req.user!.id,
+      taskForReport?.title || '任务',
+      updated.type,
+      `【更新记录】${updated.content || ''}`,
+      id,
+      updated.nextPlan
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
+
     res.json(updated)
   } catch (error) {
     logger.error('Update task record error:', error)
@@ -626,6 +650,18 @@ router.post('/:id/records/:recordId/files', authenticateToken, upload.array('fil
         }
       })
     }))
+
+    // 自动写入工作日报（Notes）
+    const taskForFiles = await prisma.task.findUnique({ where: { id: record.taskId }, select: { title: true, projectId: true } })
+    autoWriteFileUploadRecord(
+      req.user!.id,
+      `任务记录（${taskForFiles?.title || '任务'}）`,
+      (req.files as any[]).map(f => f.originalname),
+      taskForFiles?.projectId || null,
+      null,
+      'TASK',
+      record.taskId
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
 
     res.status(201).json(files)
   } catch (error) {
@@ -820,7 +856,7 @@ router.delete('/:id/files/:fileId', authenticateToken, logOperation('任务管�
 })
 
 // 下载任务文件
-router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.get('/files/:fileId/download', authenticateFileToken, async (req: AuthRequest, res: Response) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     if (isNaN(fileId)) {
@@ -850,7 +886,7 @@ router.get('/files/:fileId/download', authenticateToken, async (req: AuthRequest
 })
 
 // 预览任务文件
-router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.get('/files/:fileId/preview', authenticateFileToken, async (req: AuthRequest, res: Response) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     if (isNaN(fileId)) {
@@ -880,7 +916,7 @@ router.get('/files/:fileId/preview', authenticateToken, async (req: AuthRequest,
 })
 
 // 下载任务记录附件
-router.get('/records/files/:fileId/download', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.get('/records/files/:fileId/download', authenticateFileToken, async (req: AuthRequest, res: Response) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     if (isNaN(fileId)) {
@@ -913,7 +949,7 @@ router.get('/records/files/:fileId/download', authenticateToken, async (req: Aut
 })
 
 // 预览任务记录附件
-router.get('/records/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.get('/records/files/:fileId/preview', authenticateFileToken, async (req: AuthRequest, res: Response) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     if (isNaN(fileId)) {

@@ -13,6 +13,12 @@
 - 应该设计成功能权限角色：系统管理员、销售经理、销售专员、项目经理、财务专员、普通员工等
 - 角色与组织架构的职位解耦，一个职位可以拥有多个角色
 
+## 审批权限规则（2026-08-06 确立）
+
+- **所有审批权限（合同/采购/费用报销/日报/出差）只给管理员**
+- 项目经理、普通用户、销售专员均无审批权限
+- 合同/采购列表：只允许管理员或对应负责人（ownerId）访问，项目团队成员不可见
+
 ## 工作流偏好
 
 - **改完代码不要自动打包部署**，等用户明确说"打包"再执行 docker build / deploy
@@ -25,6 +31,15 @@
 - CRM 端口: 8880
 - 镜像名: crm-backend:arm64, crm-frontend:arm64, postgres:15-alpine-arm64
 - 数据库: crm_db / crm_user / Crm2026!Secure
+- 部署流程：本地 `docker buildx build --no-cache --platform linux/arm64` → 上传 tar → 群晖 `docker load` → `docker-compose restart` → `docker exec npx prisma db push`
+
+## 软删除统一模式（所有带 deletedAt 的表必须遵守）
+
+- **查询/权限检查**：必须加 `deletedAt: null`，否则软删除记录会泄漏权限
+  - 例：`teamMembers: { some: { userId, deletedAt: null } }`
+- **添加成员/唯一约束**：先 `findFirst`（含已删除），若 `deletedAt` 非空则恢复更新，否则创建
+- **返回详情**：关联表加 `where: { deletedAt: null }` 过滤
+- 涉及文件：opportunities/projects/procurements/expenses 等所有 routes
 
 ## 权限系统架构（2026-08-01 若依化改造后）
 
@@ -62,3 +77,8 @@
 - 20 个目录/菜单 + 73 个 BUTTON 权限节点（2026-08-07 删除"编辑任务"权限）
 - RoleMenu 关联表存储角色-菜单/按钮的权限分配
 - 管理员（admin）拥有全部权限（*）
+
+## 常用接口约定
+
+- 基础数据下拉（客户树、用户列表）应设计为**无需特殊权限**，避免无权限用户看不到下拉框
+- 例：`OrgTreeSelect` 组件用 `getOrganizationsSimple()` 而非 `/tree`

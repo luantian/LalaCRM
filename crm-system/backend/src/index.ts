@@ -7,7 +7,7 @@ import helmet from 'helmet'
 import { createServer } from 'http'
 import logger from './utils/logger'
 import prisma from './lib/prisma'
-import { authenticateToken } from './middleware/auth'
+import { authenticateToken, authenticateFileToken } from './middleware/auth'
 import { utf8Sanitizer } from './middleware/utf8Sanitizer'
 import { initWebSocket } from './websocket'
 
@@ -71,27 +71,38 @@ app.get('/health', (req, res) => {
 // 登录接口（不需要认证）
 app.use('/api/auth', authRoutes)
 
+// 模块级认证：文件预览/下载路径（新标签页打开，无法携带 Authorization 头）允许 ?token= 传 JWT，
+// 其余路径与 authenticateToken 行为完全一致。
+// 正则限定为真实的文件路由形状（…/files/:fileId/download|preview），
+// 避免将来任何以 download/preview 结尾的普通路由被意外放宽为 query-token 认证
+const authenticateModule = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (/\/[^/]*files\/[^/]+\/(download|preview)$/.test(req.path)) {
+    return authenticateFileToken(req, res, next)
+  }
+  return authenticateToken(req, res, next)
+}
+
 // 其他接口都需要认证
-app.use('/api/users', authenticateToken, userRoutes)
-app.use('/api/departments', authenticateToken, departmentRoutes)
-app.use('/api/roles', authenticateToken, roleRoutes)
-app.use('/api/role-menus', authenticateToken, roleMenuRoutes)
-app.use('/api/menus', authenticateToken, menuRoutes)
-app.use('/api/dicts', authenticateToken, dictRoutes)
-app.use('/api/organizations', authenticateToken, organizationRoutes)
-app.use('/api/opportunities', authenticateToken, opportunityRoutes)
-app.use('/api/projects', authenticateToken, projectRoutes)
-app.use('/api/contracts', authenticateToken, contractRoutes)
-app.use('/api/contract-order-items', authenticateToken, contractOrderItemRoutes)
-app.use('/api/contract-receipts', authenticateToken, contractReceiptRoutes)
-app.use('/api/contract-shipments', authenticateToken, contractShipmentRoutes)
-app.use('/api/quotations', authenticateToken, quotationRoutes)
-app.use('/api/procurements', authenticateToken, procurementRoutes)
-app.use('/api/procurement-payments', authenticateToken, procurementPaymentRoutes)
-app.use('/api/invoices', authenticateToken, invoiceRoutes)
-app.use('/api/expenses', authenticateToken, expenseRoutes)
-app.use('/api/expense-files', authenticateToken, expenseFileRoutes)
-app.use('/api/tasks', authenticateToken, taskRoutes)
+app.use('/api/users', authenticateModule, userRoutes)
+app.use('/api/departments', authenticateModule, departmentRoutes)
+app.use('/api/roles', authenticateModule, roleRoutes)
+app.use('/api/role-menus', authenticateModule, roleMenuRoutes)
+app.use('/api/menus', authenticateModule, menuRoutes)
+app.use('/api/dicts', authenticateModule, dictRoutes)
+app.use('/api/organizations', authenticateModule, organizationRoutes)
+app.use('/api/opportunities', authenticateModule, opportunityRoutes)
+app.use('/api/projects', authenticateModule, projectRoutes)
+app.use('/api/contracts', authenticateModule, contractRoutes)
+app.use('/api/contract-order-items', authenticateModule, contractOrderItemRoutes)
+app.use('/api/contract-receipts', authenticateModule, contractReceiptRoutes)
+app.use('/api/contract-shipments', authenticateModule, contractShipmentRoutes)
+app.use('/api/quotations', authenticateModule, quotationRoutes)
+app.use('/api/procurements', authenticateModule, procurementRoutes)
+app.use('/api/procurement-payments', authenticateModule, procurementPaymentRoutes)
+app.use('/api/invoices', authenticateModule, invoiceRoutes)
+app.use('/api/expenses', authenticateModule, expenseRoutes)
+app.use('/api/expense-files', authenticateModule, expenseFileRoutes)
+app.use('/api/tasks', authenticateModule, taskRoutes)
 app.use('/api/daily-reports', authenticateToken, dailyReportRoutes)
 app.use('/api/daily-report-templates', authenticateToken, dailyReportTemplateRoutes)
 app.use('/api/daily-report-reminders', authenticateToken, dailyReportReminderRoutes)
@@ -100,7 +111,7 @@ app.use('/api/monthly-reports', authenticateToken, monthlyReportRoutes)
 app.use('/api/check-ins', authenticateToken, checkInRoutes)
 app.use('/api/business-trips', authenticateToken, businessTripRoutes)
 app.use('/api/project-costs', authenticateToken, projectCostRoutes)
-app.use('/api/project-notes', authenticateToken, projectNoteRoutes)
+app.use('/api/project-notes', authenticateModule, projectNoteRoutes)
 app.use('/api/dashboard', authenticateToken, dashboardRoutes)
 app.use('/api/notifications', authenticateToken, notificationRoutes)
 app.use('/api/settings', authenticateToken, settingRoutes)
@@ -127,11 +138,15 @@ async function testDatabaseConnection() {
   try {
     await prisma.$connect()
     logger.info('✅ 数据库连接成功')
-    
+
     // 测试查询
     const userCount = await prisma.user.count()
     logger.info(`📊 数据库中有 ${userCount} 个用户`)
-    
+
+    // 旧日报 content 自动拆分为条目（幂等）
+    const { migrateDailyReportEntries } = await import('./utils/migrateDailyEntries')
+    await migrateDailyReportEntries()
+
     return true
   } catch (error) {
     logger.error('❌ 数据库连接失败:', error)

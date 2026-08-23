@@ -113,6 +113,20 @@ export async function getUserPerms(userId: number): Promise<string[]> {
       }
     }
 
+    // 5. 权限继承：拥有 module:entity:action 则自动拥有 module:entity:list
+    // 解决"有按钮权限(如system:user:add)但没有list权限导致403"的问题
+    // 原因：系统管理下用户/角色/菜单/部门/字典等菜单的 perm=null，只有按钮有 perm
+    const inheritedPerms = new Set<string>()
+    for (const perm of permSet) {
+      const parts = perm.split(':')
+      if (parts.length === 3 && parts[2] !== 'list') {
+        inheritedPerms.add(`${parts[0]}:${parts[1]}:list`)
+      }
+    }
+    for (const perm of inheritedPerms) {
+      permSet.add(perm)
+    }
+
     const result = Array.from(permSet)
     permsCache.set(userId, { value: result, ts: Date.now() })
     return result

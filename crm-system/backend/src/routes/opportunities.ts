@@ -1,20 +1,53 @@
 import prisma from '../lib/prisma'
 import { Router, Request } from 'express'
 import { isAdmin } from '../utils/permission'
-import { authenticateToken, AuthRequest, checkPermission, checkAnyPermission } from '../middleware/auth'
+import { authenticateToken, authenticateFileToken, AuthRequest, checkPermission, checkAnyPermission } from '../middleware/auth'
 import { upload } from '../middleware/upload'
-import { applyDataScope } from '../middleware/dataScope'
+import { applyDataScope, getDataScopeWhere } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
 import { sortValidation, clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
-import { autoWriteOpportunityRecord } from '../utils/autoDailyReport'
+import { autoWriteOpportunityRecord, autoWriteOpportunityStatusChange, autoWriteOpportunityCreate, autoWriteOpportunityConvert, autoWriteFileUploadRecord } from '../utils/autoDailyReport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import { hasAmountPermission, filterOpportunityAmount } from '../utils/amountPermission'
 import fs from 'fs'
 import path from 'path'
 
 const router = Router()
+
+/**
+ * 按用户系统角色推导团队角色（TeamRole 枚举：SALES/TECHNICAL/BUSINESS）。
+ * 前端已不再让用户选择团队角色，此处仅用于满足历史字段约束。
+ */
+async function deriveTeamRole(userId: number): Promise<'SALES' | 'TECHNICAL' | 'BUSINESS'> {
+  try {
+    const userRoles = await prisma.userRole.findMany({
+      where: { userId },
+      include: { role: { select: { roleKey: true } } }
+    })
+    const keys = userRoles.map((ur: any) => ur.role.roleKey || '')
+    if (keys.some((k: string) => k.startsWith('SALES'))) return 'SALES'
+    if (keys.some((k: string) => k === 'TECH_STAFF' || k.startsWith('TECH'))) return 'TECHNICAL'
+    return 'BUSINESS'
+  } catch {
+    return 'BUSINESS'
+  }
+}
+
+// 数据权限：校验用户对商机的可访问性（负责人/团队成员或管理员），
+// 用于跟进记录、附件等子资源操作，防止 recordId/fileId 枚举越权
+async function canAccessOpportunity(opportunityId: number, userId: number): Promise<boolean> {
+  const scopeWhere = await getDataScopeWhere(userId, undefined, {
+    ownerField: 'ownerId',
+    teamMemberField: 'teamMembers'
+  })
+  const opp = await prisma.opportunity.findFirst({
+    where: { id: opportunityId, deletedAt: null, ...scopeWhere },
+    select: { id: true }
+  })
+  return !!opp
+}
 
 // 获取所有商机（支持分页、筛选）
 router.get('/', authenticateToken, checkAnyPermission(['crm:opportunity:list', 'project:archive:list']), applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), sortValidation(['name', 'budget', 'status', 'winRate', 'createdAt', 'updatedAt']), clampPagination(), async (req: AuthRequest, res) => {
@@ -166,7 +199,14 @@ router.get('/:id', authenticateToken, checkPermission('crm:opportunity:list'), a
         teamMembers: {
           where: { deletedAt: null },
           include: {
-            user: { select: { id: true, name: true, email: true } }
+            user: {
+              select: {
+                id: true, name: true, email: true,
+                userRoles: {
+                  include: { role: { select: { id: true, name: true, displayName: true, roleKey: true } } }
+                }
+              }
+            }
           }
         },
         files: {
@@ -248,6 +288,16 @@ router.post('/', authenticateToken, checkPermission('crm:opportunity:edit'), log
       }
     })
 
+    // 自动写入工作日报（Notes）
+    autoWriteOpportunityCreate(
+      req.user!.id,
+      opportunity.name,
+      opportunity.id,
+      opportunity.organizationId,
+      opportunity.budget ? Number(opportunity.budget) : null,
+      opportunity.notes
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
+
     res.status(201).json(opportunity)
   } catch (error) {
     logger.error('Create opportunity error:', error)
@@ -281,6 +331,17 @@ router.put('/:id', authenticateToken, checkPermission('crm:opportunity:edit'), l
     const existing = await prisma.opportunity.findFirst({ where: { id: numericId, deletedAt: null } })
     if (!existing) {
       return res.status(404).json({ error: '商机不存在' })
+    }
+
+    // 所有权校验：只有管理员或商机负责人（含团队成员）才能编辑
+    if (!(await isAdmin(req.user!.id))) {
+      const isOwner = existing.ownerId === req.user!.id
+      const isTeamMember = await prisma.opportunityTeamMember.findFirst({
+        where: { opportunityId: numericId, userId: req.user!.id, deletedAt: null }
+      })
+      if (!isOwner && !isTeamMember) {
+        return res.status(403).json({ error: '只有商机负责人或团队成员才能编辑' })
+      }
     }
 
     // 状态流转校验（如果提供了status且与当前不同）
@@ -321,6 +382,17 @@ router.put('/:id', authenticateToken, checkPermission('crm:opportunity:edit'), l
         notes
       }
     })
+
+    // 状态变更自动写入工作日报（Notes）
+    if (status && status !== existing.status) {
+      autoWriteOpportunityStatusChange(
+        req.user!.id,
+        opportunity.name,
+        existing.status,
+        status,
+        numericId
+      ).catch((err) => logger.warn('Auto daily report failed:', err.message))
+    }
 
     res.json(opportunity)
   } catch (error) {
@@ -372,9 +444,13 @@ router.post('/:id/team', authenticateToken, checkPermission('crm:opportunity:edi
     const opportunityId = parseInt(req.params.id as string)
     const { userId, teamRole } = req.body
 
-    if (!userId || !teamRole) {
-      return res.status(400).json({ error: '用户ID和角色不能为空' })
+    if (!userId) {
+      return res.status(400).json({ error: '用户ID不能为空' })
     }
+
+    // teamRole 不再由前端选择：未传时按用户系统角色推导（展示层已统一
+    // 使用系统角色，此处仅为满足历史字段约束）
+    const resolvedTeamRole = teamRole || await deriveTeamRole(Number(userId))
 
     // 检查商机是否存在
     const opportunity = await prisma.opportunity.findFirst({
@@ -383,6 +459,17 @@ router.post('/:id/team', authenticateToken, checkPermission('crm:opportunity:edi
 
     if (!opportunity) {
       return res.status(404).json({ error: '商机不存在' })
+    }
+
+    // 所有权校验：只有商机负责人、团队成员或管理员可以管理团队
+    if (!(await isAdmin(req.user!.id))) {
+      const isOwner = opportunity.ownerId === req.user!.id
+      const isTeamMember = await prisma.opportunityTeamMember.findFirst({
+        where: { opportunityId, userId: req.user!.id, deletedAt: null }
+      })
+      if (!isOwner && !isTeamMember) {
+        return res.status(403).json({ error: '只有商机负责人或团队成员才能管理商机团队' })
+      }
     }
 
     // 检查是否已存在该成员（包括软删除的记录）
@@ -401,7 +488,7 @@ router.post('/:id/team', authenticateToken, checkPermission('crm:opportunity:edi
         where: { id: existingAny.id },
         data: {
           deletedAt: null,
-          teamRole: (teamRole as any) || 'MEMBER'
+          teamRole: (resolvedTeamRole as any)
         },
         include: {
           user: { select: { id: true, name: true, email: true } }
@@ -412,7 +499,7 @@ router.post('/:id/team', authenticateToken, checkPermission('crm:opportunity:edi
         data: {
           opportunityId,
           userId,
-          teamRole: teamRole as any
+          teamRole: resolvedTeamRole as any
         },
         include: {
           user: { select: { id: true, name: true, email: true } }
@@ -431,13 +518,30 @@ router.post('/:id/team', authenticateToken, checkPermission('crm:opportunity:edi
 router.delete('/:id/team/:memberId', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'DELETE'), async (req: AuthRequest, res) => {
   try {
     const memberId = parseInt(req.params.memberId as string)
+    const opportunityId = parseInt(req.params.id as string)
 
+    // 同时校验 memberId 与路由中的 opportunityId 匹配，防止跨商机越权操作
     const member = await prisma.opportunityTeamMember.findFirst({
-      where: { id: memberId, deletedAt: null }
+      where: { id: memberId, opportunityId, deletedAt: null }
     })
 
     if (!member) {
       return res.status(404).json({ error: '团队成员不存在' })
+    }
+
+    // 所有权校验：只有商机负责人、团队成员或管理员可以管理团队
+    if (!(await isAdmin(req.user!.id))) {
+      const opportunity = await prisma.opportunity.findFirst({
+        where: { id: opportunityId, deletedAt: null },
+        select: { ownerId: true }
+      })
+      const isOwner = opportunity?.ownerId === req.user!.id
+      const isTeamMember = await prisma.opportunityTeamMember.findFirst({
+        where: { opportunityId, userId: req.user!.id, deletedAt: null }
+      })
+      if (!isOwner && !isTeamMember) {
+        return res.status(403).json({ error: '只有商机负责人或团队成员才能管理商机团队' })
+      }
     }
 
     await prisma.opportunityTeamMember.update({
@@ -486,6 +590,17 @@ router.post('/:id/files', authenticateToken, checkPermission('crm:opportunity:ed
         })
       )
     )
+
+    // 自动写入工作日报（Notes）
+    autoWriteFileUploadRecord(
+      req.user!.id,
+      opportunity.name,
+      files.map(f => f.originalname),
+      null,
+      opportunity.organizationId,
+      'OPPORTUNITY',
+      opportunityId
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
 
     res.status(201).json({
       message: `成功上传 ${files.length} 个文件`,
@@ -550,7 +665,7 @@ router.delete('/:id/files/:fileId', authenticateToken, checkPermission('crm:oppo
 })
 
 // 下载商机文件
-router.get('/files/:fileId/download', authenticateToken, checkPermission('crm:opportunity:edit'), async (req: AuthRequest, res) => {
+router.get('/files/:fileId/download', authenticateFileToken, checkPermission('crm:opportunity:edit'), async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
 
@@ -624,6 +739,15 @@ router.post('/:id/convert', authenticateToken, checkPermission('crm:opportunity:
       }
       throw err
     }
+
+    // 自动写入工作日报（Notes）：商机转化是重大节点
+    autoWriteOpportunityConvert(
+      req.user!.id,
+      opportunity.name,
+      project.name,
+      opportunity.id,
+      project.id
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
 
     res.status(201).json({
       message: '商机已成功转化为项目',
@@ -752,14 +876,21 @@ router.post('/:id/records', authenticateToken, checkPermission('crm:opportunity:
 router.put('/:id/records/:recordId', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'UPDATE_RECORD'), async (req: AuthRequest, res) => {
   try {
     const recordId = parseInt(req.params.recordId as string)
+    const opportunityId = parseInt(req.params.id as string)
     const { type, content, nextPlan, nextDate } = req.body
 
+    // 同时校验 recordId 与路由中的 opportunityId 匹配，防止跨商机越权操作
     const record = await prisma.opportunityRecord.findFirst({
-      where: { id: recordId, deletedAt: null }
+      where: { id: recordId, opportunityId, deletedAt: null }
     })
 
     if (!record) {
       return res.status(404).json({ error: '记录不存在' })
+    }
+
+    // 数据权限：只有商机负责人、团队成员或管理员才能操作该商机的记录
+    if (!(await canAccessOpportunity(opportunityId, req.user!.id))) {
+      return res.status(403).json({ error: '无权操作该商机的信息记录' })
     }
 
     const updated = await prisma.opportunityRecord.update({
@@ -775,6 +906,19 @@ router.put('/:id/records/:recordId', authenticateToken, checkPermission('crm:opp
       }
     })
 
+    // 自动写入工作日报（Notes）
+    const oppForReport = await prisma.opportunity.findUnique({
+      where: { id: record.opportunityId },
+      select: { name: true }
+    })
+    autoWriteOpportunityRecord(
+      req.user!.id,
+      oppForReport?.name || '商机',
+      `【更新记录】${content || ''}`,
+      record.opportunityId,
+      nextPlan
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
+
     res.json(updated)
   } catch (error) {
     logger.error('Update opportunity record error:', error)
@@ -786,13 +930,20 @@ router.put('/:id/records/:recordId', authenticateToken, checkPermission('crm:opp
 router.delete('/:id/records/:recordId', authenticateToken, checkPermission('crm:opportunity:edit'), logOperation('售前管理', 'DELETE_RECORD'), async (req: AuthRequest, res) => {
   try {
     const recordId = parseInt(req.params.recordId as string)
+    const opportunityId = parseInt(req.params.id as string)
 
+    // 同时校验 recordId 与路由中的 opportunityId 匹配，防止跨商机越权操作
     const record = await prisma.opportunityRecord.findFirst({
-      where: { id: recordId, deletedAt: null }
+      where: { id: recordId, opportunityId, deletedAt: null }
     })
 
     if (!record) {
       return res.status(404).json({ error: '记录不存在' })
+    }
+
+    // 数据权限：只有商机负责人、团队成员或管理员才能操作该商机的记录
+    if (!(await canAccessOpportunity(opportunityId, req.user!.id))) {
+      return res.status(403).json({ error: '无权操作该商机的信息记录' })
     }
 
     // 删除关联附件
@@ -837,6 +988,11 @@ router.post('/:id/records/:recordId/files', authenticateToken, checkPermission('
       return res.status(404).json({ error: '记录不存在' })
     }
 
+    // 数据权限：只有商机负责人、团队成员或管理员才能上传记录附件
+    if (!(await canAccessOpportunity(record.opportunityId, req.user!.id))) {
+      return res.status(403).json({ error: '无权操作该商机的信息记录' })
+    }
+
     const createdFiles = await Promise.all(
       files.map(file =>
         prisma.opportunityRecordFile.create({
@@ -851,6 +1007,21 @@ router.post('/:id/records/:recordId/files', authenticateToken, checkPermission('
         })
       )
     )
+
+    // 自动写入工作日报（Notes）
+    const oppForFiles = await prisma.opportunity.findUnique({
+      where: { id: record.opportunityId },
+      select: { name: true, organizationId: true }
+    })
+    autoWriteFileUploadRecord(
+      req.user!.id,
+      `跟进记录（${oppForFiles?.name || '商机'}）`,
+      files.map(f => f.originalname),
+      null,
+      oppForFiles?.organizationId || null,
+      'OPPORTUNITY',
+      record.opportunityId
+    ).catch((err) => logger.warn('Auto daily report failed:', err.message))
 
     res.json({ message: '上传成功', files: createdFiles })
   } catch (error) {
@@ -875,7 +1046,7 @@ router.get('/:id/records/:recordId/files', authenticateToken, async (req: AuthRe
 })
 
 // 下载商机信息记录附件
-router.get('/records/files/:fileId/download', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/records/files/:fileId/download', authenticateFileToken, async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.opportunityRecordFile.findFirst({
@@ -896,7 +1067,7 @@ router.get('/records/files/:fileId/download', authenticateToken, async (req: Aut
 })
 
 // 预览商机信息记录附件
-router.get('/records/files/:fileId/preview', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/records/files/:fileId/preview', authenticateFileToken, async (req: AuthRequest, res) => {
   try {
     const fileId = parseInt(req.params.fileId as string)
     const file = await prisma.opportunityRecordFile.findFirst({
@@ -962,7 +1133,7 @@ const opportunityLabelMap: Record<string, string> = {
 }
 
 // 导出商机 Excel
-router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
+router.get('/export/excel', authenticateToken, checkPermission('crm:opportunity:list'), applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.opportunity.findMany({
@@ -970,7 +1141,10 @@ router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'own
       include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
-    exportExcel(res, '商机列表.xlsx', '商机', opportunityColumns, data)
+    // 金额权限：与列表接口一致，无权限用户导出的金额列脱敏
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    const processed = canSeeAmount ? data : data.map(filterOpportunityAmount)
+    exportExcel(res, '商机列表.xlsx', '商机', opportunityColumns, processed)
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })
@@ -978,7 +1152,7 @@ router.get('/export/excel', authenticateToken, applyDataScope({ ownerField: 'own
 })
 
 // 导出商机 CSV
-router.get('/export/csv', authenticateToken, applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
+router.get('/export/csv', authenticateToken, checkPermission('crm:opportunity:list'), applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.opportunity.findMany({
@@ -986,7 +1160,10 @@ router.get('/export/csv', authenticateToken, applyDataScope({ ownerField: 'owner
       include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })
-    exportCSV(res, '商机列表.csv', opportunityColumns, data)
+    // 金额权限：与列表接口一致，无权限用户导出的金额列脱敏
+    const canSeeAmount = await hasAmountPermission(req.user!.id)
+    const processed = canSeeAmount ? data : data.map(filterOpportunityAmount)
+    exportCSV(res, '商机列表.csv', opportunityColumns, processed)
   } catch (error) {
     logger.error('Export CSV error:', error)
     res.status(500).json({ error: '导出失败' })

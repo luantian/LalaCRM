@@ -142,93 +142,51 @@ init_database() {
         exit 1
     fi
     log_info "数据库结构初始化成功"
+
+    # 写入节假日种子数据（db push 不执行迁移中的 INSERT，此脚本幂等可重复）
+    docker exec crm-backend sh -c "cd /app && node prisma/seed-holidays.js" || log_warn "节假日种子数据写入失败（不影响主流程）"
 }
 
-# 插入种子数据
+# 插入种子数据（菜单 + ADMIN 角色由 seed.js 写入；再创建管理员账号）
 seed_data() {
-    log_step "插入种子数据（部门、角色、菜单、管理员）..."
-    
-    # 1. 插入部门和角色
-    if docker exec crm-backend node -e "
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const bcrypt = require('bcryptjs');
+    log_step "写入种子数据（菜单、角色、管理员）..."
 
-async function main() {
-  // 1. 插入部门
-  const depts = [
-    { name: '销售部', order: 1 },
-    { name: '技术部', order: 2 },
-    { name: '市场部', order: 3 },
-    { name: '财务部', order: 4 },
-    { name: '人事部', order: 5 }
-  ];
-  
-  for (const d of depts) {
-    await prisma.department.create({ data: d }).catch(() => {});
-  }
-  console.log('✓ 部门数据插入完成');
-  
-  // 2. 插入角色
-  const roles = [
-    { name: '管理员', code: 'ADMIN', description: '系统管理员，拥有所有权限', dataScope: 'ALL' },
-    { name: '销售经理', code: 'SALES_MANAGER', description: '销售部门经理', dataScope: 'DEPARTMENT_BELOW' },
-    { name: '项目经理', code: 'PROJECT_MANAGER', description: '项目部门经理', dataScope: 'DEPARTMENT_BELOW' },
-    { name: '普通用户', code: 'USER', description: '普通员工', dataScope: 'SELF' }
-  ];
-  
-  for (const r of roles) {
-    await prisma.roleModel.create({ data: r }).catch(() => {});
-  }
-  console.log('✓ 角色数据插入完成');
-  
-  // 3. 创建管理员账号
-  const hashedPassword = await bcrypt.hash('admin123', 10);
-  
-  await prisma.user.create({
-    data: {
-      username: 'admin',
-      password: hashedPassword,
-      name: '管理员',
-      email: 'admin@localhost',
-      roleId: 1,  // 系统管理员
-      deptId: 1   // 销售部
-    }
-  }).catch(() => {
-    console.log('! 管理员账号已存在');
-  });
-  
-  console.log('✓ 管理员账号创建完成（用户名: admin, 密码: admin123）');
-  console.log('! 请登录后立即修改密码！');
-}
-
-main().finally(() => prisma.\$disconnect());
-"; then
-        log_info "基础数据插入成功"
-    else
-        log_error "基础数据插入失败"
+    # 1) 菜单与 ADMIN 角色（seed.js：66 个菜单含按钮权限，全部授权给 ADMIN 角色）
+    #    注意：seed.js 会清空 RoleMenu/MenuItem 重建，仅适用于全新库
+    if ! docker exec crm-backend sh -c "cd /app && node prisma/seed.js"; then
+        log_error "菜单/角色种子数据写入失败"
+        log_warn "可手动重试查看错误：docker exec crm-backend sh -c 'cd /app && node prisma/seed.js'"
         exit 1
     fi
-    
-    # 2. 插入菜单权限（从 seed.sql 导入）
-    # 注意：需要确保 seed.sql 文件已上传到群晖的 /volume1/docker/crm-system/backend/prisma/ 目录
-    if [ -f "backend/prisma/seed.sql" ]; then
-        log_info "导入菜单权限数据..."
-        # 使用 docker cp 将文件复制到容器内，然后在容器内执行
-        if docker cp backend/prisma/seed.sql crm-postgres:/tmp/seed.sql && \
-           docker exec crm-postgres psql -U crm_user -d crm_db -f /tmp/seed.sql > /dev/null 2>&1; then
-            log_info "菜单权限导入成功"
-            # 删除临时文件
-            docker exec crm-postgres rm -f /tmp/seed.sql
-        else
-            log_warn "菜单权限导入失败，请手动导入"
-            log_warn "手动导入命令：docker cp backend/prisma/seed.sql crm-postgres:/tmp/seed.sql && docker exec crm-postgres psql -U crm_user -d crm_db -f /tmp/seed.sql"
-        fi
-    else
-        log_warn "未找到 seed.sql 文件，跳过菜单权限导入"
-        log_warn "请上传 seed.sql 到 backend/prisma/ 目录，然后执行："
-        log_warn "  docker cp backend/prisma/seed.sql crm-postgres:/tmp/seed.sql"
-        log_warn "  docker exec crm-postgres psql -U crm_user -d crm_db -f /tmp/seed.sql"
+    log_info "菜单与 ADMIN 角色写入完成"
+
+    # 2) 创建管理员账号（权限判定走 UserRole 关联表，必须同时写入 UserRole）
+    if ! docker exec crm-backend node -e "
+const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcryptjs');
+const prisma = new PrismaClient();
+async function main() {
+  const exists = await prisma.user.findUnique({ where: { username: 'admin' } });
+  if (exists) { console.log('! 管理员账号已存在，跳过创建'); return; }
+  const adminRole = await prisma.roleModel.findFirst({ where: { roleKey: 'ADMIN' } });
+  if (!adminRole) throw new Error('ADMIN 角色不存在，请确认 seed.js 已执行');
+  const user = await prisma.user.create({
+    data: {
+      username: 'admin',
+      password: await bcrypt.hash('admin123', 10),
+      name: '管理员',
+      email: 'admin@localhost',
+      roleId: adminRole.id,
+    }
+  });
+  await prisma.userRole.create({ data: { userId: user.id, roleId: adminRole.id } });
+  console.log('✓ 管理员账号创建完成（用户名: admin, 初始密码: admin123）');
+  console.log('! 请登录后立即修改密码！');
+}
+main().catch(e => { console.error(e); process.exit(1) }).finally(() => prisma.\$disconnect());
+"; then
+        log_error "管理员账号创建失败"
+        exit 1
     fi
 }
 
@@ -314,7 +272,7 @@ main() {
     echo "=========================================="
     echo ""
     echo -e "${BLUE}访问信息:${NC}"
-    echo "  地址: http://192.168.2.13:8880"
+    echo "  地址: http://192.168.3.116:8880"
     echo ""
     echo -e "${BLUE}登录信息:${NC}"
     echo "  用户名: admin"
@@ -322,8 +280,8 @@ main() {
     echo ""
     echo -e "${YELLOW}重要提示:${NC}"
     echo "  1. 请立即登录并修改管理员密码"
-    echo "  2. 进入'系统管理 > 菜单管理'导入菜单数据"
-    echo "  3. 进入'系统管理 > 角色管理'配置各角色的权限"
+    echo "  2. 菜单与权限已随种子数据写入，无需手动导入"
+    echo "  3. 进入'系统管理 > 角色管理'按需创建其他角色并配置权限"
     echo "  4. 创建其他用户账号"
     echo ""
     echo -e "${BLUE}容器状态:${NC}"

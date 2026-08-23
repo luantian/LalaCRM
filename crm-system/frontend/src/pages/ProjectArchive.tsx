@@ -4,7 +4,7 @@ import { Table, Button, Form, Input, Select, message, Space, Tag, Card, Row, Col
 import { ReloadOutlined, SearchOutlined, EyeOutlined, DownloadOutlined } from '@ant-design/icons'
 import { getProjects, getOrganizationsSimple, exportProjectsCsv, exportProjectsExcel } from '../services/api'
 import dayjs from 'dayjs'
-import { OrgTreeSelect } from '../components/OrgTreeSelect'
+import { OrgContactSelector } from '../components/OrgContactSelector'
 
 function ProjectArchive() {
   const navigate = useNavigate()
@@ -19,16 +19,16 @@ function ProjectArchive() {
   })
   const [searchText, setSearchText] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('')
-  const [filterOrgId, setFilterOrgId] = useState<number | null>(null)
+  const [filterContactId, setFilterContactId] = useState<number | null>(null)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const searchTextRef = useRef(searchText)
   const lastRefreshTriggerRef = useRef<number | null>(null)
   useEffect(() => { searchTextRef.current = searchText }, [searchText])
 
   const filterStatusRef = useRef(filterStatus)
-  const filterOrgIdRef = useRef(filterOrgId)
+  const filterContactIdRef = useRef(filterContactId)
   useEffect(() => { filterStatusRef.current = filterStatus }, [filterStatus])
-  useEffect(() => { filterOrgIdRef.current = filterOrgId }, [filterOrgId])
+  useEffect(() => { filterContactIdRef.current = filterContactId }, [filterContactId])
 
   const fetchProjects = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
@@ -46,7 +46,7 @@ function ProjectArchive() {
       if (filterStatusRef.current) {
         params.status = filterStatusRef.current
       }
-      if (filterOrgIdRef.current) params.organizationId = String(filterOrgIdRef.current)
+      if (filterContactIdRef.current) params.contactId = String(filterContactIdRef.current)
       
       const response: any = await getProjects(params)
       setProjects(response.data || [])
@@ -93,7 +93,7 @@ function ProjectArchive() {
   const handleReset = () => {
     setSearchText('')
     setFilterStatus('')
-    setFilterOrgId(null)
+    setFilterContactId(null)
     form.resetFields()
     setRefreshTrigger(prev => prev + 1)
   }
@@ -201,10 +201,10 @@ function ProjectArchive() {
             </Select>
           </Col>
           <Col xs={12} sm={4}>
-            <OrgTreeSelect
-              placeholder="客户"
-              value={filterOrgId}
-              onChange={(v) => setFilterOrgId(v)}
+            <OrgContactSelector
+              placeholder="客户（联系人）"
+              value={filterContactId}
+              onChange={(v) => setFilterContactId(v)}
               style={{ width: '100%' }}
             />
           </Col>
