@@ -32,6 +32,22 @@ const OVERNIGHT_OVERTIME_HOUR = 2
 // 通宵加班后第二天弹性上班时间：10:00 前不算迟到
 const NEXT_DAY_FLEXIBLE_HOUR = 10
 
+// 考勤统计不展示测试账号：test 前缀用户名均为开发/联调测试账号
+// （testadmin/testuser/testapprover 及手工建的 test*），真实员工为拼音实名。
+// 今日出勤与月度统计两处统一排除，避免测试账号混入考勤报表。
+const ATTENDANCE_EXCLUDED_USERNAME_PREFIXES = ['test']
+
+/** 考勤场景的用户查询条件：叠加部门过滤 + 排除测试账号 */
+function attendanceUserWhere(extra: any = {}): any {
+  return {
+    ...extra,
+    AND: [
+      ...(extra.AND || []),
+      ...ATTENDANCE_EXCLUDED_USERNAME_PREFIXES.map(p => ({ username: { not: { startsWith: p } } })),
+    ],
+  }
+}
+
 /**
  * 获取打卡日期的起止范围（以自然日 0 点为分界）
  * 凌晨 0 点后即新的一天，不再归属前一天
@@ -969,10 +985,9 @@ router.get('/team-stats', authenticateToken, checkPermission('office:attendance:
     const endDate = targetMonth.endOf('month').toDate()
 
     // 获取用户列表（可按部门过滤）
-    const userWhere: any = {}
-    if (departmentId) {
-      userWhere.deptId = parseInt(departmentId as string)
-    }
+    const userWhere: any = attendanceUserWhere(
+      departmentId ? { deptId: parseInt(departmentId as string) } : {}
+    )
 
     const users = await prisma.user.findMany({
       where: userWhere,
@@ -1325,10 +1340,9 @@ router.get('/today-team', authenticateToken, checkPermission('office:attendance:
     // 是否为"实时今天"（今天只打了上班卡、下班还没打，不算异常）
     const isLiveToday = !date || now.isSame(dayjs().tz('Asia/Shanghai'), 'day')
 
-    const userWhere: any = {}
-    if (departmentId) {
-      userWhere.deptId = parseInt(departmentId as string)
-    }
+    const userWhere: any = attendanceUserWhere(
+      departmentId ? { deptId: parseInt(departmentId as string) } : {}
+    )
 
     const users = await prisma.user.findMany({
       where: userWhere,
