@@ -206,6 +206,26 @@ log_info "数据库启动成功"
 # -------------------------------------------------
 log_step "同步数据库结构..."
 
+# 容器启动命令(docker-compose.synology.yml)自带一次 prisma db push。
+# 此前本步骤紧接着再 exec 一次 push，两者并发 ALTER 同一批新列，
+# 后完成者报 "column ... already exists" 导致更新假失败(2026-08-24 实际发生)。
+# 现改为：先等容器内置 push 跑完(后端 health 通过说明其已结束)，
+# 再执行一次幂等 push 作为校验(无 diff 时秒回成功)。
+log_info "等待容器内置 db push 完成(后端就绪)..."
+BOOT_READY=false
+for i in $(seq 1 90); do
+    if docker exec crm-backend node -e "fetch('http://localhost:5000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" > /dev/null 2>&1; then
+        BOOT_READY=true
+        break
+    fi
+    sleep 2
+done
+if $BOOT_READY; then
+    log_info "后端已就绪(内置 db push 已完成)"
+else
+    log_warn "后端 180 秒未就绪，继续尝试同步(容器可能仍在启动)"
+fi
+
 MIGRATE_LOG="/tmp/crm_migrate_$TIMESTAMP.log"
 if docker exec crm-backend sh -c "cd /app && npx prisma db push" > "$MIGRATE_LOG" 2>&1; then
     # 检查是否有警告
