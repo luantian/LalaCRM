@@ -221,6 +221,7 @@ router.get('/:id', authenticateToken, checkPermission('project:contract:list'), 
         organization: true,
         project: true,
         owner: { select: { id: true, name: true } },
+        approver: { select: { id: true, name: true } },
         contact: { select: { id: true, name: true, title: true, phone: true, email: true } }
       }
     })
@@ -267,7 +268,8 @@ router.post('/', authenticateToken, checkPermission('project:contract:add'), log
         signDate: signDate ? new Date(signDate) : null,
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
-        status: status || 'DRAFT',
+        // 创建一律为草稿，状态变化必须走审批接口（防止直选状态绕过审批）
+        status: 'DRAFT',
         content,
         isPrivate: isPrivate === true || isPrivate === 'true',
         ownerId: req.user!.id
@@ -328,7 +330,12 @@ router.post('/:id/approve', authenticateToken, checkPermission('project:contract
 
     const updatedContract = await prisma.contract.update({
       where: { id },
-      data: { status: status as any },
+      data: {
+        status: status as any,
+        approvedBy: req.user!.id,
+        approvedAt: new Date(),
+        approvalNote: req.body.remark?.trim() || null
+      },
       include: {
         organization: { select: { id: true, name: true } },
         project: { select: { id: true, name: true } },
@@ -413,6 +420,10 @@ router.put('/:id', authenticateToken, checkPermission('project:contract:edit'), 
         return res.status(403).json({ error: '项目已归档，无法编辑合同' })
       }
     }
+    // 提交后内容锁定：非草稿状态不可编辑（防审批后篡改合同内容）
+    if (currentContract.status !== 'DRAFT') {
+      return res.status(400).json({ error: '只有草稿状态的合同可以编辑' })
+    }
     if (status && status !== currentContract.status) {
       return res.status(400).json({ error: '状态变更必须通过审批接口 POST /:id/approve' })
     }
@@ -455,6 +466,10 @@ router.delete('/:id', authenticateToken, checkPermission('project:contract:delet
     const existing = await prisma.contract.findFirst({ where: { id: numericId, deletedAt: null } })
     if (!existing) {
       return res.status(404).json({ error: '合同不存在' })
+    }
+    // 非草稿状态的合同不可删除（已进入审批/生效流程，只能取消）
+    if (existing.status !== 'DRAFT') {
+      return res.status(400).json({ error: '只有草稿状态的合同可以删除' })
     }
     // 检查所有权（合同负责人或管理员才能删除）
     if (existing.ownerId !== req.user!.id && !(await isAdmin(req.user!.id))) {

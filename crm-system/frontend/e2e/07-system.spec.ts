@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import {
   ADMIN, TESTER, loginViaApi, gotoApp, collectPageErrors, openModal, submitModal,
-  fillFormItem, selectInForm, unique, tableRow, expectSuccess, confirmPopconfirm,
+  fillFormItem, selectInForm, unique, tableRow, expectSuccess, confirmPopconfirm, apiCall,
 } from './helpers'
 
 test.describe('用户管理', () => {
@@ -199,6 +199,20 @@ test.describe('权限隔离（普通用户 UI）', () => {
     await expectSuccess(page, '客户创建成功')
     // 客户页主列表是树
     await expect(page.locator('.ant-tree-node-content-wrapper', { hasText: name }).first()).toBeVisible()
+    expect(errors, errors.join('\n')).toHaveLength(0)
+  })
+
+  test('客户权限即全量：普通用户能看到管理员创建的客户', async ({ page }) => {
+    const errors = collectPageErrors(page)
+    // 管理员 API 建一个唯一客户
+    const adminName = unique('E2E管理员客户')
+    const created = await apiCall(ADMIN, 'POST', '/organizations', { name: adminName, type: 'COMPANY' })
+    test.skip(created.status !== 201, `管理员客户创建失败: ${created.status}`)
+
+    // TESTER（SELF 范围）打开客户管理页应能看到它（客户为公司公共资产，不做数据过滤）
+    await loginViaApi(page, TESTER)
+    await gotoApp(page, '/organizations')
+    await expect(page.locator('.ant-tree-node-content-wrapper', { hasText: adminName }).first()).toBeVisible({ timeout: 15_000 })
     expect(errors, errors.join('\n')).toHaveLength(0)
   })
 })

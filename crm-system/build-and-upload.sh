@@ -116,6 +116,8 @@ log_info "PostgreSQL 镜像导出完成: build/postgres.tar"
 # 5. 同步 update.sh 到 build 目录（群晖端更新脚本）
 # -------------------------------------------------
 cp -f ./update.sh ./build/update.sh 2>/dev/null || log_warn "未找到 update.sh，跳过"
+# 防 CRLF：Windows 编辑器可能把脚本存成 \r\n，群晖 bash 会报 $'\r': command not found
+sed -i 's/\r$//' ./build/update.sh ./build/deploy-fresh.sh 2>/dev/null || true
 
 # -------------------------------------------------
 # 6. 打包结果

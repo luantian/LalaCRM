@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicker, message, Tag, Row, Col, Statistic, Space, Popconfirm, Dropdown, Upload } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined, SendOutlined, CheckOutlined, CloseOutlined, MoreOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations } from '../services/api'
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations, submitQuotation, approveQuotation, rejectQuotation, safeJsonParse } from '../services/api'
 import { usePermission } from '../hooks/usePermission'
+import { isAdmin } from '../utils/permission'
 
 const { Option } = Select
 
@@ -32,6 +33,15 @@ const QuotationList: React.FC = () => {
   const [opportunities, setOpportunities] = useState<any[]>([])
   const [items, setItems] = useState<any[]>([])
   const [importModalVisible, setImportModalVisible] = useState(false)
+  const user = safeJsonParse(localStorage.getItem('user'), {})
+  const admin = isAdmin()
+  const canApprove = checkPermission('crm:quotation:approve')
+  const [approveModalVisible, setApproveModalVisible] = useState(false)
+  const [approveTarget, setApproveTarget] = useState<any>(null)
+  const [approveDetail, setApproveDetail] = useState<any>(null)
+  const [approveAction, setApproveAction] = useState<'approve' | 'reject'>('approve')
+  const [approveRemark, setApproveRemark] = useState('')
+  const [rejectReason, setRejectReason] = useState('')
 
   const fetchQuotations = useCallback(async () => {
     setLoading(true)
@@ -120,6 +130,57 @@ const QuotationList: React.FC = () => {
     }
   }
 
+  // 提交审批：DRAFT → SUBMITTED
+  const handleSubmitQuotation = async (id: number) => {
+    try {
+      await submitQuotation(id)
+      message.success('已提交审批')
+      fetchQuotations()
+      fetchStats()
+    } catch (e: any) {
+      message.error(e?.error || '提交失败')
+    }
+  }
+
+  // 打开审批弹窗（拉取明细供审批人查看）
+  const handleOpenApproveModal = async (record: any, action: 'approve' | 'reject') => {
+    setApproveTarget(record)
+    setApproveAction(action)
+    setApproveRemark('')
+    setRejectReason('')
+    setApproveDetail(null)
+    setApproveModalVisible(true)
+    try {
+      const detail: any = await getQuotationDetail(record.id)
+      setApproveDetail(detail)
+    } catch (e: any) {
+      message.error(e?.error || '获取报价明细失败')
+    }
+  }
+
+  // 确认批准/驳回
+  const handleConfirmApprove = async () => {
+    if (!approveTarget) return
+    if (approveAction === 'reject' && !rejectReason.trim()) {
+      message.error('请填写驳回原因')
+      return
+    }
+    try {
+      if (approveAction === 'approve') {
+        await approveQuotation(approveTarget.id, approveRemark.trim() || undefined)
+        message.success('已批准')
+      } else {
+        await rejectQuotation(approveTarget.id, rejectReason.trim())
+        message.success('已驳回')
+      }
+      setApproveModalVisible(false)
+      fetchQuotations()
+      fetchStats()
+    } catch (e: any) {
+      message.error(e?.error || '审批失败')
+    }
+  }
+
   const addItem = () => {
     setItems([...items, { name: '', quantity: 1, unit: '套', unitPrice: 0 }])
   }
@@ -175,15 +236,42 @@ const QuotationList: React.FC = () => {
     { title: '创建人', key: 'owner', render: (_: any, r: any) => r.owner?.name || '-' },
     {
       title: '操作', key: 'action', width: 240, fixed: 'right' as const,
-      render: (_: any, record: any) => (
-        <Space size={0}>
-          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/quotations/${record.id}`)}>查看</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('crm:quotation:delete')}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
-        </Space>
-      )
+      render: (_: any, record: any) => {
+        const isOwner = record.ownerId === user.id
+        // 后端规则：只有 DRAFT 可编辑/删除，且仅限本人（管理员例外）
+        const canEdit = record.status === 'DRAFT' && (isOwner || admin)
+        const canSubmit = canEdit && checkPermission('crm:quotation:edit')
+        const canReview = record.status === 'SUBMITTED' && canApprove && (record.ownerId !== user.id || admin)
+
+        const moreItems: any[] = []
+        if (canSubmit) {
+          moreItems.push({ key: 'submit', icon: <SendOutlined />, label: '提交审批', onClick: () => handleSubmitQuotation(record.id) })
+        }
+        if (canReview) {
+          if (moreItems.length > 0) moreItems.push({ type: 'divider' })
+          moreItems.push(
+            { key: 'approve', icon: <CheckOutlined />, label: '批准', onClick: () => handleOpenApproveModal(record, 'approve') },
+            { key: 'reject', icon: <CloseOutlined />, label: '驳回', danger: true, onClick: () => handleOpenApproveModal(record, 'reject') }
+          )
+        }
+
+        return (
+          <Space size={0}>
+            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/quotations/${record.id}`)}>查看</Button>
+            {canEdit && <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>}
+            {canEdit && (
+              <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('crm:quotation:delete')}>
+                <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+              </Popconfirm>
+            )}
+            {moreItems.length > 0 && (
+              <Dropdown menu={{ items: moreItems }}>
+                <Button type="link" size="small" icon={<MoreOutlined />}>更多</Button>
+              </Dropdown>
+            )}
+          </Space>
+        )
+      }
     }
   ]
 
@@ -210,7 +298,7 @@ const QuotationList: React.FC = () => {
       <Card>
         <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
           <Space>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate} disabled={!checkPermission('crm:quotation:add')}>新建报价单</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate} disabled={!checkPermission('crm:quotation:add') && !checkPermission('crm:quotation:edit')}>新建报价单</Button>
             <Dropdown menu={{ items: [
               { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
               { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
@@ -282,6 +370,44 @@ const QuotationList: React.FC = () => {
           <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
           <p className="ant-upload-tip">支持 CSV、Excel 格式（.csv / .xlsx / .xls）</p>
         </Upload.Dragger>
+      </Modal>
+
+      <Modal
+        title={approveAction === 'approve' ? '审批通过' : '驳回报价单'}
+        open={approveModalVisible}
+        onOk={handleConfirmApprove}
+        onCancel={() => setApproveModalVisible(false)}
+        okText={approveAction === 'approve' ? '确认批准' : '确认驳回'}
+        okButtonProps={{ danger: approveAction === 'reject' }}
+        width={720}
+      >
+        {approveTarget && (
+          <>
+            <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6, marginBottom: 16 }}>
+              <div><strong>{approveTarget.name}</strong> <Tag>v{approveTarget.version}</Tag></div>
+              <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>
+                售前: {approveTarget.opportunity?.name || '-'} · 客户: {approveTarget.organization?.name || '-'} · 报价总额: <strong style={{ color: '#cf1322' }}>¥{Number(approveTarget.totalAmount || 0).toLocaleString()}</strong>
+              </div>
+            </div>
+            <div style={{ marginBottom: 8, fontWeight: 600 }}>报价明细</div>
+            <Table
+              size="small" pagination={false} dataSource={approveDetail?.items || []} rowKey="id"
+              columns={[
+                { title: '产品/服务', dataIndex: 'name', key: 'name' },
+                { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 70, render: (v: number, r: any) => `${v}${r.unit || ''}` },
+                { title: '单价', dataIndex: 'unitPrice', key: 'unitPrice', width: 110, render: (v: number) => `¥${Number(v).toLocaleString()}` },
+                { title: '小计', dataIndex: 'totalPrice', key: 'totalPrice', width: 110, render: (v: number) => `¥${Number(v).toLocaleString()}` }
+              ]}
+            />
+            <div style={{ marginTop: 16 }}>
+              {approveAction === 'approve' ? (
+                <Input.TextArea rows={2} placeholder="审批备注（可选）" value={approveRemark} onChange={e => setApproveRemark(e.target.value)} />
+              ) : (
+                <Input.TextArea rows={2} placeholder="请填写驳回原因（必填）" value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
+              )}
+            </div>
+          </>
+        )}
       </Modal>
     </div>
   )

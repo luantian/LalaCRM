@@ -364,17 +364,24 @@ function OrganizationList() {
         <Space size={0}>
           <Button
             type="link" size="small" icon={<EditOutlined />}
+            disabled={!checkPermission('crm:organization:contact:edit')}
             onClick={() => handleEditContact(record)}
           >
             编辑
           </Button>
           <Popconfirm
             title="确定要删除该联系人吗?"
+            disabled={!checkPermission('crm:organization:contact:delete')}
             onConfirm={() => handleDeleteContact(record.id)}
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            <Button
+              type="link" size="small" danger icon={<DeleteOutlined />}
+              disabled={!checkPermission('crm:organization:contact:delete')}
+            >
+              删除
+            </Button>
           </Popconfirm>
         </Space>
       ),
@@ -599,13 +606,18 @@ function OrganizationList() {
                 </Button>
                 <Popconfirm
                   title="确认删除"
-                  description="确定要删除该客户吗？其下级客户也会被一并删除。"
+                  description="确定要删除该客户吗？其下级客户和联系人也会被一并删除；已关联此客户的项目/报价/合同等业务单据仍会引用已删除的客户，请谨慎操作。"
                   disabled={!checkPermission('crm:organization:delete')}
                   onConfirm={() => handleDeleteOrg(selectedOrg.id)}
                   okText="确定"
                   cancelText="取消"
                 >
-                  <Button danger icon={<DeleteOutlined />}>删除</Button>
+                  <Button
+                    danger icon={<DeleteOutlined />}
+                    disabled={!checkPermission('crm:organization:delete')}
+                  >
+                    删除
+                  </Button>
                 </Popconfirm>
               </Space>
             )
@@ -644,7 +656,13 @@ function OrganizationList() {
                   <UserOutlined style={{ marginRight: 6 }} />
                   联系人列表
                 </div>
-                <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleAddContact}>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  disabled={!checkPermission('crm:organization:contact:add')}
+                  onClick={handleAddContact}
+                >
                   添加联系人
                 </Button>
               </div>

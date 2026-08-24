@@ -250,10 +250,12 @@ if [ "$RUNNING_CONTAINERS" -lt 3 ]; then
 fi
 
 # 等待后端 API 就绪
+# 注意：后端健康路由是 /health（无 /api 前缀），nginx 只反代 /api 和 /ws，
+# 所以从宿主机经 8880 端口探测 /api/health 永远 404 —— 必须在容器内探测。
 log_info "等待后端 API 就绪..."
 API_READY=false
 for i in $(seq 1 30); do
-    if wget -q --spider http://localhost:8880/api/health > /dev/null 2>&1; then
+    if docker exec crm-backend node -e "fetch('http://localhost:5000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" > /dev/null 2>&1; then
         API_READY=true
         break
     fi
@@ -264,7 +266,7 @@ if $API_READY; then
     log_info "后端 API 正常响应"
 else
     log_warn "后端 API 未响应，可能需要更多时间启动"
-    log_warn "请稍后检查：wget -q --spider http://localhost:8880/api/health"
+    log_warn "请稍后检查：docker exec crm-backend node -e \"fetch('http://localhost:5000/health').then(r=>console.log(r.status))\""
 fi
 
 # 检查异常容器

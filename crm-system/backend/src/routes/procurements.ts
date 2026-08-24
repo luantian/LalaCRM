@@ -130,7 +130,8 @@ router.post('/', authenticateToken, checkPermission('project:procurement:edit'),
         vendor,
         totalAmount: totalAmount ? Number(totalAmount) : null,
         expectedDate: expectedDate ? new Date(expectedDate) : null,
-        status: status || 'PLANNED',
+        // 创建一律为计划中，状态流转必须走审批接口（防止直选状态绕过把关）
+        status: 'PLANNED',
         projectId: projectId ? Number(projectId) : undefined as any,
         assignedTo: assignedTo ? Number(assignedTo) : null,
         remarks,
@@ -195,7 +196,12 @@ router.post('/:id/approve', authenticateToken, checkPermission('project:procurem
 
     const updated = await prisma.procurement.update({
       where: { id },
-      data: { status: status as any }
+      data: {
+        status: status as any,
+        approvedBy: req.user!.id,
+        approvedAt: new Date(),
+        approvalNote: remark?.trim() || null
+      }
     })
 
     logger.info(`Procurement ${id} status changed from ${procurement.status} to ${status} by ${req.user?.username}`)

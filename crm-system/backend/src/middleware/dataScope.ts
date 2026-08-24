@@ -36,6 +36,28 @@ export interface ModelScopeConfig {
  * @param userRole 用户角色（ADMIN等）
  * @param config 模型数据权限配置（ownerField / teamMemberField / relations）
  */
+/**
+ * 用户是否拥有"全部数据"可见范围（ADMIN 角色，或任一角色 dataScope=ALL）。
+ * 供不走 applyDataScope 中间件的模块（如日报）复用同一套范围判定。
+ */
+export async function hasAllDataScope(userId: number): Promise<boolean> {
+  const userRoles = await prisma.userRole.findMany({
+    where: { userId },
+    include: { role: true }
+  })
+  if (userRoles.some(ur => ur.role.roleKey === 'ADMIN')) return true
+  if (userRoles.map(ur => ur.role.dataScope).includes('ALL')) return true
+  // 没有角色关联时回退到旧的 roleRef 字段
+  if (userRoles.length === 0) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { roleRef: true }
+    })
+    if (user?.roleRef) return user.roleRef.dataScope === 'ALL'
+  }
+  return false
+}
+
 export async function getDataScopeWhere(
   userId: number,
   _userRole: string | undefined,

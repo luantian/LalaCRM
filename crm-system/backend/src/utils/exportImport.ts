@@ -1,4 +1,5 @@
 import { Response } from 'express'
+import { readFileSync } from 'fs'
 import XLSX from 'xlsx'
 import logger from './logger'
 
@@ -61,9 +62,11 @@ export function exportExcel(res: Response, filename: string, sheetName: string, 
 export function parseImportFile(file: Express.Multer.File): { data: Record<string, any>[]; error?: string } {
   try {
     const ext = file.originalname.split('.').pop()?.toLowerCase()
+    // multer 磁盘存储时 file.buffer 不存在，从临时文件读回
+    const getBuffer = (): Buffer => file.buffer ?? readFileSync(file.path)
 
     if (ext === 'csv') {
-      const content = file.buffer.toString('utf-8').replace(/^﻿/, '') // 去 BOM
+      const content = getBuffer().toString('utf-8').replace(/^﻿/, '') // 去 BOM
       const wb = XLSX.read(content, { type: 'string' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const data = XLSX.utils.sheet_to_json(ws, { defval: '' })
@@ -71,7 +74,7 @@ export function parseImportFile(file: Express.Multer.File): { data: Record<strin
     }
 
     if (['xlsx', 'xls'].includes(ext || '')) {
-      const wb = XLSX.read(file.buffer, { type: 'buffer' })
+      const wb = XLSX.read(getBuffer(), { type: 'buffer' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const data = XLSX.utils.sheet_to_json(ws, { defval: '' })
       return { data: data as Record<string, any>[] }

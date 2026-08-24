@@ -2,11 +2,11 @@ import prisma from '../lib/prisma'
 import { Router, Request, Response } from 'express'
 import { body, param, query } from 'express-validator'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
-import { applyDataScope } from '../middleware/dataScope'
 import { validate } from '../middleware/validation'
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 import { autoWriteOrganizationRecord } from '../utils/autoDailyReport'
+import { isAdmin } from '../utils/permission'
 
 const router = Router()
 
@@ -123,9 +123,12 @@ async function getUserRoleIds(userId: number): Promise<number[]> {
   return userRoles.map(ur => ur.roleId)
 }
 
-// 判断当前用户是否有权查看联系方式（完全依赖 SystemConfig 配置）
+// 判断当前用户是否有权查看联系方式（管理员始终可见；其余依赖 SystemConfig 配置）
 async function canViewContactInfo(req: AuthRequest): Promise<boolean> {
   if (!req.user?.id) return false
+
+  // 管理员始终可见，与 checkPermission"管理员拥有所有权限"的语义一致
+  if (await isAdmin(req.user.id)) return true
 
   // 从 SystemConfig 读取允许查看联系方式的角色 ID
   const config = await prisma.systemConfig.findUnique({
@@ -133,8 +136,15 @@ async function canViewContactInfo(req: AuthRequest): Promise<boolean> {
   })
   if (!config) return false
 
-  const allowedRoleIds: number[] = JSON.parse(config.value)
-  if (allowedRoleIds.length === 0) return false
+  let allowedRoleIds: number[] = []
+  try {
+    allowedRoleIds = JSON.parse(config.value)
+  } catch {
+    // 配置值损坏时降级为不可见（fail-closed），避免接口 500
+    logger.warn(`配置 contact_info_viewable_roles 的值不是合法 JSON: ${config.value}`)
+    return false
+  }
+  if (!Array.isArray(allowedRoleIds) || allowedRoleIds.length === 0) return false
 
   const userRoleIds = await getUserRoleIds(req.user.id)
   return userRoleIds.some(id => allowedRoleIds.includes(id))
@@ -182,6 +192,28 @@ function maskOrgContact(org: any): any {
   }
 }
 
+/**
+ * 防脱敏值回写：无联系方式查看权的用户编辑保存时，表单里回填的是脱敏值，
+ * 原样写回会污染真实数据。仅当提交值恰好等于原值的掩码时将其剔除（视为"未变更"）；
+ * 用户新录入的真实值与掩码不同，不受影响。
+ */
+function stripMaskedUpdates(
+  data: Record<string, any>,
+  original: { phone?: string | null; email?: string | null; wechat?: string | null },
+  canView: boolean
+): void {
+  if (canView) return
+  if (data.phone !== undefined && data.phone === maskPhone(original.phone ?? null)) {
+    delete data.phone
+  }
+  if (data.email !== undefined && data.email === maskEmail(original.email ?? null)) {
+    delete data.email
+  }
+  if (data.wechat !== undefined && data.wechat === maskWechat(original.wechat ?? null)) {
+    delete data.wechat
+  }
+}
+
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 // 0. GET /simple - 精简客户列表（用于下拉选择，无需客户管理权限）
@@ -204,22 +236,18 @@ router.get(
 )
 
 // 1. GET / - List organizations (flat list with tree support)
+// 客户为公司公共资产：不做数据范围过滤，权限（crm:organization:list）即全量可见
 router.get(
   '/',
   authenticateToken,
   checkPermission('crm:organization:list'),
-  applyDataScope({ ownerField: 'ownerId' }),
   async (req: AuthRequest, res: Response) => {
     try {
       const canView = await canViewContactInfo(req)
       const { parentId, type, search } = req.query
-      const dataScopeWhere = (req as any).dataScopeWhere || {}
 
       const conditions: any[] = [{ deletedAt: null }]
 
-      if (Object.keys(dataScopeWhere).length > 0) {
-        conditions.push(dataScopeWhere)
-      }
       if (parentId !== undefined) {
         conditions.push({
           parentId: parentId === 'null' ? null : Number(parentId)
@@ -275,14 +303,12 @@ router.get(
   '/tree',
   authenticateToken,
   checkPermission('crm:organization:list'),
-  applyDataScope({ ownerField: 'ownerId' }),
   async (req: AuthRequest, res: Response) => {
     try {
       const canView = await canViewContactInfo(req)
-      const dataScopeWhere = (req as any).dataScopeWhere || {}
 
       const orgs = await prisma.organization.findMany({
-        where: { deletedAt: null, ...dataScopeWhere },
+        where: { deletedAt: null },
         orderBy: { createdAt: 'asc' }
       })
 
@@ -415,17 +441,16 @@ router.get(
 router.get(
   '/:id',
   authenticateToken,
+  checkPermission('crm:organization:list'),
   param('id').isInt({ min: 1 }).withMessage('ID必须是正整数'),
   validate,
-  applyDataScope({ ownerField: 'ownerId' }),
   async (req: AuthRequest, res: Response) => {
     try {
       const id = Number(req.params.id)
       const canView = await canViewContactInfo(req)
-      const dataScopeWhere = (req as any).dataScopeWhere || {}
 
       const org = await prisma.organization.findFirst({
-        where: { id, deletedAt: null, ...dataScopeWhere },
+        where: { id, deletedAt: null },
         include: {
           parent: { select: { id: true, name: true } },
           children: {
@@ -567,22 +592,28 @@ router.put(
         }
       }
 
+      const updateData: Record<string, any> = {
+        ...(name !== undefined && { name }),
+        ...(type !== undefined && { type }),
+        ...(parentId !== undefined && { parentId: parentId || null }),
+        ...(address !== undefined && { address }),
+        ...(phone !== undefined && { phone }),
+        ...(email !== undefined && { email }),
+        ...(taxNo !== undefined && { taxNo }),
+        ...(website !== undefined && { website }),
+        ...(legalPerson !== undefined && { legalPerson }),
+        ...(registeredCapital !== undefined && { registeredCapital }),
+        ...(description !== undefined && { description }),
+        ...(status !== undefined && { status })
+      }
+
+      // 无联系方式查看权时，剔除与原值掩码一致的字段（防脱敏值回写污染真实数据）
+      const canView = await canViewContactInfo(req)
+      stripMaskedUpdates(updateData, org, canView)
+
       const updated = await prisma.organization.update({
         where: { id },
-        data: {
-          ...(name !== undefined && { name }),
-          ...(type !== undefined && { type }),
-          ...(parentId !== undefined && { parentId: parentId || null }),
-          ...(address !== undefined && { address }),
-          ...(phone !== undefined && { phone }),
-          ...(email !== undefined && { email }),
-          ...(taxNo !== undefined && { taxNo }),
-          ...(website !== undefined && { website }),
-          ...(legalPerson !== undefined && { legalPerson }),
-          ...(registeredCapital !== undefined && { registeredCapital }),
-          ...(description !== undefined && { description }),
-          ...(status !== undefined && { status })
-        },
+        data: updateData,
         include: {
           parent: { select: { id: true, name: true } },
           owner: { select: { id: true, name: true } }
@@ -702,6 +733,7 @@ router.post(
 router.get(
   '/:id/contacts',
   authenticateToken,
+  checkPermission('crm:organization:list'),
   param('id').isInt({ min: 1 }).withMessage('ID必须是正整数'),
   validate,
   async (req: AuthRequest, res: Response) => {
@@ -767,23 +799,29 @@ router.put(
         return res.status(404).json({ error: '联系人不存在' })
       }
 
+      const canView = await canViewContactInfo(req)
+
+      const updateData: Record<string, any> = {
+        ...(name !== undefined && { name }),
+        ...(title !== undefined && { title }),
+        ...(department !== undefined && { department }),
+        ...(phone !== undefined && { phone }),
+        ...(email !== undefined && { email }),
+        ...(wechat !== undefined && { wechat }),
+        ...(isPrimary !== undefined && { isPrimary }),
+        ...(notes !== undefined && { notes })
+      }
+
+      // 无联系方式查看权时，剔除与原值掩码一致的字段（防脱敏值回写污染真实数据）
+      stripMaskedUpdates(updateData, existing, canView)
+
       const contact = await prisma.orgContact.update({
         where: { id: contactId },
-        data: {
-          ...(name !== undefined && { name }),
-          ...(title !== undefined && { title }),
-          ...(department !== undefined && { department }),
-          ...(phone !== undefined && { phone }),
-          ...(email !== undefined && { email }),
-          ...(wechat !== undefined && { wechat }),
-          ...(isPrimary !== undefined && { isPrimary }),
-          ...(notes !== undefined && { notes })
-        }
+        data: updateData
       })
 
       logger.info(`Contact ${contactId} updated in organization ${orgId} by user ${req.user?.username}`)
       // 返回数据时进行脱敏处理
-      const canView = await canViewContactInfo(req)
       const result = canView ? contact : {
         ...contact,
         phone: maskPhone(contact.phone),

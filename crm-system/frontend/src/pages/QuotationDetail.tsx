@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Row, Col, Space, Popconfirm } from 'antd'
-import { ArrowLeftOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
+import { Card, Descriptions, Tag, Button, Tabs, Table, Upload, message, Spin, Row, Col, Space, Popconfirm, Modal, Input } from 'antd'
+import { ArrowLeftOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, EyeOutlined, SendOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { getQuotationDetail, uploadQuotationFiles, deleteQuotationFile, downloadQuotationFile, downloadFile, previewQuotationFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
+import { getQuotationDetail, uploadQuotationFiles, deleteQuotationFile, downloadQuotationFile, downloadFile, previewQuotationFileUrl, openFilePreview, isPreviewableFile, submitQuotation, approveQuotation, rejectQuotation, safeJsonParse } from '../services/api'
+import { usePermission } from '../hooks/usePermission'
+import { isAdmin } from '../utils/permission'
 
 const statusConfig: Record<string, { text: string; color: string }> = {
   DRAFT: { text: '草稿', color: 'default' }, SUBMITTED: { text: '已提交', color: 'processing' },
@@ -14,8 +16,14 @@ const statusConfig: Record<string, { text: string; color: string }> = {
 const QuotationDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { checkPermission } = usePermission()
+  const user = safeJsonParse(localStorage.getItem('user'), {})
+  const admin = isAdmin()
+  const canApprove = checkPermission('crm:quotation:approve')
   const [quotation, setQuotation] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [rejectModalVisible, setRejectModalVisible] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
 
   useEffect(() => { fetchDetail() }, [id])
 
@@ -51,6 +59,45 @@ const QuotationDetail: React.FC = () => {
       await downloadFile(downloadQuotationFile, file.id, file.fileName)
     } catch {
       message.error('下载失败')
+    }
+  }
+
+  // 提交审批：DRAFT → SUBMITTED
+  const handleSubmit = async () => {
+    try {
+      await submitQuotation(parseInt(id!))
+      message.success('已提交审批')
+      fetchDetail()
+    } catch (e: any) {
+      message.error(e?.error || '提交失败')
+    }
+  }
+
+  // 批准（明细已在页面上，直接确认即可）
+  const handleApprove = async () => {
+    try {
+      await approveQuotation(parseInt(id!))
+      message.success('已批准')
+      fetchDetail()
+    } catch (e: any) {
+      message.error(e?.error || '审批失败')
+    }
+  }
+
+  // 驳回需填原因
+  const handleConfirmReject = async () => {
+    if (!rejectReason.trim()) {
+      message.error('请填写驳回原因')
+      return
+    }
+    try {
+      await rejectQuotation(parseInt(id!), rejectReason.trim())
+      message.success('已驳回')
+      setRejectModalVisible(false)
+      setRejectReason('')
+      fetchDetail()
+    } catch (e: any) {
+      message.error(e?.error || '驳回失败')
     }
   }
 
@@ -104,7 +151,21 @@ const QuotationDetail: React.FC = () => {
             </div>
             <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>售前: {quotation.opportunity?.name || '-'} · 客户: {(() => { const org = quotation.organization?.name || '-'; const contact = quotation.contact ? `${quotation.contact.name}${quotation.contact.title ? ` (${quotation.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</div>
           </Col>
-          <Col flex="none" />
+          <Col flex="none">
+            {quotation.status === 'DRAFT' && (quotation.ownerId === user.id || admin) && (
+              <Popconfirm title="提交后报价单内容将锁定，确定提交审批吗?" onConfirm={handleSubmit}>
+                <Button type="primary" icon={<SendOutlined />}>提交审批</Button>
+              </Popconfirm>
+            )}
+            {quotation.status === 'SUBMITTED' && canApprove && (quotation.ownerId !== user.id || admin) && (
+              <>
+                <Popconfirm title="确定批准这份报价单吗?" onConfirm={handleApprove}>
+                  <Button type="primary" style={{ background: '#52c41a', borderColor: '#52c41a' }} icon={<CheckOutlined />}>批准</Button>
+                </Popconfirm>
+                <Button danger icon={<CloseOutlined />} style={{ marginLeft: 8 }} onClick={() => { setRejectReason(''); setRejectModalVisible(true) }}>驳回</Button>
+              </>
+            )}
+          </Col>
         </Row>
       </Card>
 
@@ -118,6 +179,13 @@ const QuotationDetail: React.FC = () => {
               <Descriptions.Item label="客户">{(() => { const org = quotation.organization?.name || '-'; const contact = quotation.contact ? `${quotation.contact.name}${quotation.contact.title ? ` (${quotation.contact.title})` : ''}` : ''; return contact ? `${org} - ${contact}` : org })()}</Descriptions.Item>
               <Descriptions.Item label="创建人">{quotation.owner?.name}</Descriptions.Item>
               <Descriptions.Item label="创建时间">{dayjs(quotation.createdAt).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>
+              <Descriptions.Item label="审批人">{quotation.approver?.name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="审批时间">{quotation.approvedAt ? dayjs(quotation.approvedAt).format('YYYY-MM-DD HH:mm') : '-'}</Descriptions.Item>
+              <Descriptions.Item label="审批意见" span={2}>
+                {quotation.approvalNote
+                  ? <span style={quotation.status === 'REJECTED' ? { color: '#cf1322' } : undefined}>{quotation.approvalNote}</span>
+                  : '-'}
+              </Descriptions.Item>
               <Descriptions.Item label="备注" span={2}>{quotation.notes || '-'}</Descriptions.Item>
             </Descriptions>
           )},
@@ -142,6 +210,23 @@ const QuotationDetail: React.FC = () => {
           )}
         ]} />
       </Card>
+
+      <Modal
+        title="驳回报价单"
+        open={rejectModalVisible}
+        onOk={handleConfirmReject}
+        onCancel={() => setRejectModalVisible(false)}
+        okText="确认驳回"
+        okButtonProps={{ danger: true }}
+      >
+        <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6, marginBottom: 16 }}>
+          <div><strong>{quotation.name}</strong> <Tag>v{quotation.version}</Tag></div>
+          <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>
+            售前: {quotation.opportunity?.name || '-'} · 报价总额: <strong style={{ color: '#cf1322' }}>¥{Number(quotation.totalAmount || 0).toLocaleString()}</strong>
+          </div>
+        </div>
+        <Input.TextArea rows={3} placeholder="请填写驳回原因（必填）" value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
+      </Modal>
     </div>
   )
 }

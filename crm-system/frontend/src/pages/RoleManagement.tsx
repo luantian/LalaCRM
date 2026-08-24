@@ -634,7 +634,7 @@ function RoleManagement() {
         <div style={{ marginBottom: 16, color: '#666' }}>
           选择可以查看客户完整联系方式（电话、邮箱、微信）的角色。
           <br />
-          <span style={{ fontSize: 12, color: '#999' }}>未选中的角色只能看到脱敏后的信息</span>
+          <span style={{ fontSize: 12, color: '#999' }}>未选中的角色只能看到脱敏后的信息；管理员始终可见完整联系方式，无需在此勾选</span>
         </div>
         <div style={{ maxHeight: 300, overflowY: 'auto' }}>
           {roles.map(role => (

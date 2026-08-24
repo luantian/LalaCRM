@@ -8,3 +8,5 @@ uploads/
 backend/logs/
 nul
 build/
+backend/src/backups/
+frontend/test-results/

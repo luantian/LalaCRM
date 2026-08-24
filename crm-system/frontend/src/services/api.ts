@@ -126,6 +126,8 @@ export const previewProjectFileUrl = (fileId: number) => `${api.defaults.baseURL
 export const createContract = (data: any) => api.post('/contracts', data)
 export const updateContract = (id: number, data: any) => api.put(`/contracts/${id}`, data)
 export const deleteContract = (id: number) => api.delete(`/contracts/${id}`)
+// 合同审批（状态流转：DRAFT→PENDING 提交、PENDING→ACTIVE/CANCELLED 审批）
+export const approveContract = (id: number, status: string, remark?: string) => api.post(`/contracts/${id}/approve`, { status, remark })
 
 // 合同订货明细
 export const getOrderItems = (contractId: number) => api.get('/contract-order-items', { params: { contractId } })
@@ -283,6 +285,8 @@ export const getProcurementDetail = (id: number) => api.get(`/procurements/${id}
 export const createProcurement = (data: any) => api.post('/procurements', data)
 export const updateProcurement = (id: number, data: any) => api.put(`/procurements/${id}`, data)
 export const deleteProcurement = (id: number) => api.delete(`/procurements/${id}`)
+// 采购状态流转（PLANNED→ORDERED→IN_TRANSIT→RECEIVED / CANCELLED）
+export const approveProcurement = (id: number, status: string, remark?: string) => api.post(`/procurements/${id}/approve`, { status, remark })
 export const getProcurementItems = (procId: number) => api.get(`/procurements/${procId}/items`)
 export const createProcurementItem = (procId: number, data: any) => api.post(`/procurements/${procId}/items`, data)
 export const updateProcurementItem = (itemId: number, data: any) => api.put(`/procurements/items/${itemId}`, data)
@@ -397,6 +401,10 @@ export const updateQuotation = (id: number, data: any) => api.put(`/quotations/$
 export const deleteQuotation = (id: number) => api.delete(`/quotations/${id}`)
 export const getQuotationStats = () => api.get('/quotations/stats/overview')
 export const getQuotationVersions = (oppId: number) => api.get(`/quotations/opportunity/${oppId}/versions`)
+// 报价单审批
+export const submitQuotation = (id: number) => api.post(`/quotations/${id}/submit`)
+export const approveQuotation = (id: number, remark?: string) => api.post(`/quotations/${id}/approve`, { remark })
+export const rejectQuotation = (id: number, reason: string) => api.post(`/quotations/${id}/reject`, { reason })
 // 报价单附件
 export const uploadQuotationFiles = (id: number, files: FileList) => {
   const formData = new FormData()

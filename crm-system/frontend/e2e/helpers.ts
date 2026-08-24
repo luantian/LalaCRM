@@ -2,7 +2,8 @@ import { Page, Locator, expect } from '@playwright/test'
 
 /** 测试账号（由 backend/test/seed-test-data.mjs 写入测试库） */
 export const ADMIN = { username: 'testadmin', password: 'Test123456!' }
-export const TESTER = { username: 'testuser', password: 'Test123456!' } // SELF 范围，仅客户/项目部分权限
+export const TESTER = { username: 'testuser', password: 'Test123456!' } // SELF 范围，报价单可建可提交、无审批权
+export const APPROVER = { username: 'testapprover', password: 'Test123456!' } // 报价单审批权，非管理员（防自审批对其生效）
 
 const API = 'http://localhost:5000/api'
 

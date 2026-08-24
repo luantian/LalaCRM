@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { isAdmin, hasAnyRole } from '../utils/permission'
+import { hasAllDataScope } from '../middleware/dataScope'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { logOperation } from '../middleware/logOperation'
 import { clampPagination } from '../middleware/validation'
@@ -14,7 +15,8 @@ const router = Router()
  * 日报数据可见性：管理员可查看全部，非管理员只能查看自己的日报
  */
 async function getReportScopeWhere(userId: number): Promise<Record<string, any>> {
-  return (await isAdmin(userId)) ? {} : { userId }
+  // 管理员或数据范围为 ALL 的角色（如总经理/销售经理）可见全部日报，其余只看自己
+  return (await isAdmin(userId)) || (await hasAllDataScope(userId)) ? {} : { userId }
 }
 
 /**

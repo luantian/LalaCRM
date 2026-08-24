@@ -143,6 +143,12 @@ async function main() {
     }).catch(() => {}) // ignore duplicates
   }
 
+  // 菜单数据带显式 id 插入，自增序列不会跟随推进——必须重置到当前最大值，
+  // 否则后续任何新建菜单都会命中主键唯一约束（创建功能整体不可用）
+  await prisma.$executeRawUnsafe(
+    `SELECT setval(pg_get_serial_sequence('"MenuItem"', 'id'), COALESCE((SELECT MAX(id) FROM "MenuItem"), 1))`
+  )
+
   console.log(`Done: ${menus.length} menus created (${menus.filter(m => m.menuType === 'BUTTON').length} buttons), all assigned to ADMIN role`)
 }
 

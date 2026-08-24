@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Descriptions, Tag, Tabs, Table, Button, Space, Statistic, Row, Col, Modal, Form, Input, Select, InputNumber, DatePicker, message, List, Popconfirm, Avatar, Empty, Spin, Result, Switch } from 'antd'
-import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, EyeOutlined } from '@ant-design/icons'
-import { getProjectDetail, createContract, updateContract, deleteContract, updateProject, getOrganizationsSimple, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getReceipts, createReceipt, updateReceipt, deleteReceipt, uploadReceiptFiles, deleteReceiptFile, downloadReceiptFileUrl, previewReceiptFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, downloadProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, downloadProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, downloadProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, openFilePreview, isPreviewableFile, downloadFile } from '../services/api'
+import { ArrowLeftOutlined, EditOutlined, PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, FileOutlined, EyeOutlined, SendOutlined, CheckOutlined, CloseOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { getProjectDetail, createContract, updateContract, deleteContract, approveContract, updateProject, getOrganizationsSimple, getOrderItems, createOrderItem, updateOrderItem, deleteOrderItem, uploadOrderItemFiles, deleteOrderItemFile, downloadOrderItemFileUrl, previewOrderItemFileUrl, getReceipts, createReceipt, updateReceipt, deleteReceipt, uploadReceiptFiles, deleteReceiptFile, downloadReceiptFileUrl, previewReceiptFileUrl, getShipments, createShipment, updateShipment, deleteShipment, uploadShipmentFiles, deleteShipmentFile, downloadShipmentFileUrl, previewShipmentFileUrl, getContractFiles, uploadContractFiles, deleteContractFile, downloadContractFileUrl, previewContractFileUrl, getProcurements, createProcurement, updateProcurement, deleteProcurement, approveProcurement, getProcurementItems, createProcurementItem, deleteProcurementItem, getProcurementPayments, createProcurementPayment, updateProcurementPayment, deleteProcurementPayment, uploadProcurementFiles, getProcurementFiles, deleteProcurementFile, previewProcurementFileUrl, downloadProcurementFileUrl, uploadProcurementItemFiles, getProcurementItemFiles, deleteProcurementItemFile, previewProcurementItemFileUrl, downloadProcurementItemFileUrl, uploadProcurementPaymentFiles, getProcurementPaymentFiles, deleteProcurementPaymentFile, previewProcurementPaymentFileUrl, downloadProcurementPaymentFileUrl, getProjectNotes, createProjectNote, updateProjectNote, deleteProjectNote, uploadProjectNoteFiles, deleteProjectNoteFile, downloadProjectNoteFileUrl, previewProjectNoteFileUrl, getProjectTeam, addProjectTeamMember, removeProjectTeamMember, getUserDropdown, safeJsonParse, getInvoices, createInvoice, updateInvoice, deleteInvoice, uploadInvoiceFiles, deleteInvoiceFile, downloadInvoiceFileUrl, previewInvoiceFileUrl, openFilePreview, isPreviewableFile, downloadFile } from '../services/api'
+import { isAdmin } from '../utils/permission'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import { TeamMembersPanel } from '../components/TeamMembersPanel'
@@ -20,6 +21,10 @@ function ProjectDetail() {
   const [error, setError] = useState(false)
   const user = safeJsonParse(localStorage.getItem('user'), {})
   const isArchived = project?.isArchived === true
+  // 拒绝/取消共用弹窗（hooks 必须在条件 return 之前声明）
+  const [rejectModalVisible, setRejectModalVisible] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejectTarget, setRejectTarget] = useState<{ kind: 'contract' | 'procurement'; id: number; name: string } | null>(null)
 
   // 合同管理状态
   const [contractModalVisible, setContractModalVisible] = useState(false)
@@ -223,6 +228,10 @@ function ProjectDetail() {
   const contractCount = project.contracts?.length || 0
 
   // ===== 合同管理 =====
+  const admin = isAdmin()
+  const canApproveContract = checkPermission('project:contract:approve')
+  const canApproveProcurement = checkPermission('project:procurement:approve')
+
   const handleAddContract = () => { setEditingContract(null); contractForm.resetFields(); contractForm.setFieldsValue({ status: 'DRAFT' }); setContractModalVisible(true) }
   const handleEditContract = (c: any) => {
     setEditingContract(c)
@@ -242,11 +251,64 @@ function ProjectDetail() {
     try {
       const values = await contractForm.validateFields()
       const [cStartDate, cEndDate] = values.dateRange || []
-      const data = { ...values, name: values.name || `${project.name} - 合同`, organizationId: project.organizationId, projectId: parseInt(id!), signDate: values.signDate ? values.signDate.toDate() : null, startDate: cStartDate ? cStartDate.toDate() : null, endDate: cEndDate ? cEndDate.toDate() : null }
+      // 状态不随表单提交：创建固定草稿，变更必须走审批接口
+      const { status: _ignoredStatus, ...rest } = values
+      const data = { ...rest, name: values.name || `${project.name} - 合同`, organizationId: project.organizationId, projectId: parseInt(id!), signDate: values.signDate ? values.signDate.toDate() : null, startDate: cStartDate ? cStartDate.toDate() : null, endDate: cEndDate ? cEndDate.toDate() : null }
       if (editingContract) { await updateContract(editingContract.id, data); message.success('更新成功') }
       else { await createContract(data); message.success('创建成功') }
       setContractModalVisible(false); refreshProject()
     } catch (error: any) { message.error(error?.error || '操作失败') }
+  }
+
+  // ===== 合同审批 =====
+  const handleSubmitContract = async (cid: number) => {
+    try { await approveContract(cid, 'PENDING'); message.success('已提交审批'); refreshProject() }
+    catch (e: any) { message.error(e?.error || '提交失败') }
+  }
+  // 管理员快捷通道：串两次合法流转（DRAFT→PENDING→ACTIVE），自审批由管理员豁免保障
+  const handleSubmitAndApproveContract = async (cid: number) => {
+    try {
+      await approveContract(cid, 'PENDING')
+      await approveContract(cid, 'ACTIVE')
+      message.success('合同已生效')
+      refreshProject()
+    } catch (e: any) { message.error(e?.error || '操作失败') }
+  }
+  const handleApproveContract = async (cid: number) => {
+    try { await approveContract(cid, 'ACTIVE'); message.success('已批准'); refreshProject() }
+    catch (e: any) { message.error(e?.error || '审批失败') }
+  }
+  const openRejectModal = (kind: 'contract' | 'procurement', r: any) => {
+    setRejectTarget({ kind, id: r.id, name: r.name || r.title })
+    setRejectReason('')
+    setRejectModalVisible(true)
+  }
+  const handleConfirmReject = async () => {
+    if (!rejectTarget) return
+    if (!rejectReason.trim()) { message.error('请填写原因'); return }
+    try {
+      if (rejectTarget.kind === 'contract') {
+        await approveContract(rejectTarget.id, 'CANCELLED', rejectReason.trim())
+        message.success('已拒绝（合同取消）')
+        refreshProject()
+      } else {
+        await approveProcurement(rejectTarget.id, 'CANCELLED', rejectReason.trim())
+        message.success('已取消采购单')
+        fetchProcurements()
+      }
+      setRejectModalVisible(false)
+    } catch (e: any) { message.error(e?.error || '操作失败') }
+  }
+
+  // ===== 采购状态流转 =====
+  const procNextAction: Record<string, { next: string; label: string; confirm: string }> = {
+    PLANNED: { next: 'ORDERED', label: '下单', confirm: '确认下单吗？下单后进入执行跟踪。' },
+    ORDERED: { next: 'IN_TRANSIT', label: '运输中', confirm: '确认标记为运输中吗？' },
+    IN_TRANSIT: { next: 'RECEIVED', label: '确认到货', confirm: '确认已到货吗？流转后为终态。' }
+  }
+  const handleProcTransition = async (pid: number, next: string) => {
+    try { await approveProcurement(pid, next); message.success('状态已更新'); fetchProcurements() }
+    catch (e: any) { message.error(e?.error || '操作失败') }
   }
 
   // ===== 订货明细 =====
@@ -387,6 +449,9 @@ function ProjectDetail() {
     { title: '联系人', key: 'contact', render: (_: any, r: any) => r.contact ? `${r.contact.name}${r.contact.title ? ` (${r.contact.title})` : ''}` : '-' },
     { title: '金额', dataIndex: 'amount', key: 'amount', render: (v: number) => <span style={{ color: '#1890ff', fontWeight: 'bold' }}>{Number(v)}元</span> },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => { const c = contractStatusConfig[s] || { text: s, color: 'default' }; return <Tag color={c.color}>{c.text}</Tag> } },
+    { title: '审批意见', key: 'approval', width: 150, render: (_: any, r: any) => r.approvalNote
+      ? <span title={`${r.approver?.name || ''}：${r.approvalNote}`} style={{ color: r.status === 'CANCELLED' ? '#cf1322' : undefined }}>{r.approvalNote}</span>
+      : '-' },
     { title: '签订日期', dataIndex: 'signDate', key: 'signDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
     {
       title: '附件',
@@ -400,11 +465,29 @@ function ProjectDetail() {
           : <span style={{ color: '#d9d9d9' }}>-</span>
       }
     },
-    { title: '操作', key: 'action', width: 240, render: (_: any, r: any) => (
+    { title: '操作', key: 'action', width: 320, render: (_: any, r: any) => (
       <Space size={0}>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditContract(r)} disabled={isArchived}>编辑</Button>
+        {r.status === 'DRAFT' && admin && !isArchived && (
+          <Popconfirm title="一键提交并批准，合同立即生效（若关联商机将自动创建项目），确定吗？" onConfirm={() => handleSubmitAndApproveContract(r.id)}>
+            <Button type="link" size="small" icon={<CheckCircleOutlined />} style={{ color: '#722ed1' }}>一键生效</Button>
+          </Popconfirm>
+        )}
+        {r.status === 'DRAFT' && (r.ownerId === user.id || admin) && !isArchived && (
+          <Popconfirm title="提交后进入待审批状态，确定提交吗？" onConfirm={() => handleSubmitContract(r.id)}>
+            <Button type="link" size="small" icon={<SendOutlined />}>提交审批</Button>
+          </Popconfirm>
+        )}
+        {r.status === 'PENDING' && canApproveContract && (r.ownerId !== user.id || admin) && !isArchived && (
+          <>
+            <Popconfirm title="确定批准该合同吗？生效后若关联商机将自动创建项目。" onConfirm={() => handleApproveContract(r.id)}>
+              <Button type="link" size="small" icon={<CheckOutlined />} style={{ color: '#52c41a' }}>批准</Button>
+            </Popconfirm>
+            <Button type="link" size="small" danger icon={<CloseOutlined />} onClick={() => openRejectModal('contract', r)}>拒绝</Button>
+          </>
+        )}
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditContract(r)} disabled={isArchived || r.status !== 'DRAFT'}>编辑</Button>
         <Popconfirm title="确定要删除吗?" onConfirm={() => handleDeleteContract(r.id)}>
-          <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived}>删除</Button>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={isArchived || r.status !== 'DRAFT'}>删除</Button>
         </Popconfirm>
       </Space>
     ) }
@@ -1273,6 +1356,9 @@ function ProjectDetail() {
             { title: '总金额', dataIndex: 'totalAmount', key: 'totalAmount', render: (v: any) => v ? `${Number(v)}元` : '-' },
             { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={s === 'RECEIVED' ? 'success' : s === 'IN_TRANSIT' ? 'processing' : s === 'ORDERED' ? 'blue' : 'default'}>{{ PLANNED: '计划中', ORDERED: '已下单', IN_TRANSIT: '运输中', RECEIVED: '已到货', CANCELLED: '已取消' }[s] || s}</Tag> },
             { title: '预计到货', dataIndex: 'expectedDate', key: 'expectedDate', render: (d: string) => d ? dayjs(d).format('YYYY-MM-DD') : '-' },
+            { title: '流转备注', key: 'approvalNote', width: 140, render: (_: any, r: any) => r.approvalNote
+              ? <span title={`${r.approver?.name || ''}：${r.approvalNote}`} style={{ color: r.status === 'CANCELLED' ? '#cf1322' : undefined }}>{r.approvalNote}</span>
+              : '-' },
             {
               title: '附件',
               key: 'files',
@@ -1285,14 +1371,25 @@ function ProjectDetail() {
                   : <span style={{ color: '#d9d9d9' }}>-</span>
               }
             },
-            { title: '操作', key: 'action', width: 160, render: (_: any, record: any) => (
-              <Space size={0}>
-                <Button type="link" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEditProcurement(record) }} disabled={isArchived}>编辑</Button>
-                <Popconfirm title="确定删除此采购单？" onConfirm={async (e) => { e?.stopPropagation(); try { await deleteProcurement(record.id); fetchProcurements() } catch (err: any) { message.error(err?.error || '删除失败') } }}>
-                  <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} disabled={isArchived}>删除</Button>
-                </Popconfirm>
-              </Space>
-            )},
+            { title: '操作', key: 'action', width: 220, render: (_: any, record: any) => {
+              const next = procNextAction[record.status]
+              return (
+                <Space size={0}>
+                  {next && canApproveProcurement && !isArchived && (
+                    <Popconfirm title={next.confirm} onConfirm={(e) => { e?.stopPropagation(); handleProcTransition(record.id, next.next) }}>
+                      <Button type="link" size="small" icon={<CheckOutlined />} onClick={(e) => e.stopPropagation()}>{next.label}</Button>
+                    </Popconfirm>
+                  )}
+                  {['PLANNED', 'ORDERED', 'IN_TRANSIT'].includes(record.status) && canApproveProcurement && !isArchived && (
+                    <Button type="link" size="small" danger icon={<CloseOutlined />} onClick={(e) => { e.stopPropagation(); openRejectModal('procurement', record) }}>取消</Button>
+                  )}
+                  <Button type="link" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEditProcurement(record) }} disabled={isArchived}>编辑</Button>
+                  <Popconfirm title="确定删除此采购单？" onConfirm={async (e) => { e?.stopPropagation(); try { await deleteProcurement(record.id); fetchProcurements() } catch (err: any) { message.error(err?.error || '删除失败') } }}>
+                    <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} disabled={isArchived}>删除</Button>
+                  </Popconfirm>
+                </Space>
+              )
+            }},
           ]}
         />
       </div>
@@ -1372,7 +1469,6 @@ function ProjectDetail() {
           <Form.Item name="name" label="合同名称" rules={[{ required: true }]}><Input /></Form.Item>
           <Row gutter={16}>
             <Col span={12}><Form.Item name="amount" label="合同金额" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} precision={2} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="status" label="状态"><Select><Select.Option value="DRAFT">草稿</Select.Option><Select.Option value="PENDING">待审批</Select.Option><Select.Option value="ACTIVE">生效中</Select.Option><Select.Option value="EXPIRED">已过期</Select.Option><Select.Option value="CANCELLED">已取消</Select.Option></Select></Form.Item></Col>
           </Row>
           <Form.Item name="contactId" label="签约联系人">
             <OrgContactSelector organizationId={project?.organizationId} />
@@ -1477,14 +1573,6 @@ function ProjectDetail() {
             <Col span={12}><Form.Item name="vendor" label="供应商" rules={[{ required: true, message: '请选择供应商名称' }]}><Input /></Form.Item></Col>
             <Col span={12}><Form.Item name="expectedDate" label="预计到货日期"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
           </Row>
-          <Form.Item name="status" label="状态" initialValue="PLANNED">
-            <Select>
-              <Select.Option value="PLANNED">计划中</Select.Option>
-              <Select.Option value="ORDERED">已下单</Select.Option>
-              <Select.Option value="IN_TRANSIT">运输中</Select.Option>
-              <Select.Option value="RECEIVED">已到货</Select.Option>
-            </Select>
-          </Form.Item>
           <Form.Item name="remarks" label="备注"><TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
@@ -1588,6 +1676,24 @@ function ProjectDetail() {
             )}
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 合同拒绝 / 采购取消 共用弹窗（顶层挂载，避免嵌套在关闭的表单 Modal 内不渲染） */}
+      <Modal
+        title={rejectTarget?.kind === 'contract' ? '拒绝合同' : '取消采购单'}
+        open={rejectModalVisible}
+        onOk={handleConfirmReject}
+        onCancel={() => setRejectModalVisible(false)}
+        okText="确认"
+        okButtonProps={{ danger: true }}
+      >
+        <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6, marginBottom: 16 }}>
+          <strong>{rejectTarget?.name}</strong>
+          <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>
+            {rejectTarget?.kind === 'contract' ? '拒绝后合同将被取消，需要重新起草。' : '取消后采购单终止，需要重新创建。'}
+          </div>
+        </div>
+        <Input.TextArea rows={3} placeholder="请填写原因（必填，将记入审批意见）" value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
       </Modal>
 
       {/* 团队成员弹窗由共享组件 TeamMembersPanel 内部管理 */}

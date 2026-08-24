@@ -148,6 +148,7 @@ router.get('/:id', authenticateToken, checkPermission('crm:quotation:list'), app
         organization: { select: { id: true, name: true } },
         contact: { select: { id: true, name: true, title: true, phone: true } },
         owner: { select: { id: true, name: true } },
+        approver: { select: { id: true, name: true } },
         items: { where: { deletedAt: null }, orderBy: { id: 'asc' } },
         files: { where: { deletedAt: null }, orderBy: { uploadedAt: 'desc' } }
       }
@@ -383,7 +384,12 @@ router.post('/:id/approve', authenticateToken, checkPermission('crm:quotation:ap
 
     const quotation = await prisma.quotation.update({
       where: { id },
-      data: { status: 'APPROVED' }
+      data: {
+        status: 'APPROVED',
+        approvedBy: req.user!.id,
+        approvedAt: new Date(),
+        approvalNote: req.body.remark?.trim() || null
+      }
     })
     if (req.user?.id) {
       autoWriteQuotationRecord(req.user.id, quotation.name, 'APPROVE', quotation.id, quotation.opportunityId).catch((err) => logger.warn('Auto daily report failed:', err.message))
@@ -399,15 +405,30 @@ router.post('/:id/approve', authenticateToken, checkPermission('crm:quotation:ap
 router.post('/:id/reject', authenticateToken, checkPermission('crm:quotation:approve'), logOperation('报价管理', 'REJECT'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
+    const { reason } = req.body
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({ error: '驳回原因不能为空' })
+    }
+
     const existing = await prisma.quotation.findFirst({ where: { id, deletedAt: null } })
     if (!existing) return res.status(404).json({ error: '报价单不存在' })
     if (existing.status !== 'SUBMITTED') {
       return res.status(400).json({ error: '只有已提交状态可以拒绝' })
     }
 
+    // 防止自驳回（管理员除外）
+    if (existing.ownerId === req.user!.id && !(await isAdmin(req.user!.id))) {
+      return res.status(403).json({ error: '不能驳回自己提交的报价单' })
+    }
+
     const quotation = await prisma.quotation.update({
       where: { id },
-      data: { status: 'REJECTED' }
+      data: {
+        status: 'REJECTED',
+        approvedBy: req.user!.id,
+        approvedAt: new Date(),
+        approvalNote: String(reason).trim()
+      }
     })
     if (req.user?.id) {
       autoWriteQuotationRecord(req.user.id, quotation.name, 'REJECT', quotation.id, quotation.opportunityId).catch((err) => logger.warn('Auto daily report failed:', err.message))

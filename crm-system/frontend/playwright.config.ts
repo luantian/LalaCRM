@@ -10,6 +10,7 @@ import { defineConfig } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
+  hookTimeout: 120_000, // beforeAll 里首次登录可能撞登录限流，helpers 会等 65s 冷却重试
   expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1, // 共享测试库，串行执行保证确定性
