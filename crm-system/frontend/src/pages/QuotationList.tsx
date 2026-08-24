@@ -260,8 +260,8 @@ const QuotationList: React.FC = () => {
             <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/quotations/${record.id}`)}>查看</Button>
             {canEdit && <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>}
             {canEdit && (
-              <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('crm:quotation:delete')}>
-                <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+              <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('crm:quotation:edit')}>
+                <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={!checkPermission('crm:quotation:edit')}>删除</Button>
               </Popconfirm>
             )}
             {moreItems.length > 0 && (

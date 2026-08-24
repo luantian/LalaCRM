@@ -281,8 +281,8 @@ function ProjectList() {
         <Space size={0}>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/projects/${record.id}`)}>查看</Button>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('project:project:delete')}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('project:project:edit')}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={!checkPermission('project:project:edit')}>删除</Button>
           </Popconfirm>
         </Space>
       )
@@ -377,7 +377,7 @@ function ProjectList() {
           <Button icon={<ReloadOutlined />} onClick={() => fetchProjects(pagination.current, pagination.pageSize)}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} disabled={!checkPermission('project:project:add')}>新增项目</Button>
           {selectedRowKeys.length > 0 && (
-            <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete} disabled={!checkPermission('project:project:delete')}>
+            <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete} disabled={!checkPermission('project:project:edit')}>
               批量删除 ({selectedRowKeys.length})
             </Button>
           )}

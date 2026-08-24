@@ -317,8 +317,8 @@ function OpportunityList() {
         <Space size={0}>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => navigate(`/opportunities/${record.id}`)}>查看</Button>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('crm:opportunity:delete')}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Popconfirm title="确定要删除吗?" onConfirm={() => handleDelete(record.id)} disabled={!checkPermission('crm:opportunity:edit')}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={!checkPermission('crm:opportunity:edit')}>删除</Button>
           </Popconfirm>
           {!['WON', 'LOST', 'CLOSED'].includes(record.status) && (
             <Dropdown menu={{
@@ -392,9 +392,9 @@ function OpportunityList() {
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => fetchOpportunities(pagination.current, pagination.pageSize)}>刷新</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} disabled={!checkPermission('crm:opportunity:add')}>新增项目机会</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} disabled={!checkPermission('crm:opportunity:add') && !checkPermission('crm:opportunity:edit')}>新增项目机会</Button>
           {selectedRowKeys.length > 0 && (
-            <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete} disabled={!checkPermission('crm:opportunity:delete')}>
+            <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete} disabled={!checkPermission('crm:opportunity:edit')}>
               批量删除 ({selectedRowKeys.length})
             </Button>
           )}

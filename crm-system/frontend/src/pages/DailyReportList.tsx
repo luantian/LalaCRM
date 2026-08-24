@@ -348,8 +348,9 @@ function DailyReportList() {
         return (
           <Space size={0}>
             <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(r.report)}>编辑</Button>
-            <Popconfirm title="确定要删除这天的日报吗?" onConfirm={() => handleDelete(r.report.id)} disabled={!checkPermission('office:dailyreport:delete')}>
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            {/* 后端 DELETE /:id 实际用 office:dailyreport:add 鉴权（无独立 delete 权限点），前端保持一致 */}
+            <Popconfirm title="确定要删除这天的日报吗?" onConfirm={() => handleDelete(r.report.id)} disabled={!checkPermission('office:dailyreport:add')}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={!checkPermission('office:dailyreport:add')}>删除</Button>
             </Popconfirm>
           </Space>
         )
