@@ -665,8 +665,8 @@ function ExpenseList() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="projectId" label="关联项目" rules={[{ required: true, message: '请选择关联项目' }]}>
-                <Select placeholder="请选择关联项目" showSearch optionFilterProp="children">
+              <Form.Item name="projectId" label="关联项目">
+                <Select placeholder="请选择关联项目（可选）" allowClear showSearch optionFilterProp="children">
                   {projects.map(project => (
                     <Select.Option key={project.id} value={project.id}>
                       {project.name}
