@@ -390,7 +390,9 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
       onBusinessTrip: !!activeTrip,
       activeTrip,
       // 今天是否为工作日（供前端展示"加班打卡"而非正常上下班文案）
-      isWorkdayToday: !(await isHolidayOrWeekend(dayjs(range.checkInDate))),
+      // 注意必须显式转到上海时区：range.checkInDate 是"上海零点"时刻(UTC 视角为前一天 16:00)，
+      // 裸 dayjs() 按服务器本地时区解读，在 UTC 容器上会把周一判成周日 → 误显示"加班"
+      isWorkdayToday: !(await isHolidayOrWeekend(dayjs(range.checkInDate).tz('Asia/Shanghai').startOf('day'))),
       // 加班相关
       isOvernightOvertime, // 昨天是否通宵加班
       flexibleCheckInTime: flexibleCheckInTime ? dayjs(flexibleCheckInTime).toISOString() : null, // 弹性上班时间
@@ -482,7 +484,8 @@ router.post('/', authenticateToken, checkPermission('office:checkin:add'), logOp
       })
 
       // 查询昨天是否有通宵加班记录（用于弹性上班判断）
-      const yesterday = dayjs(range.checkInDate).subtract(1, 'day')
+      // 同样显式上海时区，避免 UTC 容器上"昨天"算错一天
+      const yesterday = dayjs(range.checkInDate).tz('Asia/Shanghai').startOf('day').subtract(1, 'day')
       const overnightOvertimeRecord = await prisma.dailyCheckIn.findFirst({
         where: {
           userId,

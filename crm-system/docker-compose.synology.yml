@@ -14,6 +14,7 @@ services:
       POSTGRES_DB: crm_db
       POSTGRES_USER: crm_user
       POSTGRES_PASSWORD: Crm2026!Secure   # ← 请修改为你自己的强密码
+      TZ: Asia/Shanghai                   # 容器时区与业务一致(考勤/日报按北京时间判定)
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     networks:
@@ -33,6 +34,8 @@ services:
       JWT_SECRET: change-this-to-a-random-64-char-string-please    # ← 必须修改！用 openssl rand -base64 48 生成
       PORT: 5000
       NODE_ENV: production
+      TZ: Asia/Shanghai                   # 容器时区与业务一致：UTC 容器会把"上海零点"解读成前一天，
+                                          # 曾导致周一考勤页误显示"今日加班"(checkIns.ts isWorkdayToday)
     depends_on:
       postgres:
         condition: service_healthy
