@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Modal, Form, Input, Select, DatePicker, message, Space, Tag, Card, Row, Col, Statistic, Table, Popconfirm, InputNumber, Upload, Dropdown, Empty } from 'antd'
+import { Button, Modal, Form, Input, Select, DatePicker, message, Space, Tag, Card, Row, Col, Statistic, Table, Popconfirm, InputNumber, Upload, Dropdown, Empty, Pagination } from 'antd'
 import { EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, DownloadOutlined, ImportOutlined, InboxOutlined, MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, getOrganizationsSimple, exportDailyReports, exportDailyReportsExcel, importDailyReports, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
@@ -438,16 +438,22 @@ function DailyReportList() {
         rowKey={(r: any) => r.key}
         bordered
         size="middle"
-        pagination={{
-          current: pagination.current,
-          pageSize: pagination.pageSize,
-          total: pagination.total,
-          showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 天`,
-          onChange: (page, pageSize) => fetchReports(page, pageSize)
-        }}
+        pagination={false}
         locale={{ emptyText: <Empty description="暂无日报" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
       />
+
+      {/* 分页按"日报份数"走服务端；表格行是展开后的"事件条目"，行数远大于份数，
+          若用 Table 内置分页会把 dataSource 按行截断（曾导致每页只显示前 10 行、后面的日报"消失"） */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+        <Pagination
+          current={pagination.current}
+          pageSize={pagination.pageSize}
+          total={pagination.total}
+          showSizeChanger
+          showTotal={(total) => `共 ${total} 份日报`}
+          onChange={(page, pageSize) => fetchReports(page, pageSize)}
+        />
+      </div>
 
       {/* 新增/编辑 Modal：一天多条事情 */}
       <Modal

@@ -125,7 +125,11 @@ function CheckInList() {
     }
   }
 
-  const todayCheckedCount = (todayStatus?.morningCheckedIn ? 1 : 0) + (todayStatus?.eveningCheckedIn ? 1 : 0)
+  // 后端允许多次打卡：早上取最早、晚上取最晚生效（与工作总览页一致），前端不再按次数封顶
+  const isMorningPeriod = dayjs().hour() < 12
+  const periodLabel = todayStatus?.isWorkdayToday === false ? '加班' : (isMorningPeriod ? '上班' : '下班')
+  const periodCheckedIn = isMorningPeriod ? !!todayStatus?.morningCheckedIn : !!todayStatus?.eveningCheckedIn
+  const periodCheckCount = (isMorningPeriod ? todayStatus?.morningCount : todayStatus?.eveningCount) || 0
 
   return (
     <div>
@@ -150,7 +154,16 @@ function CheckInList() {
                 今日打卡
               </h1>
               <div style={{ fontSize: 16, opacity: 0.9, marginTop: 8 }}>
-                已完成 {todayCheckedCount}/2 次打卡
+                {(() => {
+                  // 显示生效时间（早上取最早、晚上取最晚的那条），避免与按钮下方的次数提示重复
+                  const m = todayStatus?.morningRecord ? dayjs.utc(todayStatus.morningRecord.checkInTime).local() : null
+                  const e = todayStatus?.eveningRecord ? dayjs.utc(todayStatus.eveningRecord.checkInTime).local() : null
+                  if (!m && !e) return '今日尚未打卡'
+                  if (todayStatus?.isWorkdayToday === false) {
+                    return `加班 ${m ? m.format('HH:mm') : '--:--'} — ${e ? e.format('HH:mm') : '进行中'}`
+                  }
+                  return `上班 ${m ? m.format('HH:mm') : '--:--'} · 下班 ${e ? e.format('HH:mm') : '--:--'}`
+                })()}
               </div>
             </div>
 
@@ -176,29 +189,28 @@ function CheckInList() {
               <Button
                 size="large"
                 loading={checkingIn}
-                icon={todayCheckedCount >= 2 ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
+                icon={periodCheckedIn ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
                 onClick={handleCheckIn}
-                disabled={todayCheckedCount >= 2}
                 style={{
                   height: 72,
                   fontSize: 20,
                   fontWeight: 700,
                   borderRadius: 16,
                   minWidth: 200,
-                  background: todayCheckedCount >= 2
-                    ? 'rgba(255,255,255,0.3)'
-                    : 'rgba(255,255,255,0.95)',
+                  background: 'rgba(255,255,255,0.95)',
                   border: 'none',
-                  color: todayCheckedCount >= 2 ? '#fff' : '#667eea',
-                  boxShadow: todayCheckedCount >= 2 ? 'none' : '0 4px 16px rgba(0,0,0,0.15)',
+                  color: '#667eea',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
                 }}
               >
-                {checkingIn ? '打卡中...' : (todayCheckedCount >= 2 ? '✓ 今日已打卡' : (todayStatus?.isWorkdayToday === false ? '加班打卡' : (dayjs().hour() < 12 ? '上班打卡' : '下班打卡')))}
+                {checkingIn ? '打卡中...' : `${periodCheckedIn ? '✓ ' : ''}${periodLabel}打卡`}
               </Button>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 8 }}>
                 {todayStatus?.isWorkdayToday === false
-                  ? '今日休息 · 打卡将记录为加班'
-                  : (todayCheckedCount >= 2 ? '上下班均已打卡' : `当前为${dayjs().hour() < 12 ? '上班' : '下班'}时段`)}
+                  ? '今日休息 · 打卡将记录为加班，可多次打卡'
+                  : periodCheckedIn
+                    ? `本时段已打 ${periodCheckCount} 次 · ${isMorningPeriod ? '以最早为准' : '以最晚为准'}，可再打`
+                    : `当前为${isMorningPeriod ? '上班' : '下班'}时段`}
               </div>
 
               {/* 迟到/早退标记和建议下班时间（休息日加班不适用上下班规则） */}
