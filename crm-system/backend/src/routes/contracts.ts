@@ -12,6 +12,7 @@ import logger from '../utils/logger'
 import { exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import { autoWriteContractRecord } from '../utils/autoDailyReport'
+import { notifyExternal, userNameOf } from '../utils/externalNotify'
 import { checkProjectArchived, checkContractProjectArchived } from '../utils/archive'
 import { hasAmountPermission, filterContractAmount } from '../utils/amountPermission'
 
@@ -389,6 +390,25 @@ router.post('/:id/approve', authenticateToken, checkPermission('project:contract
     if (req.user?.id) {
       const action = status === 'CANCELLED' ? 'REJECT' : 'APPROVE'
       autoWriteContractRecord(req.user.id, contract.name, action, contract.id, contract.projectId, contract.amount?.toNumber()).catch((err) => logger.warn('Auto daily report failed:', err.message))
+    }
+
+    // 状态流转企业微信/Server酱提醒(笼统文案,不含金额)
+    if (status === 'PENDING') {
+      notifyExternal(`**📜 合同 · 待审批**
+
+「${contract.name}」
+提交人：<font color="info">${await userNameOf(contract.ownerId)}</font>
+<font color="comment">请审批人登录 CRM 处理</font>`, `[CRM合同] 一份合同已提交审批`)
+    } else if (status === 'ACTIVE') {
+      notifyExternal(`**📜 合同 · 已生效**
+
+「${contract.name}」
+审批人：<font color="info">${await userNameOf(req.user!.id)}</font>
+<font color="comment">合同进入执行阶段</font>`, `[CRM合同] 一份合同已审批通过`)
+    } else if (status === 'CANCELLED') {
+      notifyExternal(`**🗑 合同 · 已取消**
+
+「${contract.name}」${remark ? '\n原因：<font color="warning">' + String(remark).trim() + '</font>' : ''}`, `[CRM合同] 一份合同已取消`)
     }
 
     res.json(updatedContract)

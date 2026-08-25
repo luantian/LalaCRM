@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Layout as AntLayout, Menu, Button, Spin, Avatar, Dropdown, Badge, Empty, Modal, Tag, Popconfirm, App as AntApp, Input, Form } from 'antd'
+import { Layout as AntLayout, Menu, Button, Spin, Avatar, Dropdown, Badge, Empty, Modal, Tag, Popconfirm, App as AntApp, Input, Form, Tabs } from 'antd'
 import {
   UserOutlined,
   LogoutOutlined,
@@ -44,7 +44,7 @@ interface MenuItem {
 }
 
 function Layout() {
-  const { message } = AntApp.useApp()
+  const { message, notification } = AntApp.useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const user = safeJsonParse(localStorage.getItem('user'), {})
@@ -59,7 +59,13 @@ function Layout() {
   const [completionModalVisible, setCompletionModalVisible] = useState(false)
   const [completionNote, setCompletionNote] = useState('')
   const [submitNote, setSubmitNote] = useState('')
-  const [passwordModalVisible, setPasswordModalVisible] = useState(false)
+  // 个人信息弹窗(基本信息 + 修改密码)
+  const [profileModalVisible, setProfileModalVisible] = useState(false)
+  const [profileTab, setProfileTab] = useState('info')
+  const [profileForm] = Form.useForm()
+  const [profileMeta, setProfileMeta] = useState<{ username: string; roleName: string }>({ username: '', roleName: '' })
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [, setProfileVersion] = useState(0)
   const [passwordForm] = Form.useForm()
 
   const priorityMap: Record<string, { text: string; color: string }> = {
@@ -126,16 +132,26 @@ function Layout() {
   const handleWebSocketMessage = useCallback((data: any) => {
     // 广播给页面组件（Dashboard 监听后自动刷新任务列表）
     window.dispatchEvent(new CustomEvent('crm:ws-message', { detail: data }))
-    if (['TASK_ASSIGNED', 'TASK_SUBMITTED', 'TASK_COMPLETED', 'TASK_REJECTED'].includes(data.type)) {
+    if (['TASK_ASSIGNED', 'TASK_SUBMITTED', 'TASK_COMPLETED', 'TASK_REJECTED', 'EXPENSE_SUBMITTED'].includes(data.type)) {
       fetchNotifications()
-      const msgMap: Record<string, string> = {
-        TASK_ASSIGNED: `📋 新任务：${data.title}`,
-        TASK_SUBMITTED: `✅ 任务已提交确认：${data.title}`,
-        TASK_COMPLETED: `🎉 任务已确认完成：${data.title}`,
-        TASK_REJECTED: `↩️ 任务被驳回：${data.title}`,
+      // 在线时外部群消息会被抑制,站内提示必须显眼:
+      // 顶部通知卡片,停留 8 秒,点击直接跳转处理
+      const msgMap: Record<string, { icon: string; text: string; to: string }> = {
+        TASK_ASSIGNED: { icon: '📋', text: '新任务', to: '/' },
+        TASK_SUBMITTED: { icon: '✅', text: '任务已提交,待你确认', to: '/' },
+        TASK_COMPLETED: { icon: '🎉', text: '任务已确认完成', to: '/' },
+        TASK_REJECTED: { icon: '↩️', text: '任务被退回重做', to: '/' },
+        EXPENSE_SUBMITTED: { icon: '🧾', text: '新的报销待审批', to: '/expenses' },
       }
-      if (msgMap[data.type]) {
-        message.info(msgMap[data.type])
+      const info = msgMap[data.type]
+      if (info) {
+        notification.open({
+          message: `${info.icon} ${info.text}`,
+          description: data.title,
+          placement: 'top',
+          duration: 8,
+          onClick: () => navigate(info.to),
+        })
       }
     }
   }, [])
@@ -151,6 +167,9 @@ function Layout() {
         const task: any = await getTaskById(n.taskId)
         if (task?.id) { setTaskDetail(task); setTaskDetailVisible(true) }
       } catch (e) { /* ignore */ }
+    } else if (String(n.type || '').startsWith('EXPENSE_')) {
+      // 报销类通知：跳转到报销列表（审批人在待审批里处理）
+      navigate('/expenses')
     }
   }
 
@@ -265,9 +284,35 @@ function Layout() {
     navigate('/login')
   }
 
-  const handleChangePassword = () => {
-    passwordForm.resetFields()
-    setPasswordModalVisible(true)
+  // ===== 个人信息 =====
+  const openProfileModal = async () => {
+    setProfileTab('info')
+    setProfileModalVisible(true)
+    try {
+      const me: any = await api.get('/auth/me')
+      setProfileMeta({ username: me.username || '', roleName: me.roleName || '普通用户' })
+      profileForm.setFieldsValue({ name: me.name, email: me.email, phone: me.phone || '' })
+    } catch (e: any) {
+      message.error(e?.error || '获取个人信息失败')
+    }
+  }
+
+  const handleProfileSave = async () => {
+    const values = await profileForm.validateFields()
+    setProfileSaving(true)
+    try {
+      await api.put('/auth/profile', values)
+      message.success('个人信息已保存')
+      // 同步本地缓存的姓名(顶栏显示)
+      const local = safeJsonParse(localStorage.getItem('user'), {})
+      localStorage.setItem('user', JSON.stringify({ ...local, name: values.name }))
+      setProfileVersion(v => v + 1)
+      setProfileModalVisible(false)
+    } catch (e: any) {
+      message.error(e?.error || '保存失败')
+    } finally {
+      setProfileSaving(false)
+    }
   }
 
   const handleSubmitPassword = async () => {
@@ -278,7 +323,7 @@ function Layout() {
         newPassword: values.newPassword
       })
       message.success('密码修改成功')
-      setPasswordModalVisible(false)
+      setProfileModalVisible(false)
     } catch (error: any) {
       message.error((error as any)?.error || '密码修改失败')
     }
@@ -302,16 +347,15 @@ function Layout() {
   }
 
   const userMenuItems: MenuProps['items'] = [
-    { key: 'profile', icon: <UserOutlined />, label: user.name || user.username || '用户' },
-    { key: 'role', icon: <SafetyOutlined />, label: user.role || '普通用户' },
+    { key: 'role', icon: <SafetyOutlined />, label: profileMeta.roleName || user.role || '普通用户' },
     { type: 'divider' },
-    { key: 'changePassword', icon: <LockOutlined />, label: '修改密码' },
+    { key: 'profileSettings', icon: <UserOutlined />, label: '个人信息' },
     { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true }
   ]
 
   const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'logout') handleLogout()
-    if (key === 'changePassword') handleChangePassword()
+    if (key === 'profileSettings') openProfileModal()
   }
 
   return (
@@ -778,52 +822,81 @@ function Layout() {
         </div>
       </Modal>
 
-      {/* Change Password Modal */}
+      {/* 个人信息弹窗(基本信息 + 修改密码) */}
       <Modal
-        title="修改密码"
-        open={passwordModalVisible}
-        onOk={handleSubmitPassword}
-        onCancel={() => setPasswordModalVisible(false)}
-        okText="确认修改"
+        title="个人信息"
+        open={profileModalVisible}
+        onCancel={() => setProfileModalVisible(false)}
+        confirmLoading={profileTab === 'info' ? profileSaving : false}
+        onOk={() => (profileTab === 'info' ? handleProfileSave() : handleSubmitPassword())}
+        okText={profileTab === 'info' ? '保存' : '确认修改'}
         cancelText="取消"
+        width={520}
       >
-        <Form form={passwordForm} layout="vertical" autoComplete="off">
-          <Form.Item
-            label="当前密码"
-            name="oldPassword"
-            rules={[{ required: true, message: '请输入当前密码' }]}
-          >
-            <Input.Password prefix={<LockOutlined />} placeholder="请输入当前密码" />
-          </Form.Item>
-          <Form.Item
-            label="新密码"
-            name="newPassword"
-            rules={[
-              { required: true, message: '请输入新密码' },
-              { min: 6, message: '密码长度至少6位' }
-            ]}
-          >
-            <Input.Password prefix={<LockOutlined />} placeholder="请输入新密码（至少6位）" />
-          </Form.Item>
-          <Form.Item
-            label="确认新密码"
-            name="confirmPassword"
-            dependencies={['newPassword']}
-            rules={[
-              { required: true, message: '请确认新密码' },
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!value || getFieldValue('newPassword') === value) {
-                    return Promise.resolve()
-                  }
-                  return Promise.reject(new Error('两次输入的密码不一致'))
-                },
-              }),
-            ]}
-          >
-            <Input.Password prefix={<LockOutlined />} placeholder="请再次输入新密码" />
-          </Form.Item>
-        </Form>
+        <Tabs
+          activeKey={profileTab}
+          onChange={setProfileTab}
+          items={[
+            {
+              key: 'info',
+              label: '👤 基本信息',
+              children: (
+                <Form form={profileForm} layout="vertical">
+                  <Form.Item label="用户名">
+                    <Input value={profileMeta.username} disabled />
+                  </Form.Item>
+                  <Form.Item label="角色">
+                    <Input value={profileMeta.roleName} disabled />
+                  </Form.Item>
+                  <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}>
+                    <Input placeholder="请输入姓名" />
+                  </Form.Item>
+                  <Form.Item name="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '邮箱格式不正确' }]}>
+                    <Input placeholder="请输入邮箱" />
+                  </Form.Item>
+                  <Form.Item
+                    name="phone"
+                    label="手机号（选填）"
+                    extra="用于企业微信提醒中 @ 到你本人，需与企业微信绑定的手机号一致"
+                    rules={[{ pattern: /^1\d{10}$/, message: '请输入11位手机号' }]}
+                  >
+                    <Input placeholder="选填，如 13800138000" maxLength={11} />
+                  </Form.Item>
+                </Form>
+              ),
+            },
+            {
+              key: 'password',
+              label: '🔒 修改密码',
+              children: (
+                <Form form={passwordForm} layout="vertical" autoComplete="off">
+                  <Form.Item label="当前密码" name="oldPassword" rules={[{ required: true, message: '请输入当前密码' }]}>
+                    <Input.Password prefix={<LockOutlined />} placeholder="请输入当前密码" />
+                  </Form.Item>
+                  <Form.Item label="新密码" name="newPassword" rules={[{ required: true, message: '请输入新密码' }, { min: 6, message: '密码长度至少6位' }]}>
+                    <Input.Password prefix={<LockOutlined />} placeholder="请输入新密码（至少6位）" />
+                  </Form.Item>
+                  <Form.Item
+                    label="确认新密码"
+                    name="confirmPassword"
+                    dependencies={['newPassword']}
+                    rules={[
+                      { required: true, message: '请确认新密码' },
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          if (!value || getFieldValue('newPassword') === value) return Promise.resolve()
+                          return Promise.reject(new Error('两次输入的密码不一致'))
+                        },
+                      }),
+                    ]}
+                  >
+                    <Input.Password prefix={<LockOutlined />} placeholder="请再次输入新密码" />
+                  </Form.Item>
+                </Form>
+              ),
+            },
+          ]}
+        />
       </Modal>
     </AntLayout>
   )

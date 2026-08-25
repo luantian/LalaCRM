@@ -46,6 +46,7 @@ export const routeComponents: Record<string, React.LazyExoticComponent<any>> = {
   '/departments': lazy(() => import('../pages/DepartmentManagement')),
   '/dicts': lazy(() => import('../pages/DictManagement')),
   '/database-backup': lazy(() => import('../pages/DatabaseBackup')),
+  '/settings': lazy(() => import('../pages/SystemSettings')),
   
   // 日志审计
   '/operation-logs': lazy(() => import('../pages/OperationLogList')),

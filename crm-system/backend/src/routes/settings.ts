@@ -138,4 +138,97 @@ router.get('/check-project-amount-permission', authenticateToken, async (req: Au
   }
 })
 
+// ==================== 企业微信群机器人 ====================
+
+// 获取企微机器人配置（webhook 地址较敏感，仅可编辑系统设置的人可见）
+router.get('/wecom-webhook', authenticateToken, checkPermission('system:settings:edit'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { getWecomWebhook } = await import('../utils/wecomBot')
+    const webhook = await getWecomWebhook()
+    res.json({ webhook, enabled: !!webhook })
+  } catch (error) {
+    logger.error('Get wecom webhook error:', error)
+    res.status(500).json({ error: '获取配置失败' })
+  }
+})
+
+// 保存企微机器人 webhook（仅管理员）
+router.put('/wecom-webhook', authenticateToken, checkPermission('system:settings:edit'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { webhook } = req.body
+    if (webhook && !/^https:\/\/qyapi\.weixin\.qq\.com\/cgi-bin\/webhook\/send\?key=/.test(String(webhook))) {
+      return res.status(400).json({ error: 'webhook 地址格式不正确，应为 https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...' })
+    }
+    const { setWecomWebhook } = await import('../utils/wecomBot')
+    await setWecomWebhook(String(webhook || '').trim())
+    logger.info(`User ${req.user!.id} 更新企微机器人 webhook`)
+    res.json({ success: true })
+  } catch (error) {
+    logger.error('Update wecom webhook error:', error)
+    res.status(500).json({ error: '保存配置失败' })
+  }
+})
+
+// 发送测试消息（验证 webhook 是否可用，失败时透出腾讯原始错误）
+router.post('/wecom-webhook/test', authenticateToken, checkPermission('system:settings:edit'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { sendWecomMarkdown } = await import('../utils/wecomBot')
+    const result = await sendWecomMarkdown(`**✅ CRM 企微提醒已配置**\n\n推送通道工作正常\n<font color=\"comment\">${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</font>`)
+    if (!result.ok) {
+      return res.status(400).json({ error: '发送失败：' + (result.errmsg || '请检查 webhook 地址') })
+    }
+    res.json({ success: true })
+  } catch (error) {
+    logger.error('Test wecom webhook error:', error)
+    res.status(500).json({ error: '测试发送失败' })
+  }
+})
+
+// ==================== Server酱(个人微信提醒) ====================
+
+// 获取 Server酱 SendKey 配置
+router.get('/serverchan', authenticateToken, checkPermission('system:settings:edit'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { getServerChanKey } = await import('../utils/serverChan')
+    const key = await getServerChanKey()
+    res.json({ sendKey: key, enabled: !!key })
+  } catch (error) {
+    logger.error('Get serverchan config error:', error)
+    res.status(500).json({ error: '获取配置失败' })
+  }
+})
+
+// 保存 Server酱 SendKey（仅管理员）
+router.put('/serverchan', authenticateToken, checkPermission('system:settings:edit'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { sendKey } = req.body
+    const v = String(sendKey || '').trim()
+    if (v && !/^[A-Za-z0-9]{10,}$/.test(v)) {
+      return res.status(400).json({ error: 'SendKey 格式不正确（应为 ftqq.com 上复制的一串字母数字）' })
+    }
+    const { setServerChanKey } = await import('../utils/serverChan')
+    await setServerChanKey(v)
+    logger.info(`User ${req.user!.id} 更新 Server酱 SendKey`)
+    res.json({ success: true })
+  } catch (error) {
+    logger.error('Update serverchan config error:', error)
+    res.status(500).json({ error: '保存配置失败' })
+  }
+})
+
+// 发送测试消息
+router.post('/serverchan/test', authenticateToken, checkPermission('system:settings:edit'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { sendServerChan } = await import('../utils/serverChan')
+    const ok = await sendServerChan('CRM 提醒测试成功', `✅ Server酱通道配置成功\n时间: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`)
+    if (!ok) {
+      return res.status(400).json({ error: '发送失败：请检查 SendKey 是否正确、微信是否已绑定' })
+    }
+    res.json({ success: true })
+  } catch (error) {
+    logger.error('Test serverchan error:', error)
+    res.status(500).json({ error: '测试发送失败' })
+  }
+})
+
 export default router

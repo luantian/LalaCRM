@@ -8,6 +8,7 @@ import { applyDataScope, getDataScopeWhere } from '../middleware/dataScope'
 import logger from '../utils/logger'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import { autoWriteProcurementRecord } from '../utils/autoDailyReport'
+import { notifyExternal } from '../utils/externalNotify'
 import path from 'path'
 import fs from 'fs'
 
@@ -210,6 +211,16 @@ router.post('/:id/approve', authenticateToken, checkPermission('project:procurem
     if (req.user?.id) {
       autoWriteProcurementRecord(req.user.id, procurement.title, reportAction, id, procurement.projectId, procurement.totalAmount?.toNumber()).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
+    // 采购流转企业微信/Server酱提醒(笼统文案,不含金额)
+    const statusText: Record<string, string> = {
+      ORDERED: '🛒 采购 · 已下单', IN_TRANSIT: '🚚 采购 · 已发运', RECEIVED: '📦 采购 · 已到货', CANCELLED: '🗑 采购 · 已取消'
+    }
+    if (statusText[status as string]) {
+      notifyExternal(`**${statusText[status as string]}**
+
+「${procurement.title}」`, `[CRM采购] 一条采购单状态更新`)
+    }
+
     res.json(updated)
   } catch (error) {
     logger.error('Approve procurement error:', error)

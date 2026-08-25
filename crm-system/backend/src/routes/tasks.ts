@@ -4,6 +4,7 @@ import { authenticateToken, authenticateFileToken, AuthRequest } from '../middle
 import { logOperation } from '../middleware/logOperation'
 import logger from '../utils/logger'
 import { sendToUser, sendToUsers } from '../websocket'
+import { notifyExternal, userNameOf } from '../utils/externalNotify'
 import { upload } from '../middleware/upload'
 import path from 'path'
 import fs from 'fs'
@@ -174,6 +175,14 @@ router.post('/', authenticateToken, logOperation('任务管理', 'CREATE'), asyn
       sendToUser(assigneeId, { type: 'TASK_ASSIGNED', taskId: task.id, title })
     }
 
+    // 企业微信/Server酱提醒：@被指派人，带任务标题
+    notifyExternal(`📋 新任务分配
+─────────────
+${task.assigner.name} 给你分配了任务
+「${title}」
+─────────────
+请登录 CRM 查看`, undefined, { targetUserIds: assigneeIds })
+
     // 自动创建"创建任务"记录
     await prisma.taskRecord.create({
       data: {
@@ -327,6 +336,15 @@ router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), as
           }
         })
       }
+      if (newIds.length > 0) {
+        // 企业微信/Server酱提醒：@新增被指派人
+        notifyExternal(`📋 新任务分配
+─────────────
+${task.assigner.name} 给你分配了任务
+「${title || task.title}」
+─────────────
+请登录 CRM 查看`, undefined, { targetUserIds: newIds })
+      }
     }
 
     // 如果提交了完成（被指派人操作），通知委派人确认
@@ -340,6 +358,14 @@ router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), as
         }
       })
       sendToUser(task.assignerId, { type: 'TASK_SUBMITTED', taskId: task.id, title: task.title })
+
+      // 企业微信/Server酱提醒：@委派人确认
+      notifyExternal(`⏳ 任务待确认
+─────────────
+${await userNameOf(req.user!.id)} 提交了任务
+「${task.title}」
+─────────────
+请登录 CRM 确认`, undefined, { targetUserIds: [task.assignerId] })
     }
 
     // 如果确认完成了（委派人操作），通知所有被指派人
@@ -356,6 +382,13 @@ router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), as
         })
       }
       sendToUsers(assigneeIds, { type: 'TASK_COMPLETED', taskId: task.id, title: task.title })
+
+      // 企业微信/Server酱提醒：@被指派人
+      notifyExternal(`🎉 任务已完成
+─────────────
+「${task.title}」
+─────────────
+已确认完成，辛苦了`, undefined, { targetUserIds: assigneeIds })
 
       // 自动写入日报：任务完成
       await autoWriteTaskCompletion(
@@ -380,6 +413,13 @@ router.put('/:id', authenticateToken, logOperation('任务管理', 'UPDATE'), as
         })
       }
       sendToUsers(assigneeIds, { type: 'TASK_REJECTED', taskId: task.id, title: task.title })
+
+      // 企业微信/Server酱提醒：@被指派人
+      notifyExternal(`↩️ 任务被退回
+─────────────
+「${task.title}」
+─────────────
+请登录 CRM 重新处理`, undefined, { targetUserIds: assigneeIds })
     }
 
     res.json(task)

@@ -155,6 +155,15 @@ export function sendToUser(userId: number, data: any) {
   }
 }
 
+/**
+ * 用户当前是否在线（至少一条 OPEN 状态的 WebSocket 连接，即 CRM 页面开着）。
+ * 供外发提醒做"在线抑制"：接收人都在线时跳过群消息（站内通知/WS弹窗已覆盖）。
+ */
+export function isUserOnline(userId: number): boolean {
+  const userClients = clients.get(userId) || []
+  return userClients.some(ws => ws.readyState === WebSocket.OPEN)
+}
+
 // 向多个用户推送消息
 export function sendToUsers(userIds: number[], data: any) {
   userIds.forEach((userId) => sendToUser(userId, data))

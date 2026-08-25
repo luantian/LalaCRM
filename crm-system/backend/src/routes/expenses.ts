@@ -1,6 +1,6 @@
 import prisma from '../lib/prisma'
 import { Router } from 'express'
-import { isAdmin } from '../utils/permission'
+import { isAdmin, getUserPerms } from '../utils/permission'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
 import { applyDataScope } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
@@ -9,8 +9,77 @@ import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
 import { upload } from '../middleware/upload'
 import { autoWriteExpenseRecord } from '../utils/autoDailyReport'
+import { sendToUsers } from '../websocket'
+import { notifyExternal } from '../utils/externalNotify'
 
 const router = Router()
+
+/**
+ * 审批池数据范围：有审批权限的用户额外可见所有"待审批(SUBMITTED)"的报销，
+ * 不受自身数据范围限制（否则 TEAM 范围的审批人看不到非本团队项目的报销申请）。
+ * 其余状态仍按原数据范围过滤。
+ */
+async function withApprovalPool(userId: number, dataScopeWhere: any): Promise<any> {
+  if (!dataScopeWhere || Object.keys(dataScopeWhere).length === 0) return dataScopeWhere
+  const perms = await getUserPerms(userId)
+  if (perms.includes('*') || perms.includes('finance:expense:approve')) {
+    return { OR: [dataScopeWhere, { status: 'SUBMITTED' }] }
+  }
+  return dataScopeWhere
+}
+
+/**
+ * 查询所有拥有报销审批权限的用户ID（ADMIN 角色，或任一角色挂有
+ * finance:expense:approve 权限菜单），用于报销提交后发站内通知。
+ */
+async function getExpenseApproverIds(): Promise<number[]> {
+  const roles = await prisma.roleModel.findMany({
+    where: {
+      OR: [
+        { roleKey: 'ADMIN' },
+        { roleMenus: { some: { menu: { perm: 'finance:expense:approve' } } } }
+      ]
+    },
+    select: { id: true }
+  })
+  const roleIds = roles.map(r => r.id)
+  if (roleIds.length === 0) return []
+  const users = await prisma.user.findMany({
+    where: { userRoles: { some: { roleId: { in: roleIds } } } },
+    select: { id: true }
+  })
+  return users.map(u => u.id)
+}
+
+/**
+ * 报销进入待审批后，给所有审批人（提交人自己除外）发站内通知 + WebSocket 推送。
+ * 通知失败不影响提交主流程。
+ */
+async function notifyExpenseApprovers(
+  submitterId: number,
+  expense: { id: number; title: string; ownerId: number; totalAmount: any }
+): Promise<void> {
+  try {
+    const approverIds = (await getExpenseApproverIds()).filter(id => id !== submitterId)
+    if (approverIds.length === 0) return
+    const owner = await prisma.user.findUnique({
+      where: { id: expense.ownerId },
+      select: { name: true }
+    })
+    const amt = Number(expense.totalAmount || 0)
+    const msg = `${owner?.name || '有同事'} 提交了报销「${expense.title}」（¥${amt.toFixed(2)}），待您审批`
+    for (const uid of approverIds) {
+      await prisma.notification.create({
+        data: { userId: uid, type: 'EXPENSE_SUBMITTED', message: msg }
+      })
+    }
+    sendToUsers(approverIds, { type: 'EXPENSE_SUBMITTED', expenseId: expense.id, title: expense.title })
+    // 企业微信群提醒(群消息不带金额,只提示动作;未配置/失败均静默)
+    notifyExternal(`**🧾 报销 · 待审批**\n\n「${expense.title}」\n申请人：<font color="info">${owner?.name || '有同事'}</font>\n<font color="comment">请审批人登录 CRM 处理</font>`, `[CRM报销] ${owner?.name || '有同事'} 提交了报销，待审批`)
+  } catch (err) {
+    logger.warn('报销审批通知发送失败:', err instanceof Error ? err.message : err)
+  }
+}
 
 // 获取所有费用报销记录
 router.get('/', authenticateToken, checkPermission('finance:expense:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), clampPagination(), async (req: AuthRequest, res) => {
@@ -20,8 +89,8 @@ router.get('/', authenticateToken, checkPermission('finance:expense:list'), appl
     const skip = (parseInt(page as string) - 1) * parseInt(pageSize as string)
     const take = parseInt(pageSize as string)
 
-    // 获取数据权限条件
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    // 获取数据权限条件（审批池：审批人额外可见所有待审批）
+    const dataScopeWhere = await withApprovalPool(req.user!.id, (req as any).dataScopeWhere || {})
 
     // 构建查询条件：合并数据权限和筛选条件
     const conditions: any[] = [{ deletedAt: null }]
@@ -103,7 +172,8 @@ router.get('/', authenticateToken, checkPermission('finance:expense:list'), appl
 // 费用统计
 router.get('/stats/overview', authenticateToken, checkPermission('finance:expense:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    // 审批池：审批人额外可见所有待审批，使顶部"待审批"统计与列表一致
+    const dataScopeWhere = await withApprovalPool(req.user!.id, (req as any).dataScopeWhere || {})
     const expenses = await prisma.expense.findMany({ where: { deletedAt: null, ...dataScopeWhere } })
 
     const totalExpenses = expenses.length
@@ -149,7 +219,8 @@ router.get('/stats/overview', authenticateToken, checkPermission('finance:expens
 router.get('/:id', authenticateToken, checkPermission('finance:expense:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
+    // 审批池：审批人可打开任意待审批报销的详情（否则列表可见但点开404）
+    const dataScopeWhere = await withApprovalPool(req.user!.id, (req as any).dataScopeWhere || {})
     const expense = await prisma.expense.findFirst({
       where: { id, deletedAt: null, ...dataScopeWhere },
       include: {
@@ -389,6 +460,9 @@ router.post('/:id/submit', authenticateToken, checkPermission('finance:expense:a
       }
     })
 
+    // 通知所有有审批权限的用户（提交人自己除外）
+    await notifyExpenseApprovers(req.user!.id, updated)
+
     res.json(updated)
   } catch (error) {
     logger.error('Submit expense error:', error)
@@ -439,6 +513,9 @@ router.post('/:id/approve', authenticateToken, checkPermission('finance:expense:
       const amt = typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)
       autoWriteExpenseRecord(req.user.id, expense.title, 'APPROVE', expense.id, expense.projectId, amt).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
+
+    // 企业微信群提醒(不带金额)
+    notifyExternal(`**✅ 报销 · 已通过**\n\n「${expense.title}」\n审批人：<font color="info">${approverName}</font>\n<font color="comment">进入打款流程</font>`, `[CRM报销] 一条报销已通过审批`)
 
     res.json(updated)
   } catch (error) {
@@ -494,6 +571,9 @@ router.post('/:id/reject', authenticateToken, checkPermission('finance:expense:a
       autoWriteExpenseRecord(req.user.id, expense.title, 'REJECT', expense.id, expense.projectId, amt).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
+    // 企业微信群提醒(不带金额)
+    notifyExternal(`**❌ 报销 · 已驳回**\n\n「${expense.title}」\n原因：<font color="warning">${reason}</font>\n审批人：${approverName}\n<font color="comment">请修改后重新提交</font>`, `[CRM报销] 一条报销被驳回`)
+
     res.json(updated)
   } catch (error) {
     logger.error('Reject expense error:', error)
@@ -534,6 +614,9 @@ router.post('/:id/resubmit', authenticateToken, checkPermission('finance:expense
       }
     })
 
+    // 重新提交同样进入待审批，通知审批人
+    await notifyExpenseApprovers(req.user!.id, updated)
+
     res.json(updated)
   } catch (error) {
     logger.error('Resubmit expense error:', error)
@@ -569,6 +652,9 @@ router.post('/:id/pay', authenticateToken, checkPermission('finance:expense:appr
       const amt = typeof expense.totalAmount === 'number' ? expense.totalAmount : Number(expense.totalAmount)
       autoWriteExpenseRecord(req.user.id, expense.title, 'PAY', expense.id, expense.projectId, amt).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
+
+    // 企业微信群提醒(不带金额)
+    notifyExternal(`**💸 报销 · 已打款**\n\n「${expense.title}」\n<font color="comment">流程完结</font>`, `[CRM报销] 一条报销已标记支付`)
 
     res.json(updated)
   } catch (error) {
