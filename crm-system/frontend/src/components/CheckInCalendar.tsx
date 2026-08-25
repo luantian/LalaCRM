@@ -23,6 +23,7 @@ export interface CalendarDayData {
   morningTime?: string | null
   eveningTime?: string | null
   holidayName?: string | null
+  isMakeupWorkday?: boolean // 调休上班日（周末但需上班）
 }
 
 interface CheckInCalendarProps {
@@ -140,6 +141,11 @@ function CheckInCalendar({
         {/* 休息日小表情（周末，右上角） */}
         {day.status === 'REST' && (
           <div style={{ position: 'absolute', top: 4, right: 4, fontSize: 14, lineHeight: 1 }}>😴</div>
+        )}
+
+        {/* 调休上班日小表情（周末但需上班，右上角） */}
+        {day.isMakeupWorkday && (
+          <div style={{ position: 'absolute', top: 4, right: 4, fontSize: 14, lineHeight: 1 }}>😅</div>
         )}
 
         {/* 日期数字 */}

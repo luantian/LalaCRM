@@ -99,15 +99,18 @@ function CheckInList() {
     setMakeupModalVisible(true)
   }
 
+  // 某天是否不可补卡：周末与法定假日不可，调休上班日（isWorkday=true）按工作日处理可补
+  const isBlockedForMakeup = (date: Dayjs) => {
+    const holidayInfo = holidays[date.format('YYYY-MM-DD')]
+    if (holidayInfo?.isWorkday) return false
+    if (date.day() === 0 || date.day() === 6) return true
+    return !!holidayInfo
+  }
+
   const handleMakeupSubmit = async () => {
     if (!makeupDate) return
-    
-    // 检查是否为节假日或周末
-    const dayOfWeek = makeupDate.day()
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-    const isHoliday = holidays[makeupDate.format('YYYY-MM-DD')]
-    
-    if (isWeekend || isHoliday) {
+
+    if (isBlockedForMakeup(makeupDate)) {
       message.error('节假日和周末不能补卡')
       return
     }
@@ -232,11 +235,11 @@ function CheckInList() {
                 ) : null
               ) : todayStatus?.morningRecord && (
                 <div style={{ marginTop: 12 }}>
-                  {/* 判断是否迟到 */}
+                  {/* 判断是否迟到：直接用后端判定的打卡类型（含通宵加班次日 10:00 弹性），避免前端按 9:00 重算导致不一致 */}
                   {(() => {
                     const morningTime = dayjs.utc(todayStatus.morningRecord.checkInTime).local()
-                    const isLate = morningTime.hour() > 9 || (morningTime.hour() === 9 && morningTime.minute() > 0)
-                    
+                    const isLate = ['LATE', 'LATE_AND_EARLY'].includes(todayStatus.morningRecord.type)
+
                     if (isLate) {
                       return (
                         <Tag
@@ -426,8 +429,8 @@ function CheckInList() {
               </div>
               <div>
                 <div style={{ fontSize: 13, color: '#999', marginBottom: 4 }}>补卡剩余</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: (stats?.makeupRemaining ?? 3) > 0 ? '#f59e0b' : '#ff4d4f' }}>
-                  {stats?.makeupRemaining ?? 3}
+                <div style={{ fontSize: 24, fontWeight: 700, color: (stats?.makeupRemaining ?? 1) > 0 ? '#f59e0b' : '#ff4d4f' }}>
+                  {stats?.makeupRemaining ?? 1}
                   <span style={{ fontSize: 14, color: '#999', marginLeft: 4 }}>/ 1 次</span>
                 </div>
               </div>
@@ -531,11 +534,12 @@ function CheckInList() {
               } else if (morningRecord && eveningRecord) {
                 status = 'NORMAL'
               } else if (hasCheckedIn) {
-                status = 'INCOMPLETE'
+                // 今天只打了上班卡不算"不完整"（下班时间未到），与后端统计口径一致
+                status = date.isSame(today, 'day') && morningRecord ? 'NORMAL' : 'INCOMPLETE'
               } else if (holiday) {
                 status = holiday.type === 'legal' ? 'HOLIDAY_LEGAL' : 'HOLIDAY_EXTRA'
-              } else if (date.isAfter(today, 'day') && !isNonWorkday) {
-                // 未来工作日才显示"待打卡"，未来的周末归入休息日
+              } else if (!date.isBefore(today, 'day') && !isNonWorkday) {
+                // 今天及未来的工作日显示"待打卡"（今天还没打卡/没到下班不算缺勤）
                 status = 'FUTURE'
               } else if (date.isBefore(today, 'day') && !isNonWorkday) {
                 status = 'ABSENT'
@@ -549,19 +553,18 @@ function CheckInList() {
                 morningTime: morningRecord ? formatTime(morningRecord.checkInTime) : null,
                 eveningTime: eveningRecord ? formatTime(eveningRecord.checkInTime) : null,
                 holidayName: holiday?.name || null,
+                isMakeupWorkday: holiday?.isWorkday === true,
               }
             }
             return map
           })()}
           onDayClick={(day, date) => {
-            const isWeekend = date.day() === 0 || date.day() === 6
-            if (day.status === 'ABSENT' && (stats?.makeupRemaining ?? 0) > 0 && !isWeekend && !day.holidayName) {
+            if (day.status === 'ABSENT' && (stats?.makeupRemaining ?? 0) > 0 && !isBlockedForMakeup(date)) {
               handleOpenMakeup(date)
             }
           }}
           isDayClickable={(day, date) => {
-            const isWeekend = date.day() === 0 || date.day() === 6
-            return day.status === 'ABSENT' && (stats?.makeupRemaining ?? 0) > 0 && !isWeekend && !day.holidayName
+            return day.status === 'ABSENT' && (stats?.makeupRemaining ?? 0) > 0 && !isBlockedForMakeup(date)
           }}
         />
       </Card>

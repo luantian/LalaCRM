@@ -378,6 +378,7 @@ function AttendanceStats() {
       morningTime: d.morningTime || null,
       eveningTime: d.eveningTime || null,
       holidayName: d.note || null,
+      isMakeupWorkday: !!d.isMakeupWorkday,
     }
   }
 

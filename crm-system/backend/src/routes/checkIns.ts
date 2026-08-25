@@ -145,16 +145,26 @@ async function getWorkdaysUpTo(month: dayjs.Dayjs, upTo: dayjs.Dayjs): Promise<n
 }
 
 /**
+ * Holiday.date 是 @db.Date 列，Prisma 会把 DateTime 参数截断为 UTC 日历日期。
+ * dayjs.tz 的 UTC+8 当天零点 instant 是前一天 16:00Z，直接传参等值查询会
+ * 错查前一天（节假日全部错位一天），必须转成"当天 UTC 零点"再查。
+ */
+function holidayDateKey(date: dayjs.Dayjs): Date {
+  return new Date(`${date.tz('Asia/Shanghai').format('YYYY-MM-DD')}T00:00:00Z`)
+}
+
+/**
  * 判断是否为节假日或周末（调休上班日除外：Holiday 表 isWorkday=true
  * 的周六日按工作日处理，允许补卡）
  */
 async function isHolidayOrWeekend(date: dayjs.Dayjs): Promise<boolean> {
   const dayOfWeek = date.day()
+  const dateKey = holidayDateKey(date)
 
   // 调休上班日：即使是周六日也算工作日
   const makeup = await prisma.holiday.findFirst({
     where: {
-      date: date.startOf('day').toDate(),
+      date: dateKey,
       isWorkday: true
     }
   })
@@ -164,7 +174,7 @@ async function isHolidayOrWeekend(date: dayjs.Dayjs): Promise<boolean> {
 
   const holiday = await prisma.holiday.findFirst({
     where: {
-      date: date.startOf('day').toDate(),
+      date: dateKey,
       isWorkday: false
     }
   })
@@ -282,38 +292,24 @@ router.get('/today', authenticateToken, async (req: AuthRequest, res) => {
     let eveningRecord = eveningRecords.length > 0 ? eveningRecords[eveningRecords.length - 1] : null // 最晚
 
     // 检查昨天是否通宵加班(用于今天的弹性上班判断)
-    const yesterday = range.checkInDate
-    const yesterdayRange = {
-      start: new Date(yesterday.getTime() - 24 * 60 * 60 * 1000),
-      end: new Date(yesterday.getTime() + 24 * 60 * 60 * 1000)
-    }
-    
-    const yesterdayRecords = await prisma.dailyCheckIn.findMany({
+    // 注意:必须查"昨天"(checkInDate = 今天-1天)。通宵加班的加班结束时间落在今天凌晨,
+    // 但记录挂在昨天那条下班打卡上,由 /overtime/end 写入 isOvernightOvertime 标志。
+    const yesterdayDate = new Date(range.checkInDate.getTime() - 24 * 60 * 60 * 1000)
+    const yesterdayOvertime = await prisma.dailyCheckIn.findFirst({
       where: {
         userId,
         deletedAt: null,
-        checkInDate: yesterday,
-        overtimeEndTime: { not: null }
+        checkInDate: yesterdayDate,
+        isOvernightOvertime: true
       }
     })
 
-    // 判断是否通宵加班(加班结束时间超过凌晨2点)
-    let isOvernightOvertime = false
+    const isOvernightOvertime = !!yesterdayOvertime
     let flexibleCheckInTime: Date | null = null
-    if (yesterdayRecords.length > 0) {
-      const overtimeRecord = yesterdayRecords[0]
-      if (overtimeRecord.overtimeEndTime) {
-        const overtimeEnd = dayjs(overtimeRecord.overtimeEndTime).tz('Asia/Shanghai')
-        const endHour = overtimeEnd.hour()
-        
-        // 如果加班结束时间在凌晨2点之后,算通宵加班
-        if (endHour >= OVERNIGHT_OVERTIME_HOUR && endHour < 12) {
-          isOvernightOvertime = true
-          // 设置弹性上班时间(10:00前不算迟到)
-          const flexibleDate = dayjs(range.checkInDate).tz('Asia/Shanghai').hour(NEXT_DAY_FLEXIBLE_HOUR).minute(0).second(0)
-          flexibleCheckInTime = flexibleDate.toDate()
-        }
-      }
+    if (isOvernightOvertime) {
+      // 弹性上班时间(10:00前不算迟到)
+      const flexibleDate = dayjs(range.checkInDate).tz('Asia/Shanghai').hour(NEXT_DAY_FLEXIBLE_HOUR).minute(0).second(0)
+      flexibleCheckInTime = flexibleDate.toDate()
     }
 
     // 检查当前打卡日期是否在出差
@@ -858,15 +854,33 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
       }
     })
 
-    // 按日期分组统计出勤天数（每天有任意打卡记录即算出勤）
+    // 出勤口径：只算工作日（周末/节假日加班打卡不计出勤，避免出勤率超 100%）；
+    // 当月统计截至昨天（今天还没过完：打了卡也不计，没打卡更不算缺勤）
+    const nowSh = dayjs().tz('Asia/Shanghai')
+    const isCurrentMonth = targetMonth.isSame(nowSh, 'month')
+    const todayStr = nowSh.format('YYYY-MM-DD')
+    const statsHolidays = await prisma.holiday.findMany({
+      where: { date: { gte: startDate, lte: endDate } }
+    })
+    const holidayWorkday = new Map(
+      statsHolidays.map(h => [dayjs(h.date).tz('Asia/Shanghai').format('YYYY-MM-DD'), h.isWorkday])
+    )
     const uniqueDates = new Set(records.map((r: any) => dayjs(r.checkInDate).tz('Asia/Shanghai').format('YYYY-MM-DD')))
-    const attendance = uniqueDates.size
+    const attendance = [...uniqueDates].filter(ds => {
+      if (isCurrentMonth && ds >= todayStr) return false
+      const makeupDay = holidayWorkday.get(ds)
+      if (makeupDay !== undefined) return makeupDay
+      const dow = dayjs.tz(ds, 'Asia/Shanghai').day()
+      return dow !== 0 && dow !== 6
+    }).length
 
     const normal = records.filter(r => r.type === 'NORMAL').length
     const auto = records.filter(r => r.type === 'AUTO').length
     // 只统计MORNING的MAKEUP记录，避免重复计数（每次补卡创建早+晚两条）
     const makeup = records.filter(r => r.type === 'MAKEUP' && r.period === 'MORNING').length
-    const workdays = await getWorkdaysCount(targetMonth)
+    const workdays = isCurrentMonth
+      ? await getWorkdaysUpTo(targetMonth, nowSh.subtract(1, 'day'))
+      : await getWorkdaysCount(targetMonth)
 
     res.json({
       total: records.length,
@@ -921,7 +935,9 @@ router.post('/holidays', authenticateToken, checkAdmin, logOperation('打卡管�
       return res.status(400).json({ error: '日期和名称不能为空' })
     }
 
-    const holidayDate = dayjs.tz(date, 'Asia/Shanghai').startOf('day').toDate()
+    // Holiday.date 是 @db.Date 列,Prisma 按 UTC 日历日期截断,
+    // 上海零点 instant 会整体提前一天入库,必须用 UTC 零点构造
+    const holidayDate = holidayDateKey(dayjs.tz(date, 'Asia/Shanghai'))
     const year = dayjs.tz(date, 'Asia/Shanghai').year()
 
     const holiday = await prisma.holiday.create({
@@ -1016,7 +1032,7 @@ router.get('/team-stats', authenticateToken, checkPermission('office:attendance:
     const nowSh = dayjs().tz('Asia/Shanghai')
     const isCurrentMonth = targetMonth.isSame(nowSh, 'month')
     const effectiveWorkdays = isCurrentMonth
-      ? await getWorkdaysUpTo(targetMonth, nowSh)
+      ? await getWorkdaysUpTo(targetMonth, nowSh.subtract(1, 'day'))
       : workdaysInMonth
 
     // 节假日/调休（用于逐个工作日判断）
@@ -1026,11 +1042,12 @@ router.get('/team-stats', authenticateToken, checkPermission('office:attendance:
     const holidayMap = new Map(
       holidays.map(h => [dayjs(h.date).tz('Asia/Shanghai').format('YYYY-MM-DD'), h])
     )
-    // 截至今天的工作日列表（当月）
+    // 截至昨天的工作日列表（当月）：今天还没过完，不计入出勤/缺勤统计
     const workdayKeys: string[] = []
+    const todayStr = nowSh.format('YYYY-MM-DD')
     for (let i = 1; i <= targetMonth.daysInMonth(); i++) {
       const d = targetMonth.date(i)
-      if (isCurrentMonth && d.isAfter(nowSh, 'day')) break
+      if (isCurrentMonth && !d.isBefore(nowSh, 'day')) break
       const h = holidayMap.get(d.format('YYYY-MM-DD'))
       const isWorkday = h ? h.isWorkday : (d.day() !== 0 && d.day() !== 6)
       if (isWorkday) workdayKeys.push(d.format('YYYY-MM-DD'))
@@ -1076,16 +1093,27 @@ router.get('/team-stats', authenticateToken, checkPermission('office:attendance:
       let incompleteDays = 0
       let totalOvertimeMinutes = 0
 
-      for (const [, dayData] of dailyMap.entries()) {
+      for (const [key, dayData] of dailyMap.entries()) {
         const hasMorning = !!dayData.morning
         const hasEvening = !!dayData.evening
 
-        if (hasMorning || hasEvening) attendanceDays++
-        if (dayData.morning?.type === 'LATE' || dayData.morning?.type === 'LATE_AND_EARLY') lateDays++
-        if (dayData.evening?.type === 'EARLY_LEAVE' || dayData.evening?.type === 'LATE_AND_EARLY') earlyLeaveDays++
-        if (dayData.morning?.type === 'AUTO' || dayData.evening?.type === 'AUTO') businessTripDays++
-        if (dayData.morning?.type === 'MAKEUP' || dayData.evening?.type === 'MAKEUP') makeupDays++
-        if ((hasMorning && !hasEvening) || (!hasMorning && hasEvening)) incompleteDays++
+        // 出勤/缺勤口径：只算工作日（周末/节假日加班打卡不计出勤，避免出勤率超 100%），
+        // 当月只算到昨天（今天未结束不算）；迟到/早退/出差/补卡是既成事实，工作日当天也计
+        const dayHoliday = holidayMap.get(key)
+        const isWorkdayKey = dayHoliday
+          ? dayHoliday.isWorkday
+          : (dayjs.tz(key, 'Asia/Shanghai').day() % 6 !== 0)
+        const countedForAttendance = isWorkdayKey && (!isCurrentMonth || key < todayStr)
+
+        if (countedForAttendance && (hasMorning || hasEvening)) attendanceDays++
+        if (isWorkdayKey) {
+          if (dayData.morning?.type === 'LATE' || dayData.morning?.type === 'LATE_AND_EARLY') lateDays++
+          if (dayData.evening?.type === 'EARLY_LEAVE' || dayData.evening?.type === 'LATE_AND_EARLY') earlyLeaveDays++
+          if (dayData.morning?.type === 'AUTO' || dayData.evening?.type === 'AUTO') businessTripDays++
+          if (dayData.morning?.type === 'MAKEUP' || dayData.evening?.type === 'MAKEUP') makeupDays++
+          // 今天只打了上班卡不算不完整（下班还没到）
+          if (hasMorning !== hasEvening && countedForAttendance) incompleteDays++
+        }
 
         if (dayData.evening?.overtimeStartTime && dayData.evening?.overtimeEndTime) {
           totalOvertimeMinutes += dayjs(dayData.evening.overtimeEndTime).diff(dayjs(dayData.evening.overtimeStartTime), 'minute')
@@ -1243,6 +1271,7 @@ router.get('/user-stats', authenticateToken, checkPermission('office:attendance:
       const holiday = holidayMap.get(key)
       const isWorkday = holiday ? holiday.isWorkday : (day.day() !== 0 && day.day() !== 6)
       const isFuture = day.isAfter(todaySh)
+      const isToday = isCurrentMonth && day.isSame(todaySh, 'day')
 
       let status: string
       if (morningRecord || eveningRecord) {
@@ -1253,30 +1282,35 @@ router.get('/user-stats', authenticateToken, checkPermission('office:attendance:
         else if (morningRecord && eveningRecord) status = 'NORMAL'
         else if (!eveningRecord && isCurrentMonth && day.isSame(todaySh, 'day')) status = 'NORMAL' // 今天只打了上班卡
         else status = 'INCOMPLETE' // 只打了一次卡（漏上班或漏下班）
-      } else if (isOnTrip(day)) {
+      } else if (isWorkday && isOnTrip(day)) {
         status = 'BUSINESS_TRIP'
       } else if (!isWorkday) {
         status = 'REST'
-      } else if (isFuture) {
+      } else if (isFuture || isToday) {
+        // 未来及今天（还没打卡）显示待打卡：今天没过完不算未打卡
         status = 'FUTURE'
       } else {
         status = 'NOT_CHECKED'
       }
 
-      // 汇总（当前月份只统计到今天，未来日期不算缺勤）
-      if (isWorkday && !(isCurrentMonth && isFuture)) workdays++
+      // 汇总口径：出勤/缺勤只算工作日且当月截至昨天（今天未结束不算缺勤）；
+      // 迟到/早退/补卡/出差是既成事实，工作日当天也计；加班时长任何日期都累计
+      if (isWorkday && !(isCurrentMonth && !day.isBefore(todaySh, 'day'))) workdays++
       if (morningRecord || eveningRecord) {
-        attendanceDays++
-        if (status === 'LATE') lateDays++
-        if (status === 'EARLY_LEAVE') earlyLeaveDays++
-        if (status === 'MAKEUP') makeupDays++
-        if (status === 'BUSINESS_TRIP') businessTripDays++
-        if ((morningRecord && !eveningRecord) || (!morningRecord && eveningRecord)) incompleteDays++
-        if (eveningRecord?.overtimeStartTime && eveningRecord?.overtimeEndTime) {
+        if (isWorkday) {
+          if (!isToday) attendanceDays++
+          if (status === 'LATE') lateDays++
+          if (status === 'EARLY_LEAVE') earlyLeaveDays++
+          if (status === 'MAKEUP') makeupDays++
+          if (status === 'BUSINESS_TRIP') businessTripDays++
+          // 今天只打了上班卡不算不完整（下班还没到）
+          if ((!morningRecord && eveningRecord) || (morningRecord && !eveningRecord && !isToday)) incompleteDays++
+        }
+        if (eveningRecord?.overtimeStartTime && eveningRecord.overtimeEndTime) {
           totalOvertimeMinutes += dayjs(eveningRecord.overtimeEndTime).diff(dayjs(eveningRecord.overtimeStartTime), 'minute')
         }
       } else if (status === 'BUSINESS_TRIP') {
-        attendanceDays++
+        if (!isToday) attendanceDays++
         businessTripDays++
       }
 
@@ -1296,7 +1330,8 @@ router.get('/user-stats', authenticateToken, checkPermission('office:attendance:
           ? dayjs(eveningRecord.overtimeEndTime).tz('Asia/Shanghai').format('HH:mm')
           : null,
         status,
-        note: holiday?.name || null
+        note: holiday?.name || null,
+        isMakeupWorkday: holiday?.isWorkday === true
       })
     }
 
@@ -1380,8 +1415,11 @@ router.get('/today-team', authenticateToken, checkPermission('office:attendance:
     const tripUserIds = new Set(activeTrips.map(t => t.ownerId))
 
     // 当日是否休息日（节假日/调休表 + 周末）
+    // 注意:Holiday.date 是 @db.Date 列,范围端点会被 Prisma 截断为 UTC 日期,
+    // 用 [range.start, range.end) 会错查进前一天 → 假日次日被误判为休息日。
+    // 必须用当天 UTC 零点做等值查询。
     const dayHoliday = await prisma.holiday.findFirst({
-      where: { date: { gte: range.start, lt: range.end } },
+      where: { date: holidayDateKey(now) },
       select: { isWorkday: true, name: true }
     })
     const isRestDay = dayHoliday ? !dayHoliday.isWorkday : (now.day() === 0 || now.day() === 6)

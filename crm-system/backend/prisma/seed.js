@@ -41,7 +41,7 @@ async function main() {
     // 日志审计
     { id: 16, key: 'logs',            icon: 'FileSearchOutlined',   label: '日志审计', order: 10, menuType: 'DIRECTORY' },
     { id: 17, key: 'operation-logs',  icon: 'FileTextOutlined',     label: '操作日志', order: 1,  menuType: 'MENU', path: '/operation-logs', component: 'OperationLogList', perm: 'system:log:list', parentId: 16 },
-    { id: 18, key: 'login-logs',      icon: 'LoginOutlined',        label: '登录日志', order: 2,  menuType: 'MENU', path: '/login-logs', component: 'LoginLogList', perm: 'system:log:login', parentId: 16 },
+    { id: 18, key: 'login-logs',      icon: 'LoginOutlined',        label: '登录日志', order: 2,  menuType: 'MENU', path: '/login-logs', component: 'LoginLogList', perm: 'system:log:list', parentId: 16 },
 
     // ═══════════ BUTTON 权限节点 ═══════════
     // 客户管理 BUTTON（parentId=2）
