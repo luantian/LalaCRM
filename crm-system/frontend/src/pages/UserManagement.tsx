@@ -274,6 +274,15 @@ function UserManagement() {
           </Form.Item>
 
           <Form.Item
+            name="phone"
+            label="手机号（选填）"
+            extra="用于企业微信提醒中 @ 到本人（任务分配/待确认等），需与企业微信绑定的手机号一致"
+            rules={[{ pattern: /^1\d{10}$/, message: '请输入11位手机号' }]}
+          >
+            <Input placeholder="选填，如 13800138000" maxLength={11} />
+          </Form.Item>
+
+          <Form.Item
             name="password"
             label={editingUser ? '新密码（留空则不修改）' : '密码'}
             rules={editingUser ? [] : [

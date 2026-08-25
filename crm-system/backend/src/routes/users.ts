@@ -146,7 +146,7 @@ router.post('/', authenticateToken, checkPermission('system:user:add'), logOpera
 router.put('/:id', authenticateToken, checkPermission('system:user:edit'), logOperation('用户管理', 'UPDATE'), async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id as string)
-    const { email, name, roleId, password } = req.body
+    const { email, name, phone, roleId, password } = req.body
 
     // 检查用户是否存在
     const existingUser = await prisma.user.findUnique({
@@ -168,6 +168,22 @@ router.put('/:id', authenticateToken, checkPermission('system:user:edit'), logOp
 
     // 准备更新数据
     const updateData: any = { email, name }
+    // 手机号(可选;企业微信群机器人 @ 精准提醒用,可作登录标识故需唯一)
+    if (phone !== undefined) {
+      if (phone && !/^1\d{10}$/.test(String(phone).trim())) {
+        return res.status(400).json({ error: '手机号格式不正确' })
+      }
+      if (phone) {
+        const phoneTaken = await prisma.user.findFirst({
+          where: { phone: String(phone).trim(), id: { not: userId } },
+          select: { id: true }
+        })
+        if (phoneTaken) {
+          return res.status(400).json({ error: '该手机号已被其他用户使用' })
+        }
+      }
+      updateData.phone = String(phone).trim() || null
+    }
 
     // 如果提供了角色ID，更新角色
     if (roleId !== undefined) {

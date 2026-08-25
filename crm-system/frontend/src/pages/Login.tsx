@@ -79,11 +79,11 @@ function Login() {
           <Form onFinish={onFinish} size="large" className="login-form">
             <Form.Item
               name="username"
-              rules={[{ required: true, message: '请输入用户名' }]}
+              rules={[{ required: true, message: '请输入账号' }]}
             >
               <Input
                 prefix={<UserOutlined style={{ color: '#94a3b8' }} />}
-                placeholder="用户名"
+                placeholder="用户名 / 邮箱 / 手机号"
                 className="login-input"
               />
             </Form.Item>

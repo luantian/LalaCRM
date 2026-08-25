@@ -101,7 +101,18 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(400).json({ error: '用户名和密码不能为空' })
     }
 
-    const user = await prisma.user.findUnique({ where: { username } })
+    // 支持用户名 / 邮箱 / 手机号 任一方式登录
+    // (邮箱有唯一约束;手机号在保存时做了唯一性校验,这里 findFirst 兜底)
+    const identifier = String(username).trim()
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { username: identifier },
+          { email: identifier },
+          { phone: identifier }
+        ]
+      }
+    })
     if (!user) {
       // 记录失败登录日志
       await prisma.loginLog.create({
@@ -250,7 +261,9 @@ router.get('/me', async (req, res) => {
       username: user.username,
       email: user.email,
       name: user.name,
+      phone: user.phone,
       role: user.role,
+      roleName: user.roleRef?.displayName || user.role,
       permissions,
       menus
     })
@@ -381,6 +394,58 @@ router.put('/change-password', authenticateToken, async (req: AuthRequest, res) 
   } catch (error) {
     logger.error('Change password error:', error)
     res.status(500).json({ error: '密码修改失败' })
+  }
+})
+
+// 个人信息自助维护（仅允许改姓名/邮箱/手机号；用户名、角色、部门需管理员操作）
+router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { name, email, phone } = req.body
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: '姓名不能为空' })
+    }
+    if (!email || !/^\S+@\S+\.\S+$/.test(String(email))) {
+      return res.status(400).json({ error: '邮箱格式不正确' })
+    }
+    if (phone && !/^1\d{10}$/.test(String(phone).trim())) {
+      return res.status(400).json({ error: '手机号格式不正确（11位）' })
+    }
+
+    // 手机号唯一（可作为登录标识，不允许重复）
+    if (phone) {
+      const phoneTaken = await prisma.user.findFirst({
+        where: { phone: String(phone).trim(), id: { not: req.user!.id } },
+        select: { id: true }
+      })
+      if (phoneTaken) {
+        return res.status(400).json({ error: '该手机号已被其他用户使用' })
+      }
+    }
+
+    // 邮箱唯一性（排除自己）
+    const emailTaken = await prisma.user.findFirst({
+      where: { email: String(email), id: { not: req.user!.id } },
+      select: { id: true }
+    })
+    if (emailTaken) {
+      return res.status(400).json({ error: '该邮箱已被其他用户使用' })
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: {
+        name: String(name).trim(),
+        email: String(email),
+        phone: phone ? String(phone).trim() : null
+      }
+    })
+
+    logger.info(`Profile updated for user: ${updated.username}`)
+    res.json({ id: updated.id, name: updated.name, email: updated.email, phone: updated.phone })
+  } catch (error) {
+    logger.error('Update profile error:', error)
+    res.status(500).json({ error: '保存个人信息失败' })
   }
 })
 
