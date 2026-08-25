@@ -123,7 +123,7 @@ async function main() {
   // 确保管理员角色存在
   await prisma.roleModel.upsert({
     where: { id: 1 },
-    update: {},
+    update: { dataScope: 'ALL' },
     create: {
       id: 1,
       name: 'ADMIN',
@@ -131,7 +131,7 @@ async function main() {
       displayName: '管理员',
       description: '系统管理员，拥有所有权限',
       permissions: [],
-      dataScope: 'TEAM',
+      dataScope: 'ALL',
     }
   })
 

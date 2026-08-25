@@ -498,7 +498,9 @@ function RoleManagement() {
             { title: '说明', dataIndex: 'description', key: 'description' },
             {
               title: '数据范围', key: 'scope', width: 130,
-              render: (_: any, record: Role) => dataScopeLabel[record.dataScope || 'SELF'] || record.dataScope || '-'
+              render: (_: any, record: Role) => record.name === 'ADMIN'
+                ? '全部数据'
+                : (dataScopeLabel[record.dataScope || 'SELF'] || record.dataScope || '-')
             },
             {
               title: '权限数', key: 'count', width: 70, align: 'center' as const,
@@ -648,7 +650,7 @@ function RoleManagement() {
             <Descriptions.Item label="角色名称">{viewingRole.displayName}</Descriptions.Item>
             <Descriptions.Item label="角色标识"><code>{viewingRole.name}</code></Descriptions.Item>
             <Descriptions.Item label="说明">{viewingRole.description || '-'}</Descriptions.Item>
-            <Descriptions.Item label="数据范围">{dataScopeLabel[viewingRole.dataScope || 'SELF'] || viewingRole.dataScope || '-'}</Descriptions.Item>
+            <Descriptions.Item label="数据范围">{viewingRole.name === 'ADMIN' ? '全部数据' : (dataScopeLabel[viewingRole.dataScope || 'SELF'] || viewingRole.dataScope || '-')}</Descriptions.Item>
             <Descriptions.Item label="权限数">{viewingRole.permissions?.length || 0}</Descriptions.Item>
           </Descriptions>
         )}
