@@ -46,15 +46,16 @@ test.describe('认证流程', () => {
     await page.getByRole('button', { name: /登\s*录/ }).click()
     await page.waitForURL((u) => !u.pathname.includes('/login'))
 
-    // 打开右上角用户下拉 → 修改密码
+    // 打开右上角用户下拉 → 个人信息 → 修改密码标签(2026-08-25 入口合并)
     await page.locator('.ant-layout-header').getByRole('img', { name: 'user' }).first().click()
-    await page.locator('.ant-dropdown-menu-item', { hasText: '修改密码' }).click()
-    await expect(page.locator('.ant-modal-title', { hasText: '修改密码' })).toBeVisible()
+    await page.locator('.ant-dropdown-menu-item', { hasText: '个人信息' }).click()
+    await expect(page.locator('.ant-modal-title', { hasText: '个人信息' })).toBeVisible()
+    await page.locator('.ant-modal .ant-tabs-tab', { hasText: '修改密码' }).click()
 
-    // 输入错误的旧密码
-    await page.locator('.ant-modal input').nth(0).fill('wrong-old-password')
-    await page.locator('.ant-modal input').nth(1).fill('NewPass123!')
-    await page.locator('.ant-modal input').nth(2).fill('NewPass123!')
+    // 输入错误的旧密码(基本信息tab的5个输入框仍在DOM,密码框从第6个起:当前/新/确认)
+    await page.locator('.ant-modal input').nth(5).fill('wrong-old-password')
+    await page.locator('.ant-modal input').nth(6).fill('NewPass123!')
+    await page.locator('.ant-modal input').nth(7).fill('NewPass123!')
     await page.locator('.ant-modal-footer button', { hasText: /确认修改/ }).click()
 
     // 回归断言：应显示后端的具体原因，而不是笼统的"密码修改失败"

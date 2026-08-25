@@ -253,6 +253,17 @@ fi
 
 # 写入节假日种子数据（db push 不执行迁移中的 INSERT，此脚本幂等可重复）
 docker exec crm-backend sh -c "cd /app && node prisma/seed-holidays.js" || log_warn "节假日种子数据写入失败（不影响主流程）"
+
+# 数据修正（角色数据范围/系统页面菜单权限等，幂等可重复执行）
+if [ -f "build/deploy-data-fix.sql" ]; then
+    log_step "执行数据修正SQL..."
+    if docker exec -i crm-postgres psql -U crm_user -d crm_db < build/deploy-data-fix.sql > /tmp/crm_datafix_$TIMESTAMP.log 2>&1; then
+        log_info "数据修正完成"
+    else
+        log_warn "数据修正SQL执行失败（不影响主流程），日志："
+        cat /tmp/crm_datafix_$TIMESTAMP.log | sed 's/^/  /'
+    fi
+fi
 rm -f "$MIGRATE_LOG"
 
 # -------------------------------------------------

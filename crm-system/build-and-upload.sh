@@ -117,7 +117,7 @@ log_info "PostgreSQL 镜像导出完成: build/postgres.tar"
 # -------------------------------------------------
 cp -f ./update.sh ./build/update.sh 2>/dev/null || log_warn "未找到 update.sh，跳过"
 # 防 CRLF：Windows 编辑器可能把脚本存成 \r\n，群晖 bash 会报 $'\r': command not found
-sed -i 's/\r$//' ./build/update.sh ./build/deploy-fresh.sh 2>/dev/null || true
+sed -i 's/\r$//' ./build/update.sh ./build/deploy-fresh.sh ./build/deploy-data-fix.sql 2>/dev/null || true
 
 # -------------------------------------------------
 # 6. 打包结果
@@ -136,12 +136,13 @@ log_step "上传镜像到群晖 ${SYNO_IP}..."
 ssh -p "$SYNO_PORT" "${SYNO_USER}@${SYNO_IP}" \
     "mkdir -p ${SYNO_DEPLOY_DIR}/build" 2>&1 | grep -v "^$" || true
 
-# 上传 tar 文件和更新脚本
+# 上传 tar 文件、更新脚本与数据修正SQL
 scp -P "$SYNO_PORT" \
     ./build/backend.tar \
     ./build/frontend.tar \
     ./build/postgres.tar \
     ./build/update.sh \
+    ./build/deploy-data-fix.sql \
     "${SYNO_USER}@${SYNO_IP}:${SYNO_DEPLOY_DIR}/build/"
 
 if [ $? -eq 0 ]; then

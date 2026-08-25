@@ -594,7 +594,6 @@ function OrganizationList() {
             selectedOrg && (
               <Space>
                 <Button
-                  size="small"
                   icon={<PlusOutlined />}
                   disabled={!checkPermission('crm:organization:add')}
                   onClick={() => handleAddOrg(selectedOrg.id)}
