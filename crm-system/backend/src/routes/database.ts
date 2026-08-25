@@ -9,9 +9,12 @@ import { Readable } from 'stream'
 
 const router = Router()
 
-// 所有数据库备份路由都需要备份权限（通过菜单分配）
+// 页面级权限：拥有"数据库备份"页面（system:backup:list）即可查看；
+// 写操作在各自端点用按钮权限（create/download/delete/restore/config）校验。
+// 注意权限标识必须与菜单库一致——此前这里写的是不存在的 system:backup:backup，
+// 导致非管理员角色无论怎么配菜单都 403。
 router.use(authenticateToken)
-router.use(checkPermission('system:backup:backup'))
+router.use(checkPermission('system:backup:list'))
 
 // 备份目录（放在 src 下，方便 Docker volume 挂载）
 const BACKUP_DIR = path.resolve(process.env.BACKUP_DIR || path.join(__dirname, '../../src/backups'))
@@ -496,7 +499,7 @@ router.get('/backups', async (req: Request, res: Response) => {
 })
 
 // 创建备份（手动触发）
-router.post('/backup', async (req: AuthRequest, res: Response) => {
+router.post('/backup', checkPermission('system:backup:create'), async (req: AuthRequest, res: Response) => {
   if (isBackingUp) {
     return res.status(409).json({ error: '备份正在进行中，请稍后再试' })
   }
@@ -554,7 +557,7 @@ router.post('/backup', async (req: AuthRequest, res: Response) => {
 })
 
 // 下载备份文件
-router.get('/backups/:id/download', async (req: Request, res: Response) => {
+router.get('/backups/:id/download', checkPermission('system:backup:download'), async (req: Request, res: Response) => {
   try {
     const backupId = parseInt(req.params.id as string)
     
@@ -582,7 +585,7 @@ router.get('/backups/:id/download', async (req: Request, res: Response) => {
 })
 
 // 删除备份记录
-router.delete('/backups/:id', async (req: Request, res: Response) => {
+router.delete('/backups/:id', checkPermission('system:backup:delete'), async (req: Request, res: Response) => {
   try {
     const backupId = parseInt(req.params.id as string)
     
@@ -619,7 +622,7 @@ router.delete('/backups/:id', async (req: Request, res: Response) => {
 })
 
 // 恢复数据库（从备份文件）
-router.post('/backups/:id/restore', async (req: AuthRequest, res: Response) => {
+router.post('/backups/:id/restore', checkPermission('system:backup:restore'), async (req: AuthRequest, res: Response) => {
   if (isBackingUp) {
     return res.status(409).json({ error: '备份正在进行中，无法执行恢复' })
   }
@@ -710,7 +713,7 @@ router.get('/backup-schedule', async (req: Request, res: Response) => {
 })
 
 // 更新备份定时任务配置
-router.put('/backup-schedule', async (req: Request, res: Response) => {
+router.put('/backup-schedule', checkPermission('system:backup:config'), async (req: Request, res: Response) => {
   try {
     const { enabled, time, retentionDays } = req.body
     

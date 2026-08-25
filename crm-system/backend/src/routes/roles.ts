@@ -6,6 +6,9 @@ import logger from '../utils/logger'
 
 const router = Router()
 
+// 本系统不使用部门，数据范围仅支持三种（部门相关范围 DEPARTMENT/DEPARTMENT_BELOW/CUSTOM 未启用）
+const ALLOWED_DATA_SCOPES = ['ALL', 'TEAM', 'SELF']
+
 // 获取所有角色
 router.get('/', authenticateToken, checkPermission('system:role:list'), async (req: Request, res: Response) => {
   try {
@@ -50,6 +53,10 @@ router.post('/', authenticateToken, checkPermission('system:role:add'), logOpera
       return res.status(400).json({ error: '请填写角色名称和角色说明' })
     }
 
+    if (req.body.dataScope && !ALLOWED_DATA_SCOPES.includes(req.body.dataScope)) {
+      return res.status(400).json({ error: `无效的数据范围，可选：${ALLOWED_DATA_SCOPES.join(' / ')}` })
+    }
+
     // 自动生成角色标识（基于时间戳，确保唯一）
     const name = `ROLE_${Date.now()}`
 
@@ -83,6 +90,10 @@ router.put('/:id', authenticateToken, checkPermission('system:role:edit'), logOp
     })
     if (!existingRole) {
       return res.status(404).json({ error: '角色不存在' })
+    }
+
+    if (req.body.dataScope && !ALLOWED_DATA_SCOPES.includes(req.body.dataScope)) {
+      return res.status(400).json({ error: `无效的数据范围，可选：${ALLOWED_DATA_SCOPES.join(' / ')}` })
     }
 
     // 更新角色

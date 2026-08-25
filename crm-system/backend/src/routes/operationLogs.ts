@@ -1,17 +1,12 @@
 import prisma from '../lib/prisma'
 import { Router } from 'express'
 import { authenticateToken, AuthRequest, checkPermission } from '../middleware/auth'
-import { isAdmin } from '../utils/permission'
 
 const router = Router()
 
 // 操作日志列表（分页 + 筛选）
-router.get('/', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/', authenticateToken, checkPermission('system:log:list'), async (req: AuthRequest, res) => {
   try {
-    if (!(await isAdmin(req.user!.id))) {
-      return res.status(403).json({ error: '只有管理员才能查看操作日志' })
-    }
-
     const {
       page = '1',
       pageSize = '20',
@@ -63,12 +58,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
 })
 
 // 基础统计
-router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
+router.get('/stats', authenticateToken, checkPermission('system:log:list'), async (req: AuthRequest, res) => {
   try {
-    if (!(await isAdmin(req.user!.id))) {
-      return res.status(403).json({ error: '只有管理员才能查看操作日志' })
-    }
-
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
 

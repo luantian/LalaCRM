@@ -1,5 +1,5 @@
 import { useEffect, useState, type FC } from 'react'
-import { Card, Table, Tag, App, Button, Modal, Tree, Space, Form, Input, Checkbox, Empty, Tabs, Descriptions, Popconfirm } from 'antd'
+import { Card, Table, Tag, App, Button, Modal, Tree, Space, Form, Input, Select, Checkbox, Empty, Tabs, Descriptions, Popconfirm, Spin } from 'antd'
 import { SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, BarChartOutlined } from '@ant-design/icons'
 import type { DataNode } from 'antd/es/tree'
 import api from '../services/api'
@@ -222,25 +222,27 @@ function RoleManagement() {
   // 权限对照表弹窗状态
   const [permMatrixModalVisible, setPermMatrixModalVisible] = useState(false)
 
-  // 联系方式权限配置弹窗状态
-  const [contactInfoModalVisible, setContactInfoModalVisible] = useState(false)
+  // 敏感数据权限配置弹窗状态（联系方式 / 项目金额 两个标签页，一次保存）
+  const [sensitiveModalVisible, setSensitiveModalVisible] = useState(false)
   const [contactInfoRoleIds, setContactInfoRoleIds] = useState<number[]>([])
-  const [contactInfoLoading, setContactInfoLoading] = useState(false)
-
-  // 项目金额权限配置弹窗状态
-  const [projectAmountModalVisible, setProjectAmountModalVisible] = useState(false)
   const [projectAmountRoleIds, setProjectAmountRoleIds] = useState<number[]>([])
-  const [projectAmountLoading, setProjectAmountLoading] = useState(false)
+  const [sensitiveLoading, setSensitiveLoading] = useState(false)
+  const [sensitiveSaving, setSensitiveSaving] = useState(false)
+  const [sensitiveTab, setSensitiveTab] = useState('contact')
 
   const roleColors: Record<string, string> = {
     ADMIN: 'red', PROJECT_DIRECTOR: 'purple', PROJECT_MANAGER: 'blue',
     USER: 'green', VIEWER: 'default'
   }
 
-  const scopeMap: Record<string, string> = {
-    ADMIN: '全部数据', PROJECT_DIRECTOR: '全部数据',
-    PROJECT_MANAGER: '自己负责的项目', USER: '自己参与的项目',
-    VIEWER: '自己相关的数据', TEAM: '团队成员数据（仅项目管理）'
+  // 数据范围选项（本系统不使用部门，仅保留三种范围）
+  const dataScopeOptions = [
+    { value: 'ALL', label: '全部数据' },
+    { value: 'TEAM', label: '团队成员数据' },
+    { value: 'SELF', label: '仅本人数据' },
+  ]
+  const dataScopeLabel: Record<string, string> = {
+    ALL: '全部数据', TEAM: '团队成员数据', SELF: '仅本人数据'
   }
 
   const fetchRoles = async () => {
@@ -390,63 +392,75 @@ function RoleManagement() {
     }
   }
 
-  // ===== 联系方式权限配置 =====
-  const fetchContactInfoConfig = async () => {
-    setContactInfoLoading(true)
+  // ===== 敏感数据权限配置（联系方式 / 项目金额） =====
+  const handleOpenSensitiveModal = async () => {
+    setSensitiveModalVisible(true)
+    setSensitiveLoading(true)
     try {
-      const response = await api.get('/settings/contact-info-permission') as any
-      setContactInfoRoleIds(response.roleIds || [])
+      const [contactRes, amountRes]: any[] = await Promise.all([
+        api.get('/settings/contact-info-permission'),
+        api.get('/settings/project-amount-permission'),
+      ])
+      setContactInfoRoleIds(contactRes.roleIds || [])
+      setProjectAmountRoleIds(amountRes.roleIds || [])
     } catch (error: any) {
       message.error(error?.error || '获取配置失败')
       setContactInfoRoleIds([])
-    } finally {
-      setContactInfoLoading(false)
-    }
-  }
-
-  const handleOpenContactInfoModal = () => {
-    setContactInfoModalVisible(true)
-    fetchContactInfoConfig()
-  }
-
-  const handleSaveContactInfoConfig = async () => {
-    try {
-      await api.put('/settings/contact-info-permission', { roleIds: contactInfoRoleIds })
-      message.success('配置保存成功')
-      setContactInfoModalVisible(false)
-    } catch (error: any) {
-      message.error(error?.error || '保存失败')
-    }
-  }
-
-  // ===== 项目金额权限配置 =====
-  const fetchProjectAmountConfig = async () => {
-    setProjectAmountLoading(true)
-    try {
-      const response = await api.get('/settings/project-amount-permission') as any
-      setProjectAmountRoleIds(response.roleIds || [])
-    } catch (error: any) {
-      message.error(error?.error || '获取配置失败')
       setProjectAmountRoleIds([])
     } finally {
-      setProjectAmountLoading(false)
+      setSensitiveLoading(false)
     }
   }
 
-  const handleOpenProjectAmountModal = () => {
-    setProjectAmountModalVisible(true)
-    fetchProjectAmountConfig()
-  }
-
-  const handleSaveProjectAmountConfig = async () => {
+  const handleSaveSensitiveConfig = async () => {
+    setSensitiveSaving(true)
     try {
+      await api.put('/settings/contact-info-permission', { roleIds: contactInfoRoleIds })
       await api.put('/settings/project-amount-permission', { roleIds: projectAmountRoleIds })
       message.success('配置保存成功')
-      setProjectAmountModalVisible(false)
+      setSensitiveModalVisible(false)
     } catch (error: any) {
       message.error(error?.error || '保存失败')
+    } finally {
+      setSensitiveSaving(false)
     }
   }
+
+  // 角色勾选列表（敏感数据权限弹窗两个标签页共用）
+  const renderRoleCheckList = (selectedIds: number[], onChange: (ids: number[]) => void) => (
+    <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+      {roles.map(role => (
+        <div
+          key={role.id}
+          style={{
+            padding: '8px 12px',
+            marginBottom: 8,
+            border: '1px solid #d9d9d9',
+            borderRadius: 6,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: selectedIds.includes(role.id) ? '#f0f5ff' : '#fff'
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 500 }}>{role.displayName}</div>
+            <div style={{ fontSize: 12, color: '#999' }}>{role.description}</div>
+          </div>
+          <Checkbox
+            checked={selectedIds.includes(role.id)}
+            onChange={(e) => {
+              if (e.target.checked) {
+                onChange([...selectedIds, role.id])
+              } else {
+                onChange(selectedIds.filter(id => id !== role.id))
+              }
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  )
 
   const sortedRoles = [...roles].sort((a, b) => a.id - b.id)
   const permGroups = buildPermGroups(menusWithChildren)
@@ -460,8 +474,7 @@ function RoleManagement() {
       <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
         <Space>
           <Button icon={<BarChartOutlined />} onClick={() => setPermMatrixModalVisible(true)}>权限对照表</Button>
-          <Button icon={<SettingOutlined />} onClick={handleOpenContactInfoModal}>联系方式权限配置</Button>
-          <Button icon={<SettingOutlined />} onClick={handleOpenProjectAmountModal}>项目金额权限配置</Button>
+          <Button icon={<SettingOutlined />} onClick={handleOpenSensitiveModal}>敏感数据权限</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateRole} disabled={!checkPermission('system:role:add')}>新建角色</Button>
         </Space>
       </div>
@@ -485,7 +498,7 @@ function RoleManagement() {
             { title: '说明', dataIndex: 'description', key: 'description' },
             {
               title: '数据范围', key: 'scope', width: 130,
-              render: (_: any, record: Role) => scopeMap[record.name] || '-'
+              render: (_: any, record: Role) => dataScopeLabel[record.dataScope || 'SELF'] || record.dataScope || '-'
             },
             {
               title: '权限数', key: 'count', width: 70, align: 'center' as const,
@@ -541,6 +554,17 @@ function RoleManagement() {
                   </Form.Item>
                   <Form.Item label="角色标识">
                     <Input value={editingRole.name} disabled />
+                  </Form.Item>
+                  <Form.Item
+                    name="dataScope"
+                    label="数据范围"
+                    initialValue="SELF"
+                    extra="团队成员数据 = 自己名下的 + 所在项目团队的数据；全部数据 = 可见系统内所有数据。管理员角色固定拥有全部数据。"
+                  >
+                    <Select
+                      options={dataScopeOptions}
+                      disabled={editingRole.name === 'ADMIN'}
+                    />
                   </Form.Item>
                 </Form>
               )
@@ -599,6 +623,14 @@ function RoleManagement() {
             <Form.Item name="description" label="角色说明" rules={[{ required: true, message: '请输入角色说明' }]}>
               <Input.TextArea rows={2} placeholder="描述该角色的职责和权限范围" />
             </Form.Item>
+            <Form.Item
+              name="dataScope"
+              label="数据范围"
+              initialValue="SELF"
+              extra="团队成员数据 = 自己名下的 + 所在项目团队的数据；全部数据 = 可见系统内所有数据。"
+            >
+              <Select options={dataScopeOptions} />
+            </Form.Item>
           </Form>
         )}
       </Modal>
@@ -616,105 +648,59 @@ function RoleManagement() {
             <Descriptions.Item label="角色名称">{viewingRole.displayName}</Descriptions.Item>
             <Descriptions.Item label="角色标识"><code>{viewingRole.name}</code></Descriptions.Item>
             <Descriptions.Item label="说明">{viewingRole.description || '-'}</Descriptions.Item>
-            <Descriptions.Item label="数据范围">{scopeMap[viewingRole.name] || '-'}</Descriptions.Item>
+            <Descriptions.Item label="数据范围">{dataScopeLabel[viewingRole.dataScope || 'SELF'] || viewingRole.dataScope || '-'}</Descriptions.Item>
             <Descriptions.Item label="权限数">{viewingRole.permissions?.length || 0}</Descriptions.Item>
           </Descriptions>
         )}
       </Modal>
 
-      {/* 联系方式权限配置弹窗 */}
+      {/* 敏感数据权限配置弹窗（联系方式 / 项目金额 合并） */}
       <Modal
-        title="联系方式权限配置"
-        open={contactInfoModalVisible}
-        onOk={handleSaveContactInfoConfig}
-        onCancel={() => setContactInfoModalVisible(false)}
-        confirmLoading={contactInfoLoading}
-        width={500}
+        title="敏感数据权限配置"
+        open={sensitiveModalVisible}
+        onOk={handleSaveSensitiveConfig}
+        onCancel={() => setSensitiveModalVisible(false)}
+        confirmLoading={sensitiveSaving}
+        width={560}
       >
-        <div style={{ marginBottom: 16, color: '#666' }}>
-          选择可以查看客户完整联系方式（电话、邮箱、微信）的角色。
-          <br />
-          <span style={{ fontSize: 12, color: '#999' }}>未选中的角色只能看到脱敏后的信息；管理员始终可见完整联系方式，无需在此勾选</span>
-        </div>
-        <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-          {roles.map(role => (
-            <div
-              key={role.id}
-              style={{
-                padding: '8px 12px',
-                marginBottom: 8,
-                border: '1px solid #d9d9d9',
-                borderRadius: 6,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                backgroundColor: contactInfoRoleIds.includes(role.id) ? '#f0f5ff' : '#fff'
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 500 }}>{role.displayName}</div>
-                <div style={{ fontSize: 12, color: '#999' }}>{role.description}</div>
-              </div>
-              <Checkbox
-                checked={contactInfoRoleIds.includes(role.id)}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setContactInfoRoleIds([...contactInfoRoleIds, role.id])
-                  } else {
-                    setContactInfoRoleIds(contactInfoRoleIds.filter(id => id !== role.id))
-                  }
-                }}
-              />
-            </div>
-          ))}
-        </div>
-      </Modal>
-
-      {/* 项目金额权限配置弹窗 */}
-      <Modal
-        title="项目金额权限配置"
-        open={projectAmountModalVisible}
-        onOk={handleSaveProjectAmountConfig}
-        onCancel={() => setProjectAmountModalVisible(false)}
-        confirmLoading={projectAmountLoading}
-        width={500}
-      >
-        <div style={{ marginBottom: 16, color: '#666' }}>
-          选择可以查看项目完整金额信息的角色。
-          <br />
-          <span style={{ fontSize: 12, color: '#999' }}>未选中的角色将看不到项目金额</span>
-        </div>
-        <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-          {roles.map(role => (
-            <div
-              key={role.id}
-              style={{
-                padding: '8px 12px',
-                marginBottom: 8,
-                border: '1px solid #d9d9d9',
-                borderRadius: 6,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                backgroundColor: projectAmountRoleIds.includes(role.id) ? '#f0f5ff' : '#fff'
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 500 }}>{role.displayName}</div>
-                <div style={{ fontSize: 12, color: '#999' }}>{role.description}</div>
-              </div>
-              <Checkbox
-                checked={projectAmountRoleIds.includes(role.id)}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setProjectAmountRoleIds([...projectAmountRoleIds, role.id])
-                  } else {
-                    setProjectAmountRoleIds(projectAmountRoleIds.filter(id => id !== role.id))
-                  }
-                }}
-              />
-            </div>
-          ))}
+        <Spin spinning={sensitiveLoading}>
+        <Tabs
+          activeKey={sensitiveTab}
+          onChange={setSensitiveTab}
+          items={[
+            {
+              key: 'contact',
+              label: '📞 联系方式',
+              children: (
+                <div>
+                  <div style={{ marginBottom: 12, color: '#666', fontSize: 13 }}>
+                    勾选可以查看客户完整联系方式（电话、邮箱、微信）的角色
+                    <br />
+                    <span style={{ fontSize: 12, color: '#999' }}>未选中的角色只能看到脱敏后的信息；管理员始终可见，无需勾选</span>
+                  </div>
+                  {renderRoleCheckList(contactInfoRoleIds, setContactInfoRoleIds)}
+                </div>
+              ),
+            },
+            {
+              key: 'amount',
+              label: '💰 项目金额',
+              children: (
+                <div>
+                  <div style={{ marginBottom: 12, color: '#666', fontSize: 13 }}>
+                    勾选可以查看项目完整金额信息的角色
+                    <br />
+                    <span style={{ fontSize: 12, color: '#999' }}>未选中的角色将看不到项目金额</span>
+                  </div>
+                  {renderRoleCheckList(projectAmountRoleIds, setProjectAmountRoleIds)}
+                </div>
+              ),
+            },
+          ]}
+        />
+        </Spin>
+        <div style={{ fontSize: 12, color: '#999', marginTop: 8 }}>
+          两个标签页的配置会在点击"确定"时一起保存
         </div>
       </Modal>
 
