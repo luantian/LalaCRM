@@ -393,6 +393,8 @@ router.post('/:id/approve', authenticateToken, checkPermission('project:contract
     }
 
     // 状态流转企业微信/Server酱提醒(笼统文案,不含金额)
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下方注释]
+    /*
     if (status === 'PENDING') {
       notifyExternal(`**📜 合同 · 待审批**
 
@@ -410,6 +412,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('project:contract
 
 「${contract.name}」${remark ? '\n原因：<font color="warning">' + String(remark).trim() + '</font>' : ''}`, `[CRM合同] 一份合同已取消`)
     }
+    */
 
     res.json(updatedContract)
   } catch (error) {

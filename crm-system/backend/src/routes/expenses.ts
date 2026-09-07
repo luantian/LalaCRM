@@ -75,7 +75,8 @@ async function notifyExpenseApprovers(
     }
     sendToUsers(approverIds, { type: 'EXPENSE_SUBMITTED', expenseId: expense.id, title: expense.title })
     // 企业微信群提醒(群消息不带金额,只提示动作;未配置/失败均静默)
-    notifyExternal(`**🧾 报销 · 待审批**\n\n「${expense.title}」\n申请人：<font color="info">${owner?.name || '有同事'}</font>\n<font color="comment">请审批人登录 CRM 处理</font>`, `[CRM报销] ${owner?.name || '有同事'} 提交了报销，待审批`)
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下行注释]
+    // notifyExternal(`**🧾 报销 · 待审批**\n\n「${expense.title}」\n申请人：<font color="info">${owner?.name || '有同事'}</font>\n<font color="comment">请审批人登录 CRM 处理</font>`, `[CRM报销] ${owner?.name || '有同事'} 提交了报销，待审批`)
   } catch (err) {
     logger.warn('报销审批通知发送失败:', err instanceof Error ? err.message : err)
   }
@@ -515,7 +516,8 @@ router.post('/:id/approve', authenticateToken, checkPermission('finance:expense:
     }
 
     // 企业微信群提醒(不带金额)
-    notifyExternal(`**✅ 报销 · 已通过**\n\n「${expense.title}」\n审批人：<font color="info">${approverName}</font>\n<font color="comment">进入打款流程</font>`, `[CRM报销] 一条报销已通过审批`)
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下行注释]
+    // notifyExternal(`**✅ 报销 · 已通过**\n\n「${expense.title}」\n审批人：<font color="info">${approverName}</font>\n<font color="comment">进入打款流程</font>`, `[CRM报销] 一条报销已通过审批`)
 
     res.json(updated)
   } catch (error) {
@@ -572,7 +574,8 @@ router.post('/:id/reject', authenticateToken, checkPermission('finance:expense:a
     }
 
     // 企业微信群提醒(不带金额)
-    notifyExternal(`**❌ 报销 · 已驳回**\n\n「${expense.title}」\n原因：<font color="warning">${reason}</font>\n审批人：${approverName}\n<font color="comment">请修改后重新提交</font>`, `[CRM报销] 一条报销被驳回`)
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下行注释]
+    // notifyExternal(`**❌ 报销 · 已驳回**\n\n「${expense.title}」\n原因：<font color="warning">${reason}</font>\n审批人：${approverName}\n<font color="comment">请修改后重新提交</font>`, `[CRM报销] 一条报销被驳回`)
 
     res.json(updated)
   } catch (error) {
@@ -654,7 +657,8 @@ router.post('/:id/pay', authenticateToken, checkPermission('finance:expense:appr
     }
 
     // 企业微信群提醒(不带金额)
-    notifyExternal(`**💸 报销 · 已打款**\n\n「${expense.title}」\n<font color="comment">流程完结</font>`, `[CRM报销] 一条报销已标记支付`)
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下行注释]
+    // notifyExternal(`**💸 报销 · 已打款**\n\n「${expense.title}」\n<font color="comment">流程完结</font>`, `[CRM报销] 一条报销已标记支付`)
 
     res.json(updated)
   } catch (error) {

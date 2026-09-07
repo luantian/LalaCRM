@@ -362,11 +362,14 @@ router.post('/:id/submit', authenticateToken, checkPermission('crm:quotation:edi
       data: { status: 'SUBMITTED' }
     })
     const ownerName = await userNameOf(existing.ownerId)
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下方注释]
+    /*
     notifyExternal(`**📋 报价单 · 待审批**
 
 「${existing.name}」
 提交人：<font color="info">${ownerName}</font>
 <font color="comment">请审批人登录 CRM 处理</font>`, `[CRM报价] ${ownerName} 提交了报价单，待审批`)
+    */
 
     res.json(quotation)
   } catch (error) {
@@ -402,10 +405,13 @@ router.post('/:id/approve', authenticateToken, checkPermission('crm:quotation:ap
     if (req.user?.id) {
       autoWriteQuotationRecord(req.user.id, quotation.name, 'APPROVE', quotation.id, quotation.opportunityId).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下方注释]
+    /*
     notifyExternal(`**✅ 报价单 · 已通过**
 
 「${existing.name}」
 审批人：<font color="info">${await userNameOf(req.user!.id)}</font>`, `[CRM报价] 一条报价单已通过审批`)
+    */
 
     res.json(quotation)
   } catch (error) {
@@ -446,10 +452,13 @@ router.post('/:id/reject', authenticateToken, checkPermission('crm:quotation:app
     if (req.user?.id) {
       autoWriteQuotationRecord(req.user.id, quotation.name, 'REJECT', quotation.id, quotation.opportunityId).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下方注释]
+    /*
     notifyExternal(`**❌ 报价单 · 已驳回**
 
 「${existing.name}」
 原因：<font color="warning">${String(reason).trim()}</font>`, `[CRM报价] 一条报价单被驳回`)
+    */
 
     res.json(quotation)
   } catch (error) {

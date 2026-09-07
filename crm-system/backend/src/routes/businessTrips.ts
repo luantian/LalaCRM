@@ -229,11 +229,14 @@ router.post('/:id/submit', authenticateToken, checkPermission('office:trip:add')
     })
 
     const ownerName = await userNameOf(trip.ownerId)
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下方注释]
+    /*
     notifyExternal(`**✈️ 出差 · 待审批**
 
 「${updated.title}」
 申请人：<font color="info">${ownerName}</font>
 <font color="comment">请审批人登录 CRM 处理</font>`, `[CRM出差] ${ownerName} 提交了出差申请，待审批`)
+    */
 
     res.json(updated)
   } catch (error) {
@@ -281,10 +284,13 @@ router.post('/:id/approve', authenticateToken, checkPermission('office:trip:appr
       autoWriteBusinessTripRecord(req.user.id, updated.title, 'APPROVE', id, updated.destination, new Date(updated.startDate), new Date(updated.endDate)).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下方注释]
+    /*
     notifyExternal(`**✅ 出差 · 已通过**
 
 「${updated.title}」
 审批人：<font color="info">${await userNameOf(req.user!.id)}</font>`, `[CRM出差] 一条出差申请已通过审批`)
+    */
 
     res.json(updated)
   } catch (error) {
@@ -336,11 +342,14 @@ router.post('/:id/reject', authenticateToken, checkPermission('office:trip:appro
       autoWriteBusinessTripRecord(req.user.id, updated.title, 'REJECT', id, updated.destination, new Date(updated.startDate), new Date(updated.endDate)).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
 
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下方注释]
+    /*
     notifyExternal(`**❌ 出差 · 已驳回**
 
 「${updated.title}」
 原因：<font color="warning">${reason}</font>
 审批人：${await userNameOf(req.user!.id)}`, `[CRM出差] 一条出差申请被驳回`)
+    */
 
     res.json(updated)
   } catch (error) {
@@ -377,11 +386,14 @@ router.post('/:id/resubmit', authenticateToken, checkPermission('office:trip:add
     })
 
     const reOwnerName = await userNameOf(trip.ownerId)
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下方注释]
+    /*
     notifyExternal(`**✈️ 出差 · 重新提交**
 
 「${updated.title}」
 申请人：<font color="info">${reOwnerName}</font>
 <font color="comment">请审批人登录 CRM 处理</font>`, `[CRM出差] ${reOwnerName} 重新提交了出差申请，待审批`)
+    */
 
     res.json(updated)
   } catch (error) {

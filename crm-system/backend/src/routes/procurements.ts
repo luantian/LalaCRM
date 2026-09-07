@@ -212,6 +212,8 @@ router.post('/:id/approve', authenticateToken, checkPermission('project:procurem
       autoWriteProcurementRecord(req.user.id, procurement.title, reportAction, id, procurement.projectId, procurement.totalAmount?.toNumber()).catch((err) => logger.warn('Auto daily report failed:', err.message))
     }
     // 采购流转企业微信/Server酱提醒(笼统文案,不含金额)
+    // [企微群提示暂停:仅保留任务模块,恢复时取消下方注释]
+    /*
     const statusText: Record<string, string> = {
       ORDERED: '🛒 采购 · 已下单', IN_TRANSIT: '🚚 采购 · 已发运', RECEIVED: '📦 采购 · 已到货', CANCELLED: '🗑 采购 · 已取消'
     }
@@ -220,6 +222,7 @@ router.post('/:id/approve', authenticateToken, checkPermission('project:procurem
 
 「${procurement.title}」`, `[CRM采购] 一条采购单状态更新`)
     }
+    */
 
     res.json(updated)
   } catch (error) {
