@@ -223,12 +223,13 @@ function ProjectArchive() {
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => fetchProjects(pagination.current, pagination.pageSize)}>刷新</Button>
-          <Dropdown menu={{ items: [
+          {/* [项目归档导出暂停:与项目管理一致暂无意义,恢复时取消下方注释] */}
+          {/* <Dropdown menu={{ items: [
             { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
             { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
           ]}}>
             <Button icon={<DownloadOutlined />}>导出</Button>
-          </Dropdown>
+          </Dropdown> */}
         </Space>
       </div>
 
