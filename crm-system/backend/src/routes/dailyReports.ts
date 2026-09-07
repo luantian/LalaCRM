@@ -1399,7 +1399,7 @@ router.get('/export/excel', authenticateToken, checkPermission('office:dailyrepo
     // 数据行(按日报块:块内同底色、块间交替;块首行上边框分隔)
     const thin = { style: 'thin' as const, color: { argb: 'FFC9D3E0' } }
     const blockTop = { style: 'medium' as const, color: { argb: 'FF8EAADB' } }
-    const CENTER_COLS = new Set([1, 2, 5, 10])      // 日期/姓名/类型/工时 → 居中
+    const CENTER_COLS = new Set([1, 2, 5, 6, 7, 10]) // 日期/姓名/类型/来源/工作内容/工时 → 横向居中
     const MERGE_COLS = [1, 2, 5, 8, 9, 10]           // 日报级字段 → 按块纵向合并
     const WRAP_COLS = new Set([7, 8, 9])             // 内容/待办/计划 → 自动换行
 
@@ -1423,9 +1423,10 @@ router.get('/export/excel', authenticateToken, checkPermission('office:dailyrepo
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebra } }
         cell.border = { top: r.blockFirst ? blockTop : thin, left: thin, bottom: thin, right: thin }
         const isMerged = MERGE_COLS.includes(col)
+        // 注意:vertical 必须用 'middle'(exceljs 写入会丢弃 'center' 的垂直值,落回 Excel 默认底对齐)
         cell.alignment = {
           horizontal: CENTER_COLS.has(col) || isMerged ? 'center' : 'left',
-          vertical: isMerged ? 'middle' : 'center',
+          vertical: 'middle',
           wrapText: WRAP_COLS.has(col)
         }
       })
