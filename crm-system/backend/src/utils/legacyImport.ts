@@ -61,8 +61,10 @@ export function legacyDateToLocal(val: any): Date | null {
     return new Date(val.getFullYear(), val.getMonth(), val.getDate())
   }
   if (typeof val === 'number' && isFinite(val)) {
+    // 序列值按 UTC 锚点换算出的日历日在 UTC 分量里,必须用 getUTC* 取;
+    // 用本地 getter 的话,带时间分量(≥16:00)的 datetime 单元格会在 +8 时区取到下一天
     const d = new Date(Math.round((val - 25569) * 86400000))
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
   }
   const s = String(val).trim()
   const m = /^(\d{4})[-/年.](\d{1,2})[-/月.](\d{1,2})/.exec(s)

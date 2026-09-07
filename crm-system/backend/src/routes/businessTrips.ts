@@ -682,12 +682,15 @@ async function handleLegacyTripImport(req: AuthRequest, file: Express.Multer.Fil
   let created = 0, skipped = 0
   for (const r of grid.slice(headerIdx + 1)) {
     const [seq, sd, ed, , daysCol] = r
-    if (String(seq || '').includes('合计')) break
+    // 合计行及之后(大写金额等)不再解析;样本里"合计"在第5列,扫前5列
+    if (r.slice(0, 5).some(c => String(c || '').includes('合计'))) break
     // 整行空白不算跳过,静默略过
     if (r.slice(0, 5).every(c => String(c || '').trim() === '')) continue
     const start = legacyDateToLocal(sd)
     const end = legacyDateToLocal(ed)
     if (!start || !end) { skipped++; continue }
+    // 日期倒挂(起始晚于结束)属于源数据错误,跳过不导入
+    if (start.getTime() > end.getTime()) { skipped++; continue }
     // 去重:同人同起止日期已存在
     const dup = await prisma.businessTrip.findFirst({ where: { ownerId, startDate: start, endDate: end, deletedAt: null } })
     if (dup) { skipped++; continue }
