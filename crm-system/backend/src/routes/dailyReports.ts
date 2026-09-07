@@ -349,7 +349,9 @@ function buildExportRows(reports: any[]): any[] {
         notesText: (e.content || e.title || '').split('\n').filter(Boolean).join('；'),
         todosText: first && Array.isArray(r.todos) ? r.todos.join('；') : '',
         plan: first ? (r.plan || '') : '',
-        hours: first && r.hours != null ? Number(r.hours) : ''
+        hours: first && r.hours != null ? Number(r.hours) : '',
+        // 块首行标记(Excel 排版用:按日报块合并/分组;CSV 按列名取值不受影响)
+        blockFirst: first
       }
     })
   })
@@ -1329,7 +1331,9 @@ const labelMap: Record<string, string> = {
   '工时': 'hours'
 }
 
-// 导出日报 Excel —— 筛选条件、列结构、行数据与 CSV 完全一致
+// 导出日报 Excel —— 筛选条件、列结构、行数据与 CSV 完全一致;排版版(exceljs):
+// 标题/副标题行 + 深蓝表头 + 按日报块分组(块间分隔线/斑马底色/日报级字段纵向合并居中)
+// + 内容列自动换行与行高估算 + 冻结表头 + 横向 A4 适宽打印
 router.get('/export/excel', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = await getReportScopeWhere(req.user!.id)
@@ -1347,8 +1351,104 @@ router.get('/export/excel', authenticateToken, checkPermission('office:dailyrepo
     })
 
     const data = buildExportRows(reports)
-    // 各列宽度：工作内容/待办/计划加宽，其余窄列
-    exportExcel(res, 'daily-reports.xlsx', '工作日报', columns, data, [12, 10, 18, 18, 8, 10, 55, 25, 25, 8])
+
+    const ExcelJS = require('exceljs')
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('工作日报', {
+      views: [{ state: 'frozen', ySplit: 3 }],
+      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } }
+    })
+
+    const widths = [12, 10, 18, 18, 8, 10, 55, 26, 26, 8]
+    columns.forEach((c, i) => { ws.getColumn(i + 1).width = widths[i] })
+
+    // 行1:大标题
+    ws.mergeCells(1, 1, 1, columns.length)
+    const titleCell = ws.getCell(1, 1)
+    titleCell.value = '工作日报'
+    titleCell.font = { name: '微软雅黑', size: 16, bold: true, color: { argb: 'FF16365C' } }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    ws.getRow(1).height = 32
+
+    // 行2:副标题(导出信息)
+    const reportCount = data.filter((r: any) => r.blockFirst).length
+    ws.mergeCells(2, 1, 2, columns.length)
+    const subCell = ws.getCell(2, 1)
+    subCell.value = `导出时间：${new Date().toLocaleString('zh-CN')} ｜ 共 ${reportCount} 篇日报 · ${data.length} 条工作记录`
+    subCell.font = { name: '微软雅黑', size: 9, color: { argb: 'FF808080' } }
+    subCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    ws.getRow(2).height = 18
+
+    // 行3:表头
+    const headerRow = ws.getRow(3)
+    headerRow.values = columns.map(c => c.label)
+    headerRow.height = 24
+    headerRow.eachCell(cell => {
+      cell.font = { name: '微软雅黑', size: 10.5, bold: true, color: { argb: 'FFFFFFFF' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2F5496' } }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF1F3864' } }, left: { style: 'thin', color: { argb: 'FF1F3864' } },
+        bottom: { style: 'thin', color: { argb: 'FF1F3864' } }, right: { style: 'thin', color: { argb: 'FF1F3864' } }
+      }
+    })
+
+    // 数据行(按日报块:块内同底色、块间交替;块首行上边框分隔)
+    const thin = { style: 'thin' as const, color: { argb: 'FFC9D3E0' } }
+    const blockTop = { style: 'medium' as const, color: { argb: 'FF8EAADB' } }
+    const CENTER_COLS = new Set([1, 2, 5, 10])      // 日期/姓名/类型/工时 → 居中
+    const MERGE_COLS = [1, 2, 5, 8, 9, 10]           // 日报级字段 → 按块纵向合并
+    const WRAP_COLS = new Set([7, 8, 9])             // 内容/待办/计划 → 自动换行
+
+    // 预先按块分段
+    const blocks: Array<{ start: number, end: number }> = []
+    data.forEach((r: any, ri: number) => {
+      if (r.blockFirst) blocks.push({ start: 4 + ri, end: 4 + ri })
+    })
+    for (let bi = 0; bi < blocks.length; bi++) {
+      blocks[bi].end = bi + 1 < blocks.length ? blocks[bi + 1].start - 1 : 3 + data.length
+    }
+
+    const displayWidth = (s: string) => [...String(s || '')].reduce((w, ch) => w + (ch.charCodeAt(0) > 255 ? 2 : 1), 0)
+    data.forEach((r: any, ri: number) => {
+      const row = ws.getRow(4 + ri)
+      row.values = columns.map(c => (r[c.key] === '' ? undefined : r[c.key]))
+      const blockNo = blocks.findIndex(b => 4 + ri >= b.start && 4 + ri <= b.end)
+      const zebra = blockNo % 2 === 1 ? 'FFF4F8FC' : 'FFFFFFFF'
+      row.eachCell({ includeEmpty: true }, (cell, col) => {
+        cell.font = { name: '微软雅黑', size: 10, color: { argb: 'FF333333' } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebra } }
+        cell.border = { top: r.blockFirst ? blockTop : thin, left: thin, bottom: thin, right: thin }
+        const isMerged = MERGE_COLS.includes(col)
+        cell.alignment = {
+          horizontal: CENTER_COLS.has(col) || isMerged ? 'center' : 'left',
+          vertical: isMerged ? 'middle' : 'center',
+          wrapText: WRAP_COLS.has(col)
+        }
+      })
+      // 行高按换行列内容估算(CJK 按双宽计)
+      let lines = 1
+      for (const col of WRAP_COLS) {
+        const text = String(r[columns[col - 1].key] || '')
+        lines = Math.max(lines, Math.ceil(displayWidth(text) / Math.max(8, widths[col - 1] - 2)))
+      }
+      row.height = Math.min(150, Math.max(20, lines * 14 + 6))
+    })
+
+    // 日报级字段按块纵向合并(垂直居中,形成"一天一块"的报表视觉)
+    for (const b of blocks) {
+      if (b.end > b.start) {
+        for (const col of MERGE_COLS) {
+          ws.mergeCells(b.start, col, b.end, col)
+          ws.getCell(b.start, col).alignment = { horizontal: 'center', vertical: 'middle', wrapText: WRAP_COLS.has(col) }
+        }
+      }
+    }
+
+    const buffer = await wb.xlsx.writeBuffer()
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent('daily-reports.xlsx')}`)
+    res.send(Buffer.from(buffer))
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })
