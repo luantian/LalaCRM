@@ -7,7 +7,7 @@ import { logOperation } from '../middleware/logOperation'
 import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
-import { readLegacySheet, findPersonName, userIdByName, legacyDateToLocal, buildTemplateWorkbook } from '../utils/legacyImport'
+import { readLegacySheet, findPersonName, userIdByName, orgIdByText, projectIdByName, legacyDateToLocal, buildTemplateWorkbook } from '../utils/legacyImport'
 import { upload } from '../middleware/upload'
 import { autoWriteExpenseRecord } from '../utils/autoDailyReport'
 import { sendToUsers } from '../websocket'
@@ -225,30 +225,32 @@ router.get('/import-template', authenticateToken, checkPermission('finance:expen
     const buf = buildTemplateWorkbook(
       '费用报销单',
       [
-        ['费用报销单', '', '', '', '', ''],
-        ['报销人：（填写报销人姓名，须与系统用户姓名一致）', '', '', '', '', ''],
-        ['公司：', '', '', '', '', ''],
-        ['序号', '费用类别', '名称', '金额', '事由', '费用日期(选填)'],
-        [1, '交通费', '（示例）市内打车', 35.5, '送设备', '2026-08-04'],
-        [2, '办公用品', '（示例）移动硬盘', 131.5, '项目存储备份', '2026-08-10'],
-        [3, '招待费', '（示例）客户餐费', 300, '售前接待', ''],
-        ['', '', '', '', '', ''],
-        ['合计', '', '', '', '', '']
+        ['费用报销单', '', '', '', '', '', '', ''],
+        ['报销人：（填写报销人姓名，须与系统用户姓名一致）', '', '', '', '', '', '', ''],
+        ['报销标题：（选填，留空则用文件名）', '', '', '', '', '', '', ''],
+        ['公司：', '', '', '', '', '', '', ''],
+        ['序号', '费用类别', '名称', '金额', '事由', '费用日期(选填)', '客户(选填)', '项目(选填)'],
+        [1, '交通费', '（示例）市内打车', 35.5, '送设备', '2026-08-04', '（示例）哈尔滨工程大学', '（示例）某测试项目'],
+        [2, '办公用品', '（示例）移动硬盘', 131.5, '项目存储备份', '2026-08-10', '', ''],
+        [3, '招待费', '（示例）客户餐费', 300, '售前接待', '', '', ''],
+        ['', '', '', '', '', '', '', ''],
+        ['合计', '', '', '', '', '', '', '']
       ],
       [
         '【费用报销单导入模板 · 填写说明】',
         '1. 一张表 = 一张报销单（作为一个整体提交审批），行数不够可直接插行',
         '2. 报销人：填系统内用户姓名，匹配不到时归属导入操作者',
-        '3. 费用类别：建议使用 交通费/办公用品/招待费/差旅费/通讯费/培训费/其他，也可自定义',
-        '4. 金额：填纯数字，不要带 ¥ 或千分位',
-        '5. 事由：可留空或填“/”',
-        '6. 费用日期：选填，格式如 2026-08-04，留空按导入当天记录',
-        '7. “合计”行及以下内容不会导入；示例行请替换为真实数据',
-        '8. 文件名建议“姓名+月份+费用报销单”（如：杜文博8月费用报销单.xlsx），导入后作为报销单标题',
-        '9. 同名报销单重复导入会自动跳过，不会重复建单',
-        '10. 填好后在本系统“费用报销 → 导入导出 → 导入旧版报销单(客户Excel)”中上传'
+        '3. 报销标题：选填，留空则用文件名（建议“姓名+月份+费用报销单”）',
+        '4. 费用类别：建议使用 交通费/办公用品/招待费/差旅费/通讯费/培训费/其他，也可自定义',
+        '5. 金额：填纯数字，不要带 ¥ 或千分位',
+        '6. 事由：可留空或填“/”',
+        '7. 费用日期：选填，格式如 2026-08-04，留空按导入当天记录',
+        '8. 客户/项目：选填，填系统内名称（支持部分匹配），整单取第一个非空值；匹配不到则留空',
+        '9. “合计”行及以下内容不会导入；示例行请替换为真实数据',
+        '10. 同名报销单重复导入会自动跳过，不会重复建单',
+        '11. 填好后在本系统“费用报销 → 导入导出 → 导入旧版报销单(客户Excel)”中上传'
       ],
-      [8, 14, 24, 12, 24, 16]
+      [8, 14, 24, 12, 22, 16, 22, 20]
     )
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent('费用报销单导入模板.xlsx')}`)
@@ -874,26 +876,50 @@ async function handleLegacyExpenseImport(req: AuthRequest, file: Express.Multer.
   const ownerName = findPersonName(grid.slice(0, headerIdx))
   const ownerId = (await userIdByName(ownerName)) || req.user!.id
 
-  // 标题:原文件名去扩展名、去 "_V1.0" 等版本后缀;清洗后为空或含乱码(非UTF-8文件名)时退回"报销人费用报销单"
+  // 标题优先级:表内"报销标题:xxx"行 > 原文件名(去扩展名/版本号) > "报销人费用报销单"
   // 注:用 originalname(fileFilter 已做一次 latin1→UTF-8 解码);decodedFileName 被二次解码,中文会乱
+  const sheetTitle = (() => {
+    for (const row of grid.slice(0, headerIdx)) {
+      for (const cell of row) {
+        const m = /报销(单)?标题[:：]\s*(\S.*)$/.exec(String(cell || '').trim())
+        if (m && !m[2].includes('选填') && !m[2].includes('填写')) return m[2].trim().slice(0, 100)
+      }
+    }
+    return null
+  })()
   const rawName = String(file.originalname || (req as any).decodedFileName || '')
     .replace(/\.(xlsx|xls|csv)$/i, '').replace(/[_-]V[\d.]*.*$/i, '').trim()
-  const title = (!rawName || rawName.includes('�'))
-    ? `${ownerName || '导入'}费用报销单`
-    : rawName.slice(0, 100)
+  const title = sheetTitle
+    || ((!rawName || rawName.includes('�')) ? `${ownerName || '导入'}费用报销单` : rawName.slice(0, 100))
+
+  // 按表头名定位各列(列顺序无关,兼容新旧布局)
+  const headerRow = grid[headerIdx].map((c: any) => String(c || ''))
+  const colIdx = (kw: string) => headerRow.findIndex(h => h.includes(kw))
+  const catIdx = colIdx('费用类别')
+  const nameIdx = colIdx('名称')
+  const amtIdx = colIdx('金额')
+  const reasonIdx = colIdx('事由')
+  const dateIdx = colIdx('费用日期')
+  const orgIdx = colIdx('客户')
+  const projIdx = colIdx('项目')
+  const cell = (r: any[], i: number) => (i >= 0 ? r[i] : undefined)
 
   const items: { category: string; amount: number; description: string; expenseDate: Date }[] = []
   let skipped = 0
+  let firstOrgText: string | null = null
+  let firstProjText: string | null = null
   for (const r of grid.slice(headerIdx + 1)) {
-    const [seq, category, name, amount, reason, dateCol] = r
-    if (String(seq || '').includes('合计')) break // 合计行之后是大写金额等,直接结束
-    const catS = String(category || '').trim()
-    const nameS = String(name || '').trim()
+    if (String(cell(r, 0) || '').includes('合计')) break // 合计行之后是大写金额等,直接结束
+    const catS = String(cell(r, catIdx) || '').trim()
+    const nameS = String(cell(r, nameIdx) || '').trim()
     if (!catS && !nameS) { skipped++; continue }
-    const reasonS = String(reason || '').trim()
+    const reasonS = String(cell(r, reasonIdx) || '').trim()
     const desc = (reasonS && reasonS !== '/') ? `${nameS}（${reasonS}）` : nameS
+    // 客户/项目(选填列,整单一个):取第一个非空值按名称匹配
+    if (!firstOrgText) firstOrgText = String(cell(r, orgIdx) || '').trim() || null
+    if (!firstProjText) firstProjText = String(cell(r, projIdx) || '').trim() || null
     // 费用日期(选填列):留空按导入当天
-    items.push({ category: catS || '其他', amount: Number(amount) || 0, description: desc, expenseDate: legacyDateToLocal(dateCol) || new Date() })
+    items.push({ category: catS || '其他', amount: Number(cell(r, amtIdx)) || 0, description: desc, expenseDate: legacyDateToLocal(cell(r, dateIdx)) || new Date() })
   }
   if (items.length === 0) return { message: '未解析到有效明细行', success: 0, skipped }
 
@@ -902,12 +928,17 @@ async function handleLegacyExpenseImport(req: AuthRequest, file: Express.Multer.
   if (dup) return { message: `报销单「${title}」已存在，未重复导入`, success: 0, duplicate: true }
 
   const total = Number(items.reduce((s, i) => s + i.amount, 0).toFixed(2))
+  // 客户/项目按名称匹配(选填列,取第一个非空值)
+  const organizationId = await orgIdByText(firstOrgText)
+  const projectId = await projectIdByName(firstProjText)
   await prisma.expense.create({
     data: {
       title,
       totalAmount: total,
       status: 'DRAFT',
       ownerId,
+      organizationId,
+      projectId,
       items: { create: items }
     }
   })

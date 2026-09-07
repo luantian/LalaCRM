@@ -54,6 +54,19 @@ export async function orgIdByText(text?: string | null): Promise<number | null> 
   return hits[0]?.id ?? null
 }
 
+/** 项目名匹配项目:先精确同名,再双向包含(取最长匹配);用于导入时按名称关联项目 */
+export async function projectIdByName(name?: string | null): Promise<number | null> {
+  const s = String(name || '').trim()
+  if (!s) return null
+  const exact = await prisma.project.findFirst({ where: { name: s, deletedAt: null }, select: { id: true } })
+  if (exact) return exact.id
+  const list = await prisma.project.findMany({ where: { deletedAt: null }, select: { id: true, name: true } })
+  const hits = list
+    .filter(p => p.name.length >= 4 && (s.includes(p.name) || p.name.includes(s)))
+    .sort((a, b) => b.name.length - a.name.length)
+  return hits[0]?.id ?? null
+}
+
 /** 旧表格日期(Date对象/序列值/'2026-08-04'/'2026年8月4日'文本)→ 本地零点 Date;解析失败返回 null */
 export function legacyDateToLocal(val: any): Date | null {
   if (val == null || val === '') return null

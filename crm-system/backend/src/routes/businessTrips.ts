@@ -6,7 +6,7 @@ import { logOperation } from '../middleware/logOperation'
 import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow, parseImportDate } from '../utils/exportImport'
-import { readLegacySheet, findPersonName, userIdByName, legacyDateToLocal, buildTemplateWorkbook } from '../utils/legacyImport'
+import { readLegacySheet, findPersonName, userIdByName, orgIdByText, projectIdByName, legacyDateToLocal, buildTemplateWorkbook } from '../utils/legacyImport'
 import { autoWriteBusinessTripRecord } from '../utils/autoDailyReport'
 import { upload } from '../middleware/upload'
 import { isAdmin } from '../utils/permission'
@@ -130,14 +130,14 @@ router.get('/import-template', authenticateToken, checkPermission('office:trip:l
     const buf = buildTemplateWorkbook(
       '费用报销单',
       [
-        ['出差统计表', '', '', '', ''],
-        ['报销人：（填写出差人姓名，须与系统用户姓名一致）', '', '', '', ''],
-        ['公司：', '', '', '', ''],
-        ['序号', '起始日期', '结束日期', '总计（天）', '目的地(选填)'],
-        [1, '2026-08-04', '2026-08-05', 2, '（示例）哈尔滨'],
-        [2, '2026-08-10', '2026-08-14', 5, ''],
-        ['', '', '', '', ''],
-        ['', '', '', '合计', '']
+        ['出差统计表', '', '', '', '', '', '', ''],
+        ['报销人：（填写出差人姓名，须与系统用户姓名一致）', '', '', '', '', '', '', ''],
+        ['公司：', '', '', '', '', '', '', ''],
+        ['序号', '起始日期', '结束日期', '总计（天）', '目的地(选填)', '出差目的(选填)', '客户(选填)', '项目(选填)'],
+        [1, '2026-08-04', '2026-08-05', 2, '（示例）哈尔滨', '（示例）现场设备调试', '（示例）哈尔滨工程大学', '（示例）某测试项目'],
+        [2, '2026-08-10', '2026-08-14', 5, '', '', '', ''],
+        ['', '', '', '', '', '', '', ''],
+        ['', '', '', '合计', '', '', '', '']
       ],
       [
         '【出差统计导入模板 · 填写说明】',
@@ -145,13 +145,14 @@ router.get('/import-template', authenticateToken, checkPermission('office:trip:l
         '2. 报销人：填系统内用户姓名（整表默认同一人），匹配不到时归属导入操作者',
         '3. 起始/结束日期：格式如 2026-08-04 或 2026/8/4，起始不能晚于结束',
         '4. 总计（天）：可留空，自动按日期差计算（含首尾两天）',
-        '5. 目的地：选填，留空记为“旧表导入”',
-        '6. “合计”行及以下内容不会导入；示例行请替换为真实数据',
-        '7. 同一人相同起止日期的记录重复导入会自动跳过',
-        '8. 出差审批、关联费用报销请在导入后于系统内操作',
-        '9. 填好后在本系统“出差管理 → 导入导出 → 导入旧版出差统计(客户Excel)”中上传'
+        '5. 目的地/出差目的：选填；目的地留空记为“旧表导入”',
+        '6. 客户/项目：选填，填系统内名称（支持部分匹配），匹配不到则留空',
+        '7. “合计”行及以下内容不会导入；示例行请替换为真实数据',
+        '8. 同一人相同起止日期的记录重复导入会自动跳过',
+        '9. 出差审批、关联费用报销请在导入后于系统内操作',
+        '10. 填好后在本系统“出差管理 → 导入导出 → 导入旧版出差统计(客户Excel)”中上传'
       ],
-      [8, 14, 14, 12, 20]
+      [8, 14, 14, 12, 18, 22, 22, 20]
     )
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent('出差统计导入模板.xlsx')}`)
@@ -724,15 +725,20 @@ async function handleLegacyTripImport(req: AuthRequest, file: Express.Multer.Fil
   const endIdx = colIdx('结束日期')
   const daysIdx = colIdx('总计')
   const destIdx = colIdx('目的地')
+  // "目的"列注意排除"目的地"列(后者也包含"目的"二字)
+  const purposeIdx = headerRow.findIndex(h => h.includes('目的') && !h.includes('目的地'))
+  const orgIdx = colIdx('客户')
+  const projIdx = colIdx('项目')
+  const cell = (r: any[], i: number) => (i >= 0 ? r[i] : undefined)
 
   let created = 0, skipped = 0
   for (const r of grid.slice(headerIdx + 1)) {
     // 合计行及之后(大写金额等)不再解析
-    if (r.slice(0, 6).some(c => String(c || '').includes('合计'))) break
+    if (r.slice(0, 8).some(c => String(c || '').includes('合计'))) break
     // 整行空白不算跳过,静默略过
     if (r.every(c => String(c || '').trim() === '')) continue
-    const start = legacyDateToLocal(startIdx >= 0 ? r[startIdx] : null)
-    const end = legacyDateToLocal(endIdx >= 0 ? r[endIdx] : null)
+    const start = legacyDateToLocal(cell(r, startIdx))
+    const end = legacyDateToLocal(cell(r, endIdx))
     if (!start || !end) { skipped++; continue }
     // 日期倒挂(起始晚于结束)属于源数据错误,跳过不导入
     if (start.getTime() > end.getTime()) { skipped++; continue }
@@ -740,16 +746,23 @@ async function handleLegacyTripImport(req: AuthRequest, file: Express.Multer.Fil
     const dup = await prisma.businessTrip.findFirst({ where: { ownerId, startDate: start, endDate: end, deletedAt: null } })
     if (dup) { skipped++; continue }
     // 天数:取"总计(天)",没有则按日期差推算
-    let days = Number(daysIdx >= 0 ? r[daysIdx] : 0) || 0
+    let days = Number(cell(r, daysIdx)) || 0
     if (!days) days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1)
     const s = toLocalDateStr(start)
     const e = toLocalDateStr(end)
-    // 目的地(选填列):留空记为"旧表导入"
-    const dest = String(destIdx >= 0 ? r[destIdx] : '').trim() || '旧表导入'
+    // 目的地(选填列):留空记为"旧表导入";标题带上目的地
+    const dest = String(cell(r, destIdx) || '').trim() || '旧表导入'
+    // 出差目的/客户/项目(选填列):客户/项目按名称匹配
+    const purpose = String(cell(r, purposeIdx) || '').trim() || null
+    const organizationId = await orgIdByText(String(cell(r, orgIdx) || '').trim())
+    const projectId = await projectIdByName(String(cell(r, projIdx) || '').trim())
     await prisma.businessTrip.create({
       data: {
-        title: `出差(${s}~${e})`,
+        title: `${dest}出差(${s}~${e})`,
         destination: dest,
+        purpose,
+        organizationId,
+        projectId,
         startDate: start,
         endDate: end,
         days,
