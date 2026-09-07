@@ -636,6 +636,8 @@ const labelMap: Record<string, string> = {
 router.post('/import', authenticateToken, checkPermission('office:trip:add'), upload.single('file'), logOperation('出差管理', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
+    // 旧版客户出差统计格式自动识别:走旧版导入逻辑,用哪个导入入口都能导
+    if (looksLikeLegacyTrip(req.file)) return res.json(await handleLegacyTripImport(req, req.file))
     const { data, error } = parseImportFile(req.file)
     if (error) return res.status(400).json({ error })
     if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
@@ -666,58 +668,72 @@ router.post('/import', authenticateToken, checkPermission('office:trip:add'), up
 
 // 导入客户旧版出差统计 Excel(表头上方有"报销人:xxx",表头:序号/起始日期/结束日期/金额/总计(天),样本见 docs/)
 // 报销人按姓名匹配系统用户,匹配不到归导入者;同人同起止日期已存在则跳过该行,防重复导入
+// 由 /import-legacy 直连,也被 /import 检测到旧版表头时自动转调(两个入口都可导)
+async function handleLegacyTripImport(req: AuthRequest, file: Express.Multer.File) {
+  const grid = readLegacySheet(file)
+
+  // 定位表头行:序号 + 起始日期
+  const headerIdx = grid.findIndex(r => String(r[0] || '').includes('序号') && String(r[1] || '').includes('起始日期'))
+  if (headerIdx < 0) throw new Error('未找到表头(应为:序号/起始日期/结束日期/金额/总计(天))')
+
+  const ownerName = findPersonName(grid.slice(0, headerIdx))
+  const ownerId = (await userIdByName(ownerName)) || req.user!.id
+
+  let created = 0, skipped = 0
+  for (const r of grid.slice(headerIdx + 1)) {
+    const [seq, sd, ed, , daysCol] = r
+    if (String(seq || '').includes('合计')) break
+    // 整行空白不算跳过,静默略过
+    if (r.slice(0, 5).every(c => String(c || '').trim() === '')) continue
+    const start = legacyDateToLocal(sd)
+    const end = legacyDateToLocal(ed)
+    if (!start || !end) { skipped++; continue }
+    // 去重:同人同起止日期已存在
+    const dup = await prisma.businessTrip.findFirst({ where: { ownerId, startDate: start, endDate: end, deletedAt: null } })
+    if (dup) { skipped++; continue }
+    // 天数:取"总计(天)",没有则按日期差推算
+    let days = Number(daysCol) || 0
+    if (!days) days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1)
+    const s = toLocalDateStr(start)
+    const e = toLocalDateStr(end)
+    await prisma.businessTrip.create({
+      data: {
+        title: `出差(${s}~${e})`,
+        destination: '旧表导入',
+        startDate: start,
+        endDate: end,
+        days,
+        status: 'DRAFT',
+        ownerId
+      } as any
+    })
+    created++
+  }
+  return {
+    message: created
+      ? `导入完成:新增 ${created} 条出差记录(归属 ${ownerName || '导入者'}),跳过 ${skipped} 行`
+      : `未解析到有效出差记录(需起始/结束日期都有值),跳过 ${skipped} 行`,
+    success: created,
+    skipped
+  }
+}
+
+/** 旧版客户出差统计格式特征:某行首列含"序号"且次列含"起始日期" */
+function looksLikeLegacyTrip(file: Express.Multer.File): boolean {
+  try {
+    return readLegacySheet(file).some(r => String(r[0] || '').includes('序号') && String(r[1] || '').includes('起始日期'))
+  } catch {
+    return false
+  }
+}
+
 router.post('/import-legacy', authenticateToken, checkPermission('office:trip:add'), upload.single('file'), logOperation('出差管理', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
-    const grid = readLegacySheet(req.file)
-
-    // 定位表头行:序号 + 起始日期
-    const headerIdx = grid.findIndex(r => String(r[0] || '').includes('序号') && String(r[1] || '').includes('起始日期'))
-    if (headerIdx < 0) return res.status(400).json({ error: '未找到表头(应为:序号/起始日期/结束日期/金额/总计(天))' })
-
-    const ownerName = findPersonName(grid.slice(0, headerIdx))
-    const ownerId = (await userIdByName(ownerName)) || req.user!.id
-
-    let created = 0, skipped = 0
-    for (const r of grid.slice(headerIdx + 1)) {
-      const [seq, sd, ed, , daysCol] = r
-      if (String(seq || '').includes('合计')) break
-      // 整行空白不算跳过,静默略过
-      if (r.slice(0, 5).every(c => String(c || '').trim() === '')) continue
-      const start = legacyDateToLocal(sd)
-      const end = legacyDateToLocal(ed)
-      if (!start || !end) { skipped++; continue }
-      // 去重:同人同起止日期已存在
-      const dup = await prisma.businessTrip.findFirst({ where: { ownerId, startDate: start, endDate: end, deletedAt: null } })
-      if (dup) { skipped++; continue }
-      // 天数:取"总计(天)",没有则按日期差推算
-      let days = Number(daysCol) || 0
-      if (!days) days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1)
-      const s = toLocalDateStr(start)
-      const e = toLocalDateStr(end)
-      await prisma.businessTrip.create({
-        data: {
-          title: `出差(${s}~${e})`,
-          destination: '旧表导入',
-          startDate: start,
-          endDate: end,
-          days,
-          status: 'DRAFT',
-          ownerId
-        } as any
-      })
-      created++
-    }
-    res.json({
-      message: created
-        ? `导入完成:新增 ${created} 条出差记录(归属 ${ownerName || '导入者'}),跳过 ${skipped} 行`
-        : `未解析到有效出差记录(需起始/结束日期都有值),跳过 ${skipped} 行`,
-      success: created,
-      skipped
-    })
+    res.json(await handleLegacyTripImport(req, req.file))
   } catch (error) {
     logger.error('Legacy import business trip error:', error)
-    res.status(500).json({ error: '导入失败' })
+    res.status(400).json({ error: error instanceof Error ? error.message : '导入失败' })
   }
 })
 

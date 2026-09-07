@@ -777,6 +777,8 @@ const labelMap: Record<string, string> = {
 router.post('/import', authenticateToken, checkPermission('finance:expense:add'), upload.single('file'), logOperation('费用报销', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
+    // 旧版客户报销单格式自动识别:走旧版导入逻辑,用哪个导入入口都能导
+    if (looksLikeLegacyExpense(req.file)) return res.json(await handleLegacyExpenseImport(req, req.file))
     const { data, error } = parseImportFile(req.file)
     if (error) return res.status(400).json({ error })
     if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
@@ -820,62 +822,76 @@ router.post('/import', authenticateToken, checkPermission('finance:expense:add')
 // 导入客户旧版报销单 Excel(表头上方有"报销人:xxx",表头:序号/费用类别/名称/金额/事由,样本见 docs/)
 // 整张表 = 一张报销单(每行一条明细);报销人按姓名匹配系统用户,匹配不到归导入者;
 // 标题取上传文件名(去掉版本号后缀);同名报销单已存在时整单跳过,防重复导入
+// 由 /import-legacy 直连,也被 /import 检测到旧版表头时自动转调(两个入口都可导)
+async function handleLegacyExpenseImport(req: AuthRequest, file: Express.Multer.File) {
+  const grid = readLegacySheet(file)
+
+  // 定位表头行:序号 + 费用类别
+  const headerIdx = grid.findIndex(r => String(r[0] || '').includes('序号') && String(r[1] || '').includes('费用类别'))
+  if (headerIdx < 0) throw new Error('未找到表头(应为:序号/费用类别/名称/金额/事由)')
+
+  const ownerName = findPersonName(grid.slice(0, headerIdx))
+  const ownerId = (await userIdByName(ownerName)) || req.user!.id
+
+  // 标题:原文件名去扩展名、去 "_V1.0" 等版本后缀;清洗后为空或含乱码(非UTF-8文件名)时退回"报销人费用报销单"
+  // 注:用 originalname(fileFilter 已做一次 latin1→UTF-8 解码);decodedFileName 被二次解码,中文会乱
+  const rawName = String(file.originalname || (req as any).decodedFileName || '')
+    .replace(/\.(xlsx|xls|csv)$/i, '').replace(/[_-]V[\d.]*.*$/i, '').trim()
+  const title = (!rawName || rawName.includes('�'))
+    ? `${ownerName || '导入'}费用报销单`
+    : rawName.slice(0, 100)
+
+  const items: { category: string; amount: number; description: string }[] = []
+  let skipped = 0
+  for (const r of grid.slice(headerIdx + 1)) {
+    const [seq, category, name, amount, reason] = r
+    if (String(seq || '').includes('合计')) break // 合计行之后是大写金额等,直接结束
+    const catS = String(category || '').trim()
+    const nameS = String(name || '').trim()
+    if (!catS && !nameS) { skipped++; continue }
+    const reasonS = String(reason || '').trim()
+    const desc = (reasonS && reasonS !== '/') ? `${nameS}（${reasonS}）` : nameS
+    items.push({ category: catS || '其他', amount: Number(amount) || 0, description: desc })
+  }
+  if (items.length === 0) return { message: '未解析到有效明细行', success: 0, skipped }
+
+  // 去重:同名报销单已存在则整单跳过
+  const dup = await prisma.expense.findFirst({ where: { title, deletedAt: null } })
+  if (dup) return { message: `报销单「${title}」已存在，未重复导入`, success: 0, duplicate: true }
+
+  const total = Number(items.reduce((s, i) => s + i.amount, 0).toFixed(2))
+  await prisma.expense.create({
+    data: {
+      title,
+      totalAmount: total,
+      status: 'DRAFT',
+      ownerId,
+      items: { create: items.map(i => ({ ...i, expenseDate: new Date() })) }
+    }
+  })
+  return {
+    message: `导入完成:「${title}」${items.length} 条明细,合计 ¥${total.toFixed(2)},归属 ${ownerName || '导入者'},跳过 ${skipped} 行`,
+    success: items.length,
+    skipped
+  }
+}
+
+/** 旧版客户报销单格式特征:某行首列含"序号"且次列含"费用类别" */
+function looksLikeLegacyExpense(file: Express.Multer.File): boolean {
+  try {
+    return readLegacySheet(file).some(r => String(r[0] || '').includes('序号') && String(r[1] || '').includes('费用类别'))
+  } catch {
+    return false
+  }
+}
+
 router.post('/import-legacy', authenticateToken, checkPermission('finance:expense:add'), upload.single('file'), logOperation('费用报销', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
-    const grid = readLegacySheet(req.file)
-
-    // 定位表头行:序号 + 费用类别
-    const headerIdx = grid.findIndex(r => String(r[0] || '').includes('序号') && String(r[1] || '').includes('费用类别'))
-    if (headerIdx < 0) return res.status(400).json({ error: '未找到表头(应为:序号/费用类别/名称/金额/事由)' })
-
-    const ownerName = findPersonName(grid.slice(0, headerIdx))
-    const ownerId = (await userIdByName(ownerName)) || req.user!.id
-
-    // 标题:原文件名去扩展名、去 "_V1.0" 等版本后缀;清洗后为空或含乱码(非UTF-8文件名)时退回"报销人费用报销单"
-    // 注:用 originalname(fileFilter 已做一次 latin1→UTF-8 解码);decodedFileName 被二次解码,中文会乱
-    const rawName = String(req.file.originalname || (req as any).decodedFileName || '')
-      .replace(/\.(xlsx|xls|csv)$/i, '').replace(/[_-]V[\d.]*.*$/i, '').trim()
-    const title = (!rawName || rawName.includes('�'))
-      ? `${ownerName || '导入'}费用报销单`
-      : rawName.slice(0, 100)
-
-    const items: { category: string; amount: number; description: string }[] = []
-    let skipped = 0
-    for (const r of grid.slice(headerIdx + 1)) {
-      const [seq, category, name, amount, reason] = r
-      if (String(seq || '').includes('合计')) break // 合计行之后是大写金额等,直接结束
-      const catS = String(category || '').trim()
-      const nameS = String(name || '').trim()
-      if (!catS && !nameS) { skipped++; continue }
-      const reasonS = String(reason || '').trim()
-      const desc = (reasonS && reasonS !== '/') ? `${nameS}（${reasonS}）` : nameS
-      items.push({ category: catS || '其他', amount: Number(amount) || 0, description: desc })
-    }
-    if (items.length === 0) return res.json({ message: '未解析到有效明细行', success: 0, skipped })
-
-    // 去重:同名报销单已存在则整单跳过
-    const dup = await prisma.expense.findFirst({ where: { title, deletedAt: null } })
-    if (dup) return res.json({ message: `报销单「${title}」已存在，未重复导入`, success: 0, duplicate: true })
-
-    const total = Number(items.reduce((s, i) => s + i.amount, 0).toFixed(2))
-    await prisma.expense.create({
-      data: {
-        title,
-        totalAmount: total,
-        status: 'DRAFT',
-        ownerId,
-        items: { create: items.map(i => ({ ...i, expenseDate: new Date() })) }
-      }
-    })
-    res.json({
-      message: `导入完成:「${title}」${items.length} 条明细,合计 ¥${total.toFixed(2)},归属 ${ownerName || '导入者'},跳过 ${skipped} 行`,
-      success: items.length,
-      skipped
-    })
+    res.json(await handleLegacyExpenseImport(req, req.file))
   } catch (error) {
     logger.error('Legacy import expense error:', error)
-    res.status(500).json({ error: '导入失败' })
+    res.status(400).json({ error: error instanceof Error ? error.message : '导入失败' })
   }
 })
 

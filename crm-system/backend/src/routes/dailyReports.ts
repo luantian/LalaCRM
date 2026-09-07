@@ -1358,6 +1358,8 @@ router.get('/export/excel', authenticateToken, checkPermission('office:dailyrepo
 router.post('/import', authenticateToken, checkPermission('office:dailyreport:add'), upload.single('file'), logOperation('工作日报', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
+    // 旧版客户日报格式自动识别:走旧版导入逻辑,用哪个导入入口都能导
+    if (looksLikeLegacyDaily(req.file)) return res.json(await handleLegacyDailyImport(req, req.file))
     const { data, error } = parseImportFile(req.file)
     if (error) return res.status(400).json({ error })
     if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
@@ -1410,14 +1412,13 @@ router.post('/import', authenticateToken, checkPermission('office:dailyreport:ad
 // 归属人:取"客户名"列出现最多的系统用户(旧模板约定:公司事宜写自己名字),识别不出归导入者
 // 客户名:精确/包含匹配组织(如"哈尔滨工程大学姜凯楠博士"→哈尔滨工程大学);匹不上且非本人名时保留为条目标题
 // 同一天已有日报则追加条目,不重复建篇;周标记行(如"8月4日~8月7日")与模板说明行自动跳过
-router.post('/import-legacy', authenticateToken, checkPermission('office:dailyreport:add'), upload.single('file'), logOperation('工作日报', 'IMPORT'), async (req: AuthRequest, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: '请上传文件' })
-    const grid = readLegacySheet(req.file)
+// 由 /import-legacy 直连,也被 /import 检测到旧版表头时自动转调(两个入口都可导)
+async function handleLegacyDailyImport(req: AuthRequest, file: Express.Multer.File) {
+  const grid = readLegacySheet(file)
 
     // 定位表头行:首列含"日期"
     const headerIdx = grid.findIndex(r => String(r[0] || '').includes('日期'))
-    if (headerIdx < 0) return res.status(400).json({ error: '未找到表头(第一列应为"日期")' })
+    if (headerIdx < 0) throw new Error('未找到表头(第一列应为"日期")')
 
     type LegacyRow = { date: Date; who: string; content: string; todo: string }
     const rows: LegacyRow[] = []
@@ -1431,7 +1432,7 @@ router.post('/import-legacy', authenticateToken, checkPermission('office:dailyre
       if (!date) { skipped++; continue }
       rows.push({ date, who: whoS, content: contentS, todo: String(r[3] || '').trim() })
     }
-    if (rows.length === 0) return res.json({ message: '未解析到有效记录(需要"详细信息"列有内容)', success: 0, skipped })
+    if (rows.length === 0) return { message: '未解析到有效记录(需要"详细信息"列有内容)', success: 0, skipped }
 
     // 归属人:客户名列出现最多的系统用户
     const nameCount: Record<string, number> = {}
@@ -1501,14 +1502,29 @@ router.post('/import-legacy', authenticateToken, checkPermission('office:dailyre
       })
     }
 
-    res.json({
-      message: `导入完成:${rows.length} 条记录(新增 ${createdReports} 篇、追加 ${appendedReports} 篇日报),归属 ${owner?.name || '导入者'},跳过 ${skipped} 行`,
-      success: rows.length,
-      skipped
-    })
+  return {
+    message: `导入完成:${rows.length} 条记录(新增 ${createdReports} 篇、追加 ${appendedReports} 篇日报),归属 ${owner?.name || '导入者'},跳过 ${skipped} 行`,
+    success: rows.length,
+    skipped
+  }
+}
+
+/** 旧版客户日报格式特征:某行首列含"日期"且次列含"客户名" */
+function looksLikeLegacyDaily(file: Express.Multer.File): boolean {
+  try {
+    return readLegacySheet(file).some(r => String(r[0] || '').includes('日期') && String(r[1] || '').includes('客户名'))
+  } catch {
+    return false
+  }
+}
+
+router.post('/import-legacy', authenticateToken, checkPermission('office:dailyreport:add'), upload.single('file'), logOperation('工作日报', 'IMPORT'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请上传文件' })
+    res.json(await handleLegacyDailyImport(req, req.file))
   } catch (error) {
     logger.error('Legacy import daily report error:', error)
-    res.status(500).json({ error: '导入失败' })
+    res.status(400).json({ error: error instanceof Error ? error.message : '导入失败' })
   }
 })
 
