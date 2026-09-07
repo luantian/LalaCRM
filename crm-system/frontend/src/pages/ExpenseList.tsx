@@ -406,6 +406,20 @@ function ExpenseList() {
     }
   }
 
+  // 下载报销单导入模板(含填写说明)
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob: any = await downloadExpenseImportTemplate()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = '费用报销单导入模板.xlsx'
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      message.error(e?.error || '模板下载失败')
+    }
+  }
+
   const handleExport = async (type: 'csv' | 'excel') => {
     try {
       // 与列表查询同条件导出：搜索词 + 状态
@@ -645,6 +659,7 @@ function ExpenseList() {
             { type: 'divider' },
             { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
             { key: 'import-legacy', icon: <ImportOutlined />, label: '导入旧版报销单(客户Excel)', onClick: () => setLegacyImportVisible(true) },
+            { key: 'template', icon: <DownloadOutlined />, label: '下载导入模板', onClick: handleDownloadTemplate },
           ]}}>
             <Button icon={<DownloadOutlined />}>导入导出</Button>
           </Dropdown>
@@ -999,17 +1014,10 @@ function ExpenseList() {
           <p className="ant-upload-text">点击或拖拽旧版报销单文件到此区域上传</p>
           <p className="ant-upload-tip">格式:表头"序号/费用类别/名称/金额/事由",上方有"报销人:xxx";整张表导入为一张报销单,报销人按姓名自动匹配</p>
         </Upload.Dragger>
-        <div style={{ marginTop: 12, textAlign: 'center' }}>
-          <a onClick={async () => {
-            try {
-              const blob: any = await downloadExpenseImportTemplate()
-              const url = URL.createObjectURL(blob)
-              const a = document.createElement('a')
-              a.href = url; a.download = '费用报销单导入模板.xlsx'
-              document.body.appendChild(a); a.click(); a.remove()
-              URL.revokeObjectURL(url)
-            } catch (e: any) { message.error(e?.error || '模板下载失败') }
-          }}><DownloadOutlined /> 没有现成文件？下载导入模板（含填写说明）</a>
+        <div style={{ marginTop: 12 }}>
+          <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate} block>
+            没有现成文件？下载导入模板（含填写说明）
+          </Button>
         </div>
       </Modal>
     </div>
