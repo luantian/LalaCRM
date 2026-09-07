@@ -514,6 +514,10 @@ export const importQuotations = (file: File) => importFile('/quotations/import',
 export const importBusinessTrips = (file: File) => importFile('/business-trips/import', file)
 export const importExpenses = (file: File) => importFile('/expenses/import', file)
 export const importDailyReports = (file: File) => importFile('/daily-reports/import', file)
+// 导入客户旧版 Excel(报销单/出差统计/工作日报,格式见 docs/ 样本)
+export const importLegacyExpenses = (file: File) => importFile('/expenses/import-legacy', file)
+export const importLegacyBusinessTrips = (file: File) => importFile('/business-trips/import-legacy', file)
+export const importLegacyDailyReports = (file: File) => importFile('/daily-reports/import-legacy', file)
 
 /**
  * 判断文件是否可预览（图片/PDF/Word/Excel/PPT）

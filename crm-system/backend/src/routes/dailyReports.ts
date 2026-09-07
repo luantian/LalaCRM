@@ -7,6 +7,7 @@ import { logOperation } from '../middleware/logOperation'
 import { clampPagination } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow, parseImportDate } from '../utils/exportImport'
+import { readLegacySheet, userIdByName, orgIdByText, legacyDateToLocal } from '../utils/legacyImport'
 import { upload } from '../middleware/upload'
 
 const router = Router()
@@ -1401,6 +1402,112 @@ router.post('/import', authenticateToken, checkPermission('office:dailyreport:ad
     res.json({ message: `导入完成: 成功 ${success} 条, 失败 ${failed} 条`, success, failed })
   } catch (error) {
     logger.error('Import error:', error)
+    res.status(500).json({ error: '导入失败' })
+  }
+})
+
+// 导入客户旧版日报 Excel(列:日期/客户名/详细信息(进度状态及详情)/待办事项,样本见 docs/)
+// 归属人:取"客户名"列出现最多的系统用户(旧模板约定:公司事宜写自己名字),识别不出归导入者
+// 客户名:精确/包含匹配组织(如"哈尔滨工程大学姜凯楠博士"→哈尔滨工程大学);匹不上且非本人名时保留为条目标题
+// 同一天已有日报则追加条目,不重复建篇;周标记行(如"8月4日~8月7日")与模板说明行自动跳过
+router.post('/import-legacy', authenticateToken, checkPermission('office:dailyreport:add'), upload.single('file'), logOperation('工作日报', 'IMPORT'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请上传文件' })
+    const grid = readLegacySheet(req.file)
+
+    // 定位表头行:首列含"日期"
+    const headerIdx = grid.findIndex(r => String(r[0] || '').includes('日期'))
+    if (headerIdx < 0) return res.status(400).json({ error: '未找到表头(第一列应为"日期")' })
+
+    type LegacyRow = { date: Date; who: string; content: string; todo: string }
+    const rows: LegacyRow[] = []
+    let skipped = 0
+    for (const r of grid.slice(headerIdx + 1)) {
+      const contentS = String(r[2] || '').trim()
+      const whoS = String(r[1] || '').trim()
+      // 无详细内容(空行/周标记行)、模板说明行一律跳过
+      if (!contentS || contentS.includes('如果是公司事宜') || whoS.includes('单位+客户')) { skipped++; continue }
+      const date = legacyDateToLocal(r[0])
+      if (!date) { skipped++; continue }
+      rows.push({ date, who: whoS, content: contentS, todo: String(r[3] || '').trim() })
+    }
+    if (rows.length === 0) return res.json({ message: '未解析到有效记录(需要"详细信息"列有内容)', success: 0, skipped })
+
+    // 归属人:客户名列出现最多的系统用户
+    const nameCount: Record<string, number> = {}
+    for (const r of rows) { if (r.who) nameCount[r.who] = (nameCount[r.who] || 0) + 1 }
+    let ownerUserId: number | null = null
+    for (const [name] of Object.entries(nameCount).sort((a, b) => b[1] - a[1])) {
+      ownerUserId = await userIdByName(name)
+      if (ownerUserId) break
+    }
+    if (!ownerUserId) ownerUserId = req.user!.id
+    const owner = await prisma.user.findUnique({ where: { id: ownerUserId }, select: { name: true } })
+
+    // 按天分组
+    const byDay = new Map<string, LegacyRow[]>()
+    for (const r of rows) {
+      const key = `${r.date.getFullYear()}-${r.date.getMonth()}-${r.date.getDate()}`
+      byDay.set(key, [...(byDay.get(key) || []), r])
+    }
+
+    let createdReports = 0, appendedReports = 0
+    for (const dayRows of byDay.values()) {
+      const dayStart = dayRows[0].date
+      const dayEnd = new Date(dayStart)
+      dayEnd.setDate(dayEnd.getDate() + 1)
+
+      let report = await prisma.dailyReport.findFirst({
+        where: { userId: ownerUserId, reportDate: { gte: dayStart, lt: dayEnd }, deletedAt: null },
+        orderBy: { id: 'desc' }
+      })
+      if (report) {
+        appendedReports++
+      } else {
+        report = await prisma.dailyReport.create({
+          data: { userId: ownerUserId, reportDate: dayStart, content: '', type: 'WORK', status: 'DRAFT' }
+        })
+        createdReports++
+      }
+
+      for (const r of dayRows) {
+        const orgId = await orgIdByText(r.who)
+        // 客户名匹不上组织且不是归属人自己 → 保留为条目标题,信息不丢
+        const entryTitle = (orgId || !r.who || r.who === owner?.name) ? null : r.who
+        await prisma.dailyReportEntry.create({
+          data: {
+            reportId: report.id,
+            organizationId: orgId,
+            title: entryTitle,
+            content: r.content,
+            source: 'MANUAL'
+          }
+        })
+      }
+
+      // 待办合并去重 + 重算 content 缓存与总工时(与自动写入逻辑一致)
+      const newTodos = dayRows.map(r => r.todo).filter(t => t && t !== '/')
+      const todos = [...new Set([...(Array.isArray(report.todos) ? report.todos : []), ...newTodos])]
+      const entries = await prisma.dailyReportEntry.findMany({
+        where: { reportId: report.id, deletedAt: null },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: { title: true, content: true, hours: true }
+      })
+      const contentCache = entries.map(e => [e.title, e.content].filter(Boolean).join('\n')).join('\n')
+      const totalHours = Number(entries.reduce((sum, e) => sum + Number(e.hours || 0), 0).toFixed(1))
+      await prisma.dailyReport.update({
+        where: { id: report.id },
+        data: { content: contentCache, hours: totalHours, todos }
+      })
+    }
+
+    res.json({
+      message: `导入完成:${rows.length} 条记录(新增 ${createdReports} 篇、追加 ${appendedReports} 篇日报),归属 ${owner?.name || '导入者'},跳过 ${skipped} 行`,
+      success: rows.length,
+      skipped
+    })
+  } catch (error) {
+    logger.error('Legacy import daily report error:', error)
     res.status(500).json({ error: '导入失败' })
   }
 })
