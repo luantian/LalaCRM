@@ -1452,7 +1452,7 @@ async function handleLegacyDailyImport(req: AuthRequest, file: Express.Multer.Fi
       byDay.set(key, [...(byDay.get(key) || []), r])
     }
 
-    let createdReports = 0, appendedReports = 0
+    let createdReports = 0, appendedReports = 0, imported = 0, deduped = 0
     for (const dayRows of byDay.values()) {
       const dayStart = dayRows[0].date
       const dayEnd = new Date(dayStart)
@@ -1462,19 +1462,27 @@ async function handleLegacyDailyImport(req: AuthRequest, file: Express.Multer.Fi
         where: { userId: ownerUserId, reportDate: { gte: dayStart, lt: dayEnd }, deletedAt: null },
         orderBy: { id: 'desc' }
       })
-      if (report) {
-        appendedReports++
-      } else {
+      const isNewReport = !report
+      if (!report) {
         report = await prisma.dailyReport.create({
           data: { userId: ownerUserId, reportDate: dayStart, content: '', type: 'WORK', status: 'DRAFT' }
         })
-        createdReports++
       }
 
+      // 条目级去重:该天已有相同标题+内容的条目则跳过——重复导入同一文件幂等,不产生重复内容
+      const existing = await prisma.dailyReportEntry.findMany({
+        where: { reportId: report.id, deletedAt: null },
+        select: { title: true, content: true }
+      })
+      const seen = new Set(existing.map(e => `${e.title || ''}|${e.content}`))
+      let importedThisDay = 0
       for (const r of dayRows) {
         const orgId = await orgIdByText(r.who)
         // 客户名匹不上组织且不是归属人自己 → 保留为条目标题,信息不丢
         const entryTitle = (orgId || !r.who || r.who === owner?.name) ? null : r.who
+        const key = `${entryTitle || ''}|${r.content}`
+        if (seen.has(key)) { deduped++; continue }
+        seen.add(key)
         await prisma.dailyReportEntry.create({
           data: {
             reportId: report.id,
@@ -1484,6 +1492,13 @@ async function handleLegacyDailyImport(req: AuthRequest, file: Express.Multer.Fi
             source: 'MANUAL'
           }
         })
+        imported++
+        importedThisDay++
+      }
+      // 只统计真正导入了条目的天(全新建篇 / 追加既有)
+      if (importedThisDay > 0) {
+        if (isNewReport) createdReports++
+        else appendedReports++
       }
 
       // 待办合并去重 + 重算 content 缓存与总工时(与自动写入逻辑一致)
@@ -1503,9 +1518,10 @@ async function handleLegacyDailyImport(req: AuthRequest, file: Express.Multer.Fi
     }
 
   return {
-    message: `导入完成:${rows.length} 条记录(新增 ${createdReports} 篇、追加 ${appendedReports} 篇日报),归属 ${owner?.name || '导入者'},跳过 ${skipped} 行`,
-    success: rows.length,
-    skipped
+    message: `导入完成:${imported} 条记录(新增 ${createdReports} 篇、追加 ${appendedReports} 篇日报)${deduped > 0 ? `,重复 ${deduped} 条已跳过` : ''},归属 ${owner?.name || '导入者'},跳过 ${skipped} 行`,
+    success: imported,
+    skipped,
+    deduped
   }
 }
 
