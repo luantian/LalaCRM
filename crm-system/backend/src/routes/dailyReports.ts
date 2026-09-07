@@ -1389,9 +1389,9 @@ router.get('/export/excel', authenticateToken, checkPermission('office:dailyrepo
     // 数据行(按日报块:块内同底色、块间交替;块首行上边框分隔)
     const thin = { style: 'thin' as const, color: { argb: 'FFC9D3E0' } }
     const blockTop = { style: 'medium' as const, color: { argb: 'FF8EAADB' } }
-    const CENTER_COLS = new Set([1, 2, 5, 6, 9]) // 日期/姓名/来源/工作内容/工时 → 横向居中
-    const MERGE_COLS = [1, 2, 7, 8, 9]           // 日报级字段(日期/姓名/待办/计划/工时) → 按块纵向合并
-    const WRAP_COLS = new Set([6, 7, 8])         // 内容/待办/计划 → 自动换行
+    const CENTER_COLS = new Set([1, 2, 5, 9]) // 日期/姓名/来源/工时 → 横向居中(内容类长文本列左对齐)
+    const MERGE_COLS = [1, 2, 7, 8, 9]        // 日报级字段(日期/姓名/待办/计划/工时) → 按块纵向合并
+    const WRAP_COLS = new Set([6, 7, 8])      // 内容/待办/计划 → 自动换行
 
     // 预先按块分段
     const blocks: Array<{ start: number, end: number }> = []
@@ -1415,7 +1415,7 @@ router.get('/export/excel', authenticateToken, checkPermission('office:dailyrepo
         const isMerged = MERGE_COLS.includes(col)
         // 注意:vertical 必须用 'middle'(exceljs 写入会丢弃 'center' 的垂直值,落回 Excel 默认底对齐)
         cell.alignment = {
-          horizontal: CENTER_COLS.has(col) || isMerged ? 'center' : 'left',
+          horizontal: CENTER_COLS.has(col) ? 'center' : 'left',
           vertical: 'middle',
           wrapText: WRAP_COLS.has(col)
         }
@@ -1434,7 +1434,7 @@ router.get('/export/excel', authenticateToken, checkPermission('office:dailyrepo
       if (b.end > b.start) {
         for (const col of MERGE_COLS) {
           ws.mergeCells(b.start, col, b.end, col)
-          ws.getCell(b.start, col).alignment = { horizontal: 'center', vertical: 'middle', wrapText: WRAP_COLS.has(col) }
+          ws.getCell(b.start, col).alignment = { horizontal: CENTER_COLS.has(col) ? 'center' : 'left', vertical: 'middle', wrapText: WRAP_COLS.has(col) }
         }
       }
     }
