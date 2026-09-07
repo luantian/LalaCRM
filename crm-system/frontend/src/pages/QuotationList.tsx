@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Table, Card, Button, Modal, Form, Input, Select, InputNumber, DatePicker, message, Tag, Row, Col, Statistic, Space, Popconfirm, Dropdown, Upload } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined, SendOutlined, CheckOutlined, CloseOutlined, MoreOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, DownloadOutlined, ImportOutlined, InboxOutlined, SendOutlined, CheckOutlined, CloseOutlined, MoreOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
@@ -29,6 +29,8 @@ const QuotationList: React.FC = () => {
   const [form] = Form.useForm()
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
   const [filters, setFilters] = useState<any>({})
+  const [searchText, setSearchText] = useState('')
+  const [filterStatus, setFilterStatus] = useState<string>('')
   const [stats, setStats] = useState<any>({})
   const [opportunities, setOpportunities] = useState<any[]>([])
   const [items, setItems] = useState<any[]>([])
@@ -69,6 +71,19 @@ const QuotationList: React.FC = () => {
     fetchStats()
     fetchOpportunities()
   }, [fetchQuotations, fetchStats]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 筛选:与其他列表页一致——选好条件后点"搜索"生效
+  const handleSearch = () => {
+    setPagination(prev => ({ ...prev, current: 1 }))
+    setFilters({ status: filterStatus || undefined, search: searchText.trim() || undefined })
+  }
+
+  const handleReset = () => {
+    setSearchText('')
+    setFilterStatus('')
+    setPagination(prev => ({ ...prev, current: 1 }))
+    setFilters({})
+  }
 
   const handleExport = async (type: 'csv' | 'excel') => {
     try {
@@ -301,13 +316,36 @@ const QuotationList: React.FC = () => {
         <Col span={6}><Card><Statistic title="中标" value={stats.won || 0} suffix="份" valueStyle={{ color: '#722ed1' }} /></Card></Col>
       </Row>
 
-      <Card style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <Select placeholder="状态" allowClear style={{ width: 120 }} onChange={v => { setFilters((f: any) => ({ ...f, status: v || undefined })); setPagination(prev => ({ ...prev, current: 1 })) }}>
-            {Object.entries(statusConfig).map(([k, v]) => <Option key={k} value={k}>{v.text}</Option>)}
-          </Select>
-          <Input.Search placeholder="搜索报价单" allowClear style={{ width: 200 }} onSearch={v => { setFilters((f: any) => ({ ...f, search: v || undefined })); setPagination(prev => ({ ...prev, current: 1 })) }} />
-        </Space>
+      <Card size="small" style={{ marginBottom: 16, borderRadius: 12, border: 'none', background: '#f8fafc' }}>
+        <Row gutter={[16, 16]} align="middle">
+          <Col xs={24} sm={8}>
+            <Input
+              placeholder="搜索报价单"
+              prefix={<SearchOutlined />}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              onPressEnter={handleSearch}
+              allowClear
+            />
+          </Col>
+          <Col xs={12} sm={4}>
+            <Select
+              placeholder="状态"
+              value={filterStatus || undefined}
+              onChange={(v) => setFilterStatus(v || '')}
+              allowClear
+              style={{ width: '100%' }}
+            >
+              {Object.entries(statusConfig).map(([k, v]) => <Option key={k} value={k}>{v.text}</Option>)}
+            </Select>
+          </Col>
+          <Col>
+            <Space>
+              <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>搜索</Button>
+              <Button icon={<ReloadOutlined />} onClick={handleReset}>重置</Button>
+            </Space>
+          </Col>
+        </Row>
       </Card>
 
       <Card>
