@@ -9,7 +9,8 @@ import { sortValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { autoWriteQuotationRecord } from '../utils/autoDailyReport'
 import { notifyExternal, userNameOf } from '../utils/externalNotify'
-import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { exportCSV, exportExcel, parseImportFile, mapImportRow, parseImportDate } from '../utils/exportImport'
+import { orgIdByText, buildTemplateWorkbook, readLegacySheet } from '../utils/legacyImport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import { hasAmountPermission, filterQuotationAmount } from '../utils/amountPermission'
 import fs from 'fs'
@@ -138,6 +139,43 @@ router.get('/opportunity/:oppId/versions', authenticateToken, checkPermission('c
 })
 
 // 获取报价单详情
+// 下载报价单导入模板(与导入格式严格对齐,附填写说明 sheet)
+// 注意:必须定义在 GET /:id 之前,否则被详情路由拦截
+router.get('/import-template', authenticateToken, checkPermission('crm:quotation:list'), async (req: AuthRequest, res) => {
+  try {
+    const buf = buildTemplateWorkbook(
+      '报价单',
+      [
+        ['报价单导入表', '', '', '', '', ''],
+        ['填表人：（选填，导入后报价单归属导入操作者）', '', '', '', '', ''],
+        ['', '', '', '', '', ''],
+        ['报价单', '客户(选填)', '关联商机(选填)', '报价总额', '有效期(选填)', '备注(选填)'],
+        ['（示例）XX设备采购报价V1', '（示例）哈尔滨工程大学', '（示例）XX实验室建设项目', 150000, '2026-12-31', '含安装调试'],
+        ['', '', '', '', '', '']
+      ],
+      [
+        '【报价单导入模板 · 填写说明】',
+        '1. 一行 = 一张报价单（版本默认 V1），行数不够可直接插行',
+        '2. 报价单名称：必填，重复导入同名报价单会自动跳过',
+        '3. 客户/关联商机：选填，填系统内名称（支持部分匹配），匹配不到则留空',
+        '   关联商机留空时，将自动挂到您名下最近创建的商机下',
+        '4. 报价总额：填纯数字，不要带 ¥ 或千分位',
+        '5. 有效期：选填，格式如 2026-12-31',
+        '6. 状态不需要填：导入后默认“草稿”，提交审批在系统内操作',
+        '7. 报价明细（设备清单等）请在导入后于系统内报价单详情中维护',
+        '8. 填好后在本系统“报价单 → 导入导出 → 导入数据”中上传'
+      ],
+      [26, 22, 24, 14, 14, 20]
+    )
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent('报价单导入模板.xlsx')}`)
+    res.send(buf)
+  } catch (error) {
+    logger.error('Quotation template error:', error)
+    res.status(500).json({ error: '生成模板失败' })
+  }
+})
+
 router.get('/:id', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'opportunity', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
@@ -605,103 +643,198 @@ router.get('/files/:fileId/preview', authenticateFileToken, checkPermission('crm
 const quotationColumns = [
   { key: 'name', label: '报价单' },
   { key: 'version', label: '版本' },
-  { key: 'organization.name', label: '组织' },
+  { key: 'orgName', label: '客户' },
+  { key: 'oppName', label: '关联商机' },
   { key: 'totalAmount', label: '报价总额' },
-  { key: 'status', label: '状态' },
+  { key: 'statusLabel', label: '状态' },
   { key: 'validUntil', label: '有效期' },
-  { key: 'owner.name', label: '创建人' },
+  { key: 'ownerName', label: '创建人' },
 ]
 
 const quotationLabelMap: Record<string, string> = {
   '报价单': 'name',
   '报价总额': 'totalAmount',
   '状态': 'status',
+  '客户': 'organizationName',
+  '关联商机': 'opportunityName',
+  '有效期': 'validUntil',
+  '备注': 'notes',
+  // 模板表头带"(选填)"后缀的变体(mapImportRow 按列名精确匹配)
+  '客户(选填)': 'organizationName',
+  '关联商机(选填)': 'opportunityName',
+  '有效期(选填)': 'validUntil',
+  '备注(选填)': 'notes'
 }
 
-// 导出报价单 Excel
+const quotationStatusLabels: Record<string, string> = {
+  DRAFT: '草稿',
+  SUBMITTED: '已提交',
+  APPROVED: '已批准',
+  REJECTED: '已拒绝',
+  WON: '中标/成交',
+  LOST: '未中标'
+}
+// 中文状态 → 枚举(导出状态列为中文,导入反解析保证导出文件可回环导入)
+const quotationStatusByLabel: Record<string, string> = Object.fromEntries(
+  Object.entries(quotationStatusLabels).map(([k, v]) => [v, k])
+)
+
+/** Date → 本地 YYYY-MM-DD(避免 UTC 截断偏移) */
+function quotationDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** 商机名匹配商机:精确同名 → 双向包含(取最长);导入按名称关联用 */
+async function opportunityIdByName(name?: string | null): Promise<number | null> {
+  const s = String(name || '').trim()
+  if (!s) return null
+  const exact = await prisma.opportunity.findFirst({ where: { name: s, deletedAt: null }, select: { id: true } })
+  if (exact) return exact.id
+  const list = await prisma.opportunity.findMany({ where: { deletedAt: null }, select: { id: true, name: true } })
+  const hits = list
+    .filter(o => o.name.length >= 4 && (s.includes(o.name) || o.name.includes(s)))
+    .sort((a, b) => b.name.length - a.name.length)
+  return hits[0]?.id ?? null
+}
+
+function buildQuotationExportRows(list: any[]): any[] {
+  return list.map((q: any) => ({
+    name: q.name,
+    version: q.version,
+    orgName: q.organization?.name || '',
+    oppName: q.opportunity?.name || '',
+    // 脱敏后 totalAmount 为 null → 导出空列,与列表口径一致
+    totalAmount: q.totalAmount != null ? Number(q.totalAmount) : '',
+    statusLabel: quotationStatusLabels[q.status] || q.status || '',
+    validUntil: q.validUntil ? quotationDateStr(q.validUntil) : '',
+    ownerName: q.owner?.name || ''
+  }))
+}
+
+/** 导出条件:数据权限 + 列表同款筛选(状态/搜索) */
+function buildQuotationExportWhere(req: AuthRequest): any {
+  const { status = '', search = '' } = req.query
+  const where: any = { deletedAt: null, ...((req as any).dataScopeWhere || {}) }
+  if (status) where.status = status
+  if (search) {
+    where.OR = [
+      { name: { contains: search as string, mode: 'insensitive' } },
+      { notes: { contains: search as string, mode: 'insensitive' } }
+    ]
+  }
+  return where
+}
+
+const quotationExportInclude = {
+  owner: { select: { name: true } },
+  organization: { select: { name: true } },
+  opportunity: { select: { name: true } }
+}
+
+// 导出报价单 Excel(筛选与列表一致;金额无权限用户脱敏为空列)
 router.get('/export/excel', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'opportunity', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.quotation.findMany({
-      where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
+      where: buildQuotationExportWhere(req),
+      include: quotationExportInclude,
       orderBy: { createdAt: 'desc' },
     })
-    // 金额权限：与列表接口一致，无权限用户导出的金额列脱敏
     const canSeeAmount = await hasAmountPermission(req.user!.id)
     const processed = canSeeAmount ? data : data.map(filterQuotationAmount)
-    exportExcel(res, '报价单列表.xlsx', '报价单', quotationColumns, processed)
+    exportExcel(res, '报价单列表.xlsx', '报价单', quotationColumns, buildQuotationExportRows(processed), [26, 8, 22, 22, 14, 10, 12, 10])
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })
   }
 })
 
-// 导出报价单 CSV
+// 导出报价单 CSV(筛选与列表一致;金额无权限用户脱敏为空列)
 router.get('/export/csv', authenticateToken, checkPermission('crm:quotation:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'opportunity', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.quotation.findMany({
-      where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
+      where: buildQuotationExportWhere(req),
+      include: quotationExportInclude,
       orderBy: { createdAt: 'desc' },
     })
-    // 金额权限：与列表接口一致，无权限用户导出的金额列脱敏
     const canSeeAmount = await hasAmountPermission(req.user!.id)
     const processed = canSeeAmount ? data : data.map(filterQuotationAmount)
-    exportCSV(res, '报价单列表.csv', quotationColumns, processed)
+    exportCSV(res, '报价单列表.csv', quotationColumns, buildQuotationExportRows(processed))
   } catch (error) {
     logger.error('Export CSV error:', error)
     res.status(500).json({ error: '导出失败' })
   }
 })
 
-// 导入报价单
+// 导入报价单(表头按名称映射:报价单/客户/关联商机/报价总额/有效期/备注/状态)
+// 客户/商机按系统内名称匹配,匹配不到留空;状态兼容中文与英文枚举;同名报价单跳过防重复
 router.post('/import', authenticateToken, checkPermission('crm:quotation:edit'), upload.single('file'), logOperation('报价管理', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' })
-    const { data, error } = parseImportFile(req.file)
-    if (error) return res.status(400).json({ error })
+    // 网格解析:定位"报价单+报价总额"表头行再按列名映射(兼容模板前部的说明行与平面临文件)
+    const grid = readLegacySheet(req.file)
+    const headerIdx = grid.findIndex(r => r.some(c => String(c || '').includes('报价单')) && r.some(c => String(c || '').includes('报价总额')))
+    if (headerIdx < 0) return res.status(400).json({ error: '未找到表头(应包含"报价单"与"报价总额"列)' })
+    const headerRow = grid[headerIdx].map((c: any) => String(c || '').trim())
+    const data = grid.slice(headerIdx + 1).map((r: any[]) => {
+      const obj: Record<string, any> = {}
+      headerRow.forEach((h, i) => { if (h) obj[h] = r[i] })
+      return obj
+    })
     if (data.length === 0) return res.status(400).json({ error: '文件中没有数据' })
 
-    // 从请求体获取默认的关联ID
-    const defaultOpportunityId = req.body.opportunityId ? parseInt(req.body.opportunityId) : null
-    const defaultOrganizationId = req.body.organizationId ? parseInt(req.body.organizationId) : null
+    // 兜底关联商机:导入者名下最新商机(行内"关联商机"列匹配到时优先)
+    let fallbackOpportunityId: number | null = null
+    const firstOpp = await prisma.opportunity.findFirst({
+      where: { deletedAt: null, ownerId: req.user!.id },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' }
+    })
+    fallbackOpportunityId = firstOpp?.id ?? null
 
-    // 如果没有提供关联商机，查找第一个可用的商机
-    let fallbackOpportunityId = defaultOpportunityId
-    if (!fallbackOpportunityId) {
-      const firstOpp = await prisma.opportunity.findFirst({
-        where: { deletedAt: null, ownerId: req.user!.id },
-        select: { id: true },
-        orderBy: { createdAt: 'desc' }
-      })
-      if (firstOpp) fallbackOpportunityId = firstOpp.id
-    }
-
-    if (!fallbackOpportunityId) {
-      return res.status(400).json({ error: '导入需要提供关联商机ID(opportunityId)，或您名下至少需要一个商机' })
-    }
-
-    let success = 0, failed = 0
+    let success = 0, failed = 0, skipped = 0, noOpp = 0
     for (const row of data) {
       try {
         const mapped = mapImportRow(row, quotationLabelMap)
+        const name = String(mapped.name || '').trim()
+        // 整行空白静默跳过,不计失败
+        if (!name) {
+          if (Object.values(mapped).every(v => v == null || v === '')) continue
+          failed++; continue
+        }
+        // 去重:同名报价单已存在则跳过
+        const dup = await prisma.quotation.findFirst({ where: { name, deletedAt: null } })
+        if (dup) { skipped++; continue }
+        // 商机:行内名称匹配 → 兜底商机
+        const oppId = (await opportunityIdByName(mapped.opportunityName)) || fallbackOpportunityId
+        if (!oppId) { failed++; noOpp++; continue }
+        // 状态:兼容中文标签与英文枚举,其余回退草稿
+        const rawStatus = String(mapped.status || '').trim()
+        const statusValue = (quotationStatusByLabel[rawStatus] ||
+          (quotationStatusLabels[rawStatus] ? rawStatus : 'DRAFT')) as 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'WON' | 'LOST'
         await prisma.quotation.create({
           data: {
-            name: mapped.name || '未命名报价单',
+            name,
             version: 1,
-            opportunityId: fallbackOpportunityId,
-            organizationId: defaultOrganizationId,
-            totalAmount: mapped.totalAmount ? Number(mapped.totalAmount) : 0,
-            status: mapped.status || 'DRAFT',
+            opportunityId: oppId,
+            organizationId: await orgIdByText(mapped.organizationName),
+            totalAmount: mapped.totalAmount != null && mapped.totalAmount !== '' ? Number(mapped.totalAmount) || 0 : 0,
+            validUntil: mapped.validUntil ? parseImportDate(mapped.validUntil) : null,
+            notes: mapped.notes ? String(mapped.notes) : null,
+            status: statusValue,
             ownerId: req.user!.id,
           },
         })
         success++
       } catch { failed++ }
     }
-    res.json({ message: `导入完成: 成功 ${success} 条, 失败 ${failed} 条`, success, failed })
+    res.json({
+      message: `导入完成: 成功 ${success} 条, 跳过 ${skipped} 条(同名已存在), 失败 ${failed} 条` +
+        (noOpp > 0 ? `(其中 ${noOpp} 条未填"关联商机"且您名下无商机可挂靠,请在列中填写系统内商机名)` : ''),
+      success, failed, skipped
+    })
   } catch (error) {
     logger.error('Import error:', error)
     res.status(500).json({ error: '导入失败' })

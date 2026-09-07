@@ -4,7 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, DownloadOutlin
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
-import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations, submitQuotation, approveQuotation, rejectQuotation, safeJsonParse } from '../services/api'
+import { getQuotations, createQuotation, updateQuotation, deleteQuotation, getQuotationStats, getOpportunities, getQuotationDetail, exportQuotationsCsv, exportQuotationsExcel, importQuotations, submitQuotation, approveQuotation, rejectQuotation, downloadQuotationImportTemplate, safeJsonParse } from '../services/api'
 import { usePermission } from '../hooks/usePermission'
 import { isAdmin } from '../utils/permission'
 
@@ -72,7 +72,8 @@ const QuotationList: React.FC = () => {
 
   const handleExport = async (type: 'csv' | 'excel') => {
     try {
-      const blob: any = type === 'csv' ? await exportQuotationsCsv() : await exportQuotationsExcel()
+      // 与列表查询同条件导出:筛选(状态/商机/客户/搜索)
+      const blob: any = type === 'csv' ? await exportQuotationsCsv(filters) : await exportQuotationsExcel(filters)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -93,6 +94,20 @@ const QuotationList: React.FC = () => {
       fetchQuotations()
     } catch (e: any) { message.error(e?.error || '导入失败') }
     return false
+  }
+
+  // 下载报价单导入模板(含填写说明)
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob: any = await downloadQuotationImportTemplate()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = '报价单导入模板.xlsx'
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      message.error(e?.error || '模板下载失败')
+    }
   }
 
   const handleCreate = () => {
@@ -304,6 +319,7 @@ const QuotationList: React.FC = () => {
               { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
               { type: 'divider' },
               { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
+              { key: 'template', icon: <DownloadOutlined />, label: '下载导入模板', onClick: handleDownloadTemplate },
             ]}}>
               <Button icon={<DownloadOutlined />}>导入导出</Button>
             </Dropdown>
@@ -370,6 +386,11 @@ const QuotationList: React.FC = () => {
           <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
           <p className="ant-upload-tip">支持 CSV、Excel 格式（.csv / .xlsx / .xls）</p>
         </Upload.Dragger>
+        <div style={{ marginTop: 12 }}>
+          <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate} block>
+            没有现成文件？下载导入模板（含填写说明）
+          </Button>
+        </div>
       </Modal>
 
       <Modal
