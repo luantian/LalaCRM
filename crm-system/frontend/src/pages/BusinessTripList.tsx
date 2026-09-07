@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Popconfirm, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, CheckOutlined, CloseOutlined, MoreOutlined, SendOutlined, UndoOutlined, CheckCircleOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getOrganizationsSimple, getProjects, safeJsonParse, exportBusinessTripsCsv, exportBusinessTripsExcel, importBusinessTrips, importLegacyBusinessTrips } from '../services/api'
+import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getOrganizationsSimple, getProjects, safeJsonParse, exportBusinessTripsCsv, exportBusinessTripsExcel, importBusinessTrips, importLegacyBusinessTrips, downloadTripImportTemplate } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import { usePermission } from '../hooks/usePermission'
@@ -627,6 +627,18 @@ function BusinessTripList() {
           <p className="ant-upload-text">点击或拖拽旧版出差统计表到此区域上传</p>
           <p className="ant-upload-tip">格式:表头"序号/起始日期/结束日期/金额/总计(天)",上方有"报销人:xxx";报销人按姓名自动匹配,同人同起止日期不重复导入</p>
         </Upload.Dragger>
+        <div style={{ marginTop: 12, textAlign: 'center' }}>
+          <a onClick={async () => {
+            try {
+              const blob: any = await downloadTripImportTemplate()
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url; a.download = '出差统计导入模板.xlsx'
+              document.body.appendChild(a); a.click(); a.remove()
+              URL.revokeObjectURL(url)
+            } catch (e: any) { message.error(e?.error || '模板下载失败') }
+          }}><DownloadOutlined /> 没有现成文件？下载导入模板（含填写说明）</a>
+        </div>
       </Modal>
     </div>
   )

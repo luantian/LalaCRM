@@ -21,12 +21,12 @@ export function readLegacySheet(file: Express.Multer.File): any[][] {
   return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true })
 }
 
-/** 在给定行里找 "报销人:xxx" 文本,提取姓名 */
+/** 在给定行里找 "报销人:xxx" 文本,提取姓名;跳过模板占位文字(如"（填写报销人姓名…）") */
 export function findPersonName(rows: any[][]): string | null {
   for (const row of rows) {
     for (const cell of row) {
       const m = /报销人[:：]\s*(\S+)/.exec(String(cell || ''))
-      if (m) return m[1]
+      if (m && !m[1].includes('填写')) return m[1]
     }
   }
   return null
@@ -72,4 +72,19 @@ export function legacyDateToLocal(val: any): Date | null {
   const d2 = new Date(s)
   if (!isNaN(d2.getTime())) return new Date(d2.getFullYear(), d2.getMonth(), d2.getDate())
   return null
+}
+
+/**
+ * 生成旧版导入模板 xlsx(两个 sheet:填写表 + 填写说明)。
+ * 填写表格式与导入解析器严格对齐;说明 sheet 不参与解析(解析只读第一个 sheet)。
+ */
+export function buildTemplateWorkbook(sheetName: string, formRows: any[][], guideLines: string[], colWidths: number[]): Buffer {
+  const ws = XLSX.utils.aoa_to_sheet(formRows)
+  ws['!cols'] = colWidths.map(w => ({ wch: w }))
+  const guide = XLSX.utils.aoa_to_sheet(guideLines.map(l => [l]))
+  guide['!cols'] = [{ wch: 90 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, sheetName)
+  XLSX.utils.book_append_sheet(wb, guide, '填写说明')
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 }

@@ -518,6 +518,9 @@ export const importDailyReports = (file: File) => importFile('/daily-reports/imp
 export const importLegacyExpenses = (file: File) => importFile('/expenses/import-legacy', file)
 export const importLegacyBusinessTrips = (file: File) => importFile('/business-trips/import-legacy', file)
 export const importLegacyDailyReports = (file: File) => importFile('/daily-reports/import-legacy', file)
+// 下载旧版导入模板(与导入格式对齐,附填写说明)
+export const downloadExpenseImportTemplate = () => api.get('/expenses/import-template', { responseType: 'blob' })
+export const downloadTripImportTemplate = () => api.get('/business-trips/import-template', { responseType: 'blob' })
 
 /**
  * 判断文件是否可预览（图片/PDF/Word/Excel/PPT）

@@ -7,7 +7,7 @@ import { logOperation } from '../middleware/logOperation'
 import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
-import { readLegacySheet, findPersonName, userIdByName } from '../utils/legacyImport'
+import { readLegacySheet, findPersonName, userIdByName, legacyDateToLocal, buildTemplateWorkbook } from '../utils/legacyImport'
 import { upload } from '../middleware/upload'
 import { autoWriteExpenseRecord } from '../utils/autoDailyReport'
 import { sendToUsers } from '../websocket'
@@ -218,6 +218,47 @@ router.get('/stats/overview', authenticateToken, checkPermission('finance:expens
 })
 
 // 获取单个费用报销记录
+// 下载报销单导入模板(与导入解析格式严格对齐,附填写说明 sheet)
+// 注意:必须定义在 GET /:id 之前,否则被详情路由拦截
+router.get('/import-template', authenticateToken, checkPermission('finance:expense:list'), async (req: AuthRequest, res) => {
+  try {
+    const buf = buildTemplateWorkbook(
+      '费用报销单',
+      [
+        ['费用报销单', '', '', '', '', ''],
+        ['报销人：（填写报销人姓名，须与系统用户姓名一致）', '', '', '', '', ''],
+        ['公司：', '', '', '', '', ''],
+        ['序号', '费用类别', '名称', '金额', '事由', '费用日期(选填)'],
+        [1, '交通费', '（示例）市内打车', 35.5, '送设备', '2026-08-04'],
+        [2, '办公用品', '（示例）移动硬盘', 131.5, '项目存储备份', '2026-08-10'],
+        [3, '招待费', '（示例）客户餐费', 300, '售前接待', ''],
+        ['', '', '', '', '', ''],
+        ['合计', '', '', '', '', '']
+      ],
+      [
+        '【费用报销单导入模板 · 填写说明】',
+        '1. 一张表 = 一张报销单（作为一个整体提交审批），行数不够可直接插行',
+        '2. 报销人：填系统内用户姓名，匹配不到时归属导入操作者',
+        '3. 费用类别：建议使用 交通费/办公用品/招待费/差旅费/通讯费/培训费/其他，也可自定义',
+        '4. 金额：填纯数字，不要带 ¥ 或千分位',
+        '5. 事由：可留空或填“/”',
+        '6. 费用日期：选填，格式如 2026-08-04，留空按导入当天记录',
+        '7. “合计”行及以下内容不会导入；示例行请替换为真实数据',
+        '8. 文件名建议“姓名+月份+费用报销单”（如：杜文博8月费用报销单.xlsx），导入后作为报销单标题',
+        '9. 同名报销单重复导入会自动跳过，不会重复建单',
+        '10. 填好后在本系统“费用报销 → 导入导出 → 导入旧版报销单(客户Excel)”中上传'
+      ],
+      [8, 14, 24, 12, 24, 16]
+    )
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent('费用报销单导入模板.xlsx')}`)
+    res.send(buf)
+  } catch (error) {
+    logger.error('Expense template error:', error)
+    res.status(500).json({ error: '生成模板失败' })
+  }
+})
+
 router.get('/:id', authenticateToken, checkPermission('finance:expense:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string)
@@ -841,17 +882,18 @@ async function handleLegacyExpenseImport(req: AuthRequest, file: Express.Multer.
     ? `${ownerName || '导入'}费用报销单`
     : rawName.slice(0, 100)
 
-  const items: { category: string; amount: number; description: string }[] = []
+  const items: { category: string; amount: number; description: string; expenseDate: Date }[] = []
   let skipped = 0
   for (const r of grid.slice(headerIdx + 1)) {
-    const [seq, category, name, amount, reason] = r
+    const [seq, category, name, amount, reason, dateCol] = r
     if (String(seq || '').includes('合计')) break // 合计行之后是大写金额等,直接结束
     const catS = String(category || '').trim()
     const nameS = String(name || '').trim()
     if (!catS && !nameS) { skipped++; continue }
     const reasonS = String(reason || '').trim()
     const desc = (reasonS && reasonS !== '/') ? `${nameS}（${reasonS}）` : nameS
-    items.push({ category: catS || '其他', amount: Number(amount) || 0, description: desc })
+    // 费用日期(选填列):留空按导入当天
+    items.push({ category: catS || '其他', amount: Number(amount) || 0, description: desc, expenseDate: legacyDateToLocal(dateCol) || new Date() })
   }
   if (items.length === 0) return { message: '未解析到有效明细行', success: 0, skipped }
 
@@ -866,7 +908,7 @@ async function handleLegacyExpenseImport(req: AuthRequest, file: Express.Multer.
       totalAmount: total,
       status: 'DRAFT',
       ownerId,
-      items: { create: items.map(i => ({ ...i, expenseDate: new Date() })) }
+      items: { create: items }
     }
   })
   return {

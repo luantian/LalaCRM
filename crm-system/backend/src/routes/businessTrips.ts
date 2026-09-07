@@ -6,7 +6,7 @@ import { logOperation } from '../middleware/logOperation'
 import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow, parseImportDate } from '../utils/exportImport'
-import { readLegacySheet, findPersonName, userIdByName, legacyDateToLocal } from '../utils/legacyImport'
+import { readLegacySheet, findPersonName, userIdByName, legacyDateToLocal, buildTemplateWorkbook } from '../utils/legacyImport'
 import { autoWriteBusinessTripRecord } from '../utils/autoDailyReport'
 import { upload } from '../middleware/upload'
 import { isAdmin } from '../utils/permission'
@@ -121,6 +121,45 @@ router.get('/stats/overview', authenticateToken, applyDataScope({ ownerField: 'o
   } catch (error) {
     logger.error('Get stats error:', error)
     res.status(500).json({ error: '获取统计失败' })
+  }
+})
+
+// 下载出差统计导入模板(与导入解析格式严格对齐,附填写说明 sheet)
+router.get('/import-template', authenticateToken, checkPermission('office:trip:list'), async (req: AuthRequest, res) => {
+  try {
+    const buf = buildTemplateWorkbook(
+      '费用报销单',
+      [
+        ['出差统计表', '', '', '', '', ''],
+        ['报销人：（填写出差人姓名，须与系统用户姓名一致）', '', '', '', '', ''],
+        ['公司：', '', '', '', '', ''],
+        ['序号', '起始日期', '结束日期', '金额', '总计（天）', '目的地(选填)'],
+        [1, '2026-08-04', '2026-08-05', 200, 2, '（示例）哈尔滨'],
+        [2, '2026-08-10', '2026-08-14', 500, 5, ''],
+        ['', '', '', '', '', ''],
+        ['', '', '', '', '合计', '']
+      ],
+      [
+        '【出差统计导入模板 · 填写说明】',
+        '1. 一行 = 一次出差，行数不够可直接插行',
+        '2. 报销人：填系统内用户姓名（整表默认同一人），匹配不到时归属导入操作者',
+        '3. 起始/结束日期：格式如 2026-08-04 或 2026/8/4，起始不能晚于结束',
+        '4. 总计（天）：可留空，自动按日期差计算（含首尾两天）',
+        '5. 金额：暂不导入系统（出差模块无金额字段），仅作线下核对',
+        '6. 目的地：选填，留空记为“旧表导入”',
+        '7. “合计”行及以下内容不会导入；示例行请替换为真实数据',
+        '8. 同一人相同起止日期的记录重复导入会自动跳过',
+        '9. 出差审批、关联费用报销请在导入后于系统内操作',
+        '10. 填好后在本系统“出差管理 → 导入导出 → 导入旧版出差统计(客户Excel)”中上传'
+      ],
+      [8, 14, 14, 12, 12, 20]
+    )
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent('出差统计导入模板.xlsx')}`)
+    res.send(buf)
+  } catch (error) {
+    logger.error('Trip template error:', error)
+    res.status(500).json({ error: '生成模板失败' })
   }
 })
 
@@ -681,7 +720,7 @@ async function handleLegacyTripImport(req: AuthRequest, file: Express.Multer.Fil
 
   let created = 0, skipped = 0
   for (const r of grid.slice(headerIdx + 1)) {
-    const [seq, sd, ed, , daysCol] = r
+    const [seq, sd, ed, , daysCol, destCol] = r
     // 合计行及之后(大写金额等)不再解析;样本里"合计"在第5列,扫前5列
     if (r.slice(0, 5).some(c => String(c || '').includes('合计'))) break
     // 整行空白不算跳过,静默略过
@@ -699,10 +738,12 @@ async function handleLegacyTripImport(req: AuthRequest, file: Express.Multer.Fil
     if (!days) days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1)
     const s = toLocalDateStr(start)
     const e = toLocalDateStr(end)
+    // 目的地(选填列):留空记为"旧表导入"
+    const dest = String(destCol || '').trim() || '旧表导入'
     await prisma.businessTrip.create({
       data: {
         title: `出差(${s}~${e})`,
-        destination: '旧表导入',
+        destination: dest,
         startDate: start,
         endDate: end,
         days,
