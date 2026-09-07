@@ -366,6 +366,7 @@ function ProjectList() {
             <Space>
               <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>搜索</Button>
               <Button icon={<ReloadOutlined />} onClick={handleReset}>重置</Button>
+              <Button icon={<ReloadOutlined />} onClick={() => fetchProjects(pagination.current, pagination.pageSize)}>刷新</Button>
             </Space>
           </Col>
         </Row>
@@ -374,7 +375,6 @@ function ProjectList() {
       {/* 操作按钮 */}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => fetchProjects(pagination.current, pagination.pageSize)}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} disabled={!checkPermission('project:project:add')}>新增项目</Button>
           {selectedRowKeys.length > 0 && (
             <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete} disabled={!checkPermission('project:project:edit')}>
