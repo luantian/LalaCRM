@@ -381,14 +381,15 @@ function ProjectList() {
               批量删除 ({selectedRowKeys.length})
             </Button>
           )}
-          <Dropdown menu={{ items: [
+          {/* [项目管理导入导出暂停:暂时无意义,恢复时取消下方注释] */}
+          {/* <Dropdown menu={{ items: [
             { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
             { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
             { type: 'divider' },
             { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
           ]}}>
             <Button icon={<DownloadOutlined />}>导入导出</Button>
-          </Dropdown>
+          </Dropdown> */}
         </Space>
       </div>
 
@@ -461,7 +462,8 @@ function ProjectList() {
         </Form>
       </Modal>
 
-      <Modal title="导入数据" open={importModalVisible} onCancel={() => setImportModalVisible(false)} footer={null}>
+      {/* [项目管理导入导出暂停:暂时无意义,恢复时取消下方注释] */}
+      {/* <Modal title="导入数据" open={importModalVisible} onCancel={() => setImportModalVisible(false)} footer={null}>
         <Upload.Dragger
           accept=".csv,.xlsx,.xls"
           beforeUpload={(file) => { handleImport(file); return false }}
@@ -471,7 +473,7 @@ function ProjectList() {
           <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
           <p className="ant-upload-tip">支持 CSV、Excel 格式（.csv / .xlsx / .xls）</p>
         </Upload.Dragger>
-      </Modal>
+      </Modal> */}
     </div>
   )
 }
