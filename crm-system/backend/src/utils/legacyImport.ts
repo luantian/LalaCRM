@@ -8,10 +8,15 @@ import prisma from '../lib/prisma'
  * 共性:表头上方有"报销人:xxx"等信息行,数据从表头行之后开始
  */
 
-/** 读取上传 Excel 的第一个 sheet 为二维网格(日期单元格保留为 Date 对象) */
+/**
+ * 读取上传 Excel 的第一个 sheet 为二维网格。
+ * 注意:cellDates 必须为 false——实测 SheetJS 开 cellDates 读日期单元格会带 -8h 偏移
+ * (serial 46238=8月4日 被转成 8月3日23:59:17 的 Date,整组日期偏早一天);
+ * 保持数值序列由 legacyDateToLocal 按 Excel 纪元(25569)自行换算,时区无关。
+ */
 export function readLegacySheet(file: Express.Multer.File): any[][] {
   const buf = file.buffer ?? readFileSync(file.path)
-  const wb = XLSX.read(buf, { type: 'buffer', cellDates: true })
+  const wb = XLSX.read(buf, { type: 'buffer', cellDates: false })
   const ws = wb.Sheets[wb.SheetNames[0]]
   return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true })
 }
