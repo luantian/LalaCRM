@@ -347,7 +347,10 @@ function buildExportRows(reports: any[]): any[] {
         typeLabel: first ? (reportTypeLabel[r.type] || r.type || '') : '',
         sourceLabel: sourceLabelMap[e.sourceType] || (e.source === 'AUTO' ? '自动' : '手动'),
         notesText: (e.content || e.title || '').split('\n').filter(Boolean).join('；'),
-        todosText: first && Array.isArray(r.todos) ? r.todos.join('；') : '',
+        // 待办带序号逐条换行(导出文档里多条待办可辨识;导入端会拆分并剥序号,回环无损)
+        todosText: first && Array.isArray(r.todos) && r.todos.length > 0
+          ? r.todos.map((t: string, i: number) => `${i + 1}.${t}`).join('\n')
+          : '',
         plan: first ? (r.plan || '') : '',
         hours: first && r.hours != null ? Number(r.hours) : '',
         // 块首行标记(Excel 排版用:按日报块合并/分组;CSV 按列名取值不受影响)
@@ -1481,9 +1484,9 @@ router.post('/import', authenticateToken, checkPermission('office:dailyreport:ad
           projectId = proj?.id || null
         }
 
-        // 待办事项：按换行或分号拆分为数组
+        // 待办事项：按换行/分号拆分并剥行首序号(导出为"1.xxx\n2.yyy",回环导入还原为独立待办)
         const todos: string[] = typeof mapped.todos === 'string' && mapped.todos
-          ? String(mapped.todos).split(/[\n;；]+/).map(s => s.trim()).filter(Boolean)
+          ? splitTodoCell(mapped.todos)
           : []
 
         const { organizationName, projectName, todos: _todos, ...rest } = mapped
