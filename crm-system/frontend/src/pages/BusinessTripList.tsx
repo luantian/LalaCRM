@@ -485,7 +485,6 @@ function BusinessTripList() {
       {/* 操作按钮 */}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => fetchTrips(pagination.current, pagination.pageSize)}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增出差</Button>
           {selectedRowKeys.length > 0 && (
             <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete}>

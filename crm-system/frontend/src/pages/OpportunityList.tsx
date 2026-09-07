@@ -391,7 +391,6 @@ function OpportunityList() {
       {/* 操作按钮 */}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => fetchOpportunities(pagination.current, pagination.pageSize)}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} disabled={!checkPermission('crm:opportunity:add') && !checkPermission('crm:opportunity:edit')}>新增项目机会</Button>
           {selectedRowKeys.length > 0 && (
             <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete} disabled={!checkPermission('crm:opportunity:edit')}>

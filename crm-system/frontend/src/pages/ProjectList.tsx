@@ -366,7 +366,6 @@ function ProjectList() {
             <Space>
               <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>搜索</Button>
               <Button icon={<ReloadOutlined />} onClick={handleReset}>重置</Button>
-              <Button icon={<ReloadOutlined />} onClick={() => fetchProjects(pagination.current, pagination.pageSize)}>刷新</Button>
             </Space>
           </Col>
         </Row>

@@ -633,7 +633,6 @@ function ExpenseList() {
       {/* 操作按钮 */}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => fetchExpenses(pagination.current, pagination.pageSize)}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增报销</Button>
           {selectedRowKeys.length > 0 && (
             <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete}>

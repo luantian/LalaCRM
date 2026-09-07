@@ -427,7 +427,6 @@ function DailyReportList() {
       {/* 操作按钮 */}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => fetchReports(pagination.current, pagination.pageSize)}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} disabled={!checkPermission('office:dailyreport:add')}>新增日报</Button>
           <Dropdown menu={{ items: [
             { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
