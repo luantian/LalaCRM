@@ -190,7 +190,17 @@ function DailyReportList() {
 
   const handleExport = async (type: 'csv' | 'excel') => {
     try {
-      const blob = type === 'csv' ? await exportDailyReports({ search: searchText }) : await exportDailyReportsExcel({ search: searchText })
+      // 与列表查询同条件导出：搜索词 + 日期范围 + 项目 + 客户
+      const params: any = {}
+      if (searchTextRef.current.trim()) params.search = searchTextRef.current.trim()
+      const range = dateRangeRef.current
+      if (range && range[0] && range[1]) {
+        params.startDate = range[0].format('YYYY-MM-DD')
+        params.endDate = range[1].format('YYYY-MM-DD')
+      }
+      if (filterProjectIdRef.current) params.projectId = filterProjectIdRef.current
+      if (filterOrgIdRef.current) params.organizationId = filterOrgIdRef.current
+      const blob = type === 'csv' ? await exportDailyReports(params) : await exportDailyReportsExcel(params)
       if (!blob || !(blob instanceof Blob)) {
         message.error('导出失败：响应格式异常')
         return

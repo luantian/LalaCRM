@@ -31,8 +31,9 @@ export function exportCSV(res: Response, filename: string, columns: { key: strin
 
 /**
  * 导出为 Excel
+ * @param colWidths 可选：各列宽度（字符数），未指定的列默认 18
  */
-export function exportExcel(res: Response, filename: string, sheetName: string, columns: { key: string; label: string }[], data: any[]) {
+export function exportExcel(res: Response, filename: string, sheetName: string, columns: { key: string; label: string }[], data: any[], colWidths?: number[]) {
   const rows = data.map(item => {
     const row: Record<string, any> = {}
     for (const col of columns) {
@@ -45,8 +46,8 @@ export function exportExcel(res: Response, filename: string, sheetName: string, 
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, sheetName)
 
-  // 设置列宽
-  ws['!cols'] = columns.map(() => ({ wch: 18 }))
+  // 设置列宽：调用方可按列指定（如内容列加宽）
+  ws['!cols'] = columns.map((_, i) => ({ wch: colWidths?.[i] ?? 18 }))
 
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
 

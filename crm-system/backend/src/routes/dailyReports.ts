@@ -246,60 +246,127 @@ router.get('/stats/overview', authenticateToken, checkPermission('office:dailyre
   }
 })
 
+// ===== 导出共用（CSV/Excel 同一套筛选、映射、行结构）=====
+
+/** 构建导出筛选条件（与列表页一致；显式筛选不能越过数据权限：非管理员已有 userId 限制） */
+function buildReportFilterWhere(query: any, baseWhere: any): any {
+  const { userId = '', projectId = '', organizationId = '', startDate = '', endDate = '', type = '', search = '' } = query
+  const where: any = { ...baseWhere }
+
+  if (userId && where.userId === undefined) {
+    where.userId = parseInt(userId)
+  }
+
+  if (projectId) {
+    const pid = parseInt(projectId)
+    where.AND = [...(where.AND || []), { OR: [{ projectId: pid }, { entries: { some: { projectId: pid } } }] }]
+  }
+
+  if (organizationId) {
+    const oid = parseInt(organizationId)
+    where.AND = [...(where.AND || []), { OR: [{ organizationId: oid }, { entries: { some: { organizationId: oid } } }] }]
+  }
+
+  if (type) {
+    where.type = type
+  }
+
+  if (startDate || endDate) {
+    where.reportDate = {}
+    if (startDate) {
+      where.reportDate.gte = parseLocalDate(startDate)
+    }
+    if (endDate) {
+      where.reportDate.lte = parseLocalDate(endDate, true)
+    }
+  }
+
+  if (search) {
+    where.OR = [
+      { content: { contains: search, mode: 'insensitive' } },
+      { plan: { contains: search, mode: 'insensitive' } },
+      { issues: { contains: search, mode: 'insensitive' } },
+      { entries: { some: { content: { contains: search, mode: 'insensitive' } } } },
+      { entries: { some: { title: { contains: search, mode: 'insensitive' } } } }
+    ]
+  }
+
+  return where
+}
+
+// 导出统一列（CSV 与 Excel 保持一致）
+const columns = [
+  { key: 'reportDate', label: '日期' },
+  { key: 'userName', label: '姓名' },
+  { key: 'orgName', label: '客户' },
+  { key: 'projName', label: '项目' },
+  { key: 'typeLabel', label: '类型' },
+  { key: 'sourceLabel', label: '来源' },
+  { key: 'notesText', label: '工作内容(Notes)' },
+  { key: 'todosText', label: '待办事项' },
+  { key: 'plan', label: '后续计划' },
+  { key: 'hours', label: '工时' },
+  { key: 'statusLabel', label: '状态' }
+]
+
+const reportTypeLabel: Record<string, string> = {
+  WORK: '工作',
+  PRE_SALES: '售前',
+  PROJECT: '项目',
+  MEETING: '会议',
+  TRAINING: '培训',
+  OTHER: '其他'
+}
+
+const sourceLabelMap: Record<string, string> = {
+  INVOICE: '发票', RECEIPT: '回款', CONTRACT: '合同', SHIPMENT: '发货',
+  PROCUREMENT: '采购', PROCUREMENT_PAYMENT: '采购付款', TASK: '任务', NOTE: '项目备注',
+  OPPORTUNITY: '售前', QUOTATION: '报价', EXPENSE: '报销', BUSINESS_TRIP: '出差',
+  PROJECT: '项目', ORGANIZATION: '客户'
+}
+
+const statusLabelMap: Record<string, string> = {
+  DRAFT: '草稿',
+  SUBMITTED: '已提交',
+  APPROVED: '已批准',
+  REJECTED: '已拒绝'
+}
+
+/**
+ * 导出统一行结构：一天多件事 = 多行（一条 entry 一行）。
+ * 日报级字段（类型/待办/计划/工时/状态）只出现在该日报块的首行，
+ * 后续行留空——避免逐行重复导致的大片重复内容，工时列也可直接求和。
+ * 日期/姓名每行保留，便于在 Excel 中筛选。
+ */
+function buildExportRows(reports: any[]): any[] {
+  return reports.flatMap((r: any) => {
+    const entryList: any[] = (r.entries && r.entries.length > 0)
+      ? r.entries
+      : [{ title: null, content: r.content, organization: null, project: null, sourceType: null }]
+    return entryList.map((e: any, idx: number) => {
+      const first = idx === 0
+      return {
+        reportDate: toLocalDateStr(r.reportDate),
+        userName: r.user?.name || '',
+        orgName: e.organization?.name || r.organization?.name || '',
+        projName: e.project?.name || r.project?.name || '',
+        typeLabel: first ? (reportTypeLabel[r.type] || r.type || '') : '',
+        sourceLabel: sourceLabelMap[e.sourceType] || (e.source === 'AUTO' ? '自动' : '手动'),
+        notesText: (e.content || e.title || '').split('\n').filter(Boolean).join('；'),
+        todosText: first && Array.isArray(r.todos) ? r.todos.join('；') : '',
+        plan: first ? (r.plan || '') : '',
+        hours: first && r.hours != null ? Number(r.hours) : '',
+        statusLabel: first ? (statusLabelMap[r.status] || r.status || '') : ''
+      }
+    })
+  })
+}
+
 // 导出日报 CSV —— 管理员可导出全部，非管理员只能导出自己的
 router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
-    const {
-      userId = '',
-      projectId = '',
-      organizationId = '',
-      startDate = '',
-      endDate = '',
-      type = '',
-      search = ''
-    } = req.query
-
     const dataScopeWhere = await getReportScopeWhere(req.user!.id)
-    const where: any = { deletedAt: null, ...dataScopeWhere }
-
-    // 显式筛选不能越过数据权限：非管理员（已有 userId 限制）时忽略该筛选
-    if (userId && where.userId === undefined) {
-      where.userId = parseInt(userId as string)
-    }
-
-    if (projectId) {
-      const pid = parseInt(projectId as string)
-      where.AND = [...(where.AND || []), { OR: [{ projectId: pid }, { entries: { some: { projectId: pid } } }] }]
-    }
-
-    if (organizationId) {
-      const oid = parseInt(organizationId as string)
-      where.AND = [...(where.AND || []), { OR: [{ organizationId: oid }, { entries: { some: { organizationId: oid } } }] }]
-    }
-
-    if (type) {
-      where.type = type as string
-    }
-
-    if (startDate || endDate) {
-      where.reportDate = {}
-      if (startDate) {
-        where.reportDate.gte = parseLocalDate(startDate as string)
-      }
-      if (endDate) {
-        where.reportDate.lte = parseLocalDate(endDate as string, true)
-      }
-    }
-
-    if (search) {
-      where.OR = [
-        { content: { contains: search as string, mode: 'insensitive' } },
-        { plan: { contains: search as string, mode: 'insensitive' } },
-        { issues: { contains: search as string, mode: 'insensitive' } },
-        { entries: { some: { content: { contains: search as string, mode: 'insensitive' } } } },
-        { entries: { some: { title: { contains: search as string, mode: 'insensitive' } } } }
-      ]
-    }
+    const where = buildReportFilterWhere(req.query, { deletedAt: null, ...dataScopeWhere })
 
     const reports = await prisma.dailyReport.findMany({
       where,
@@ -309,47 +376,20 @@ router.get('/export/csv', authenticateToken, checkPermission('office:dailyreport
         organization: { select: { id: true, name: true } },
         ...entryInclude
       },
-      orderBy: { reportDate: 'desc' }
+      orderBy: [{ reportDate: 'desc' }, { createdAt: 'asc' }]
     })
-
-    const typeMap: Record<string, string> = {
-      WORK: '工作',
-      PRE_SALES: '售前',
-      PROJECT: '项目',
-      MEETING: '会议',
-      TRAINING: '培训',
-      OTHER: '其他'
-    }
 
     const escape = (val: any): string => {
       if (val == null) return ''
-      const str = String(val).replace(/"/g, '""')
+      let str = String(val).replace(/"/g, '""')
+      // 防公式注入：= + - @ 开头的单元格加单引号前缀
+      if (/^[=+\-@\t\r]/.test(str)) str = "'" + str
       return `"${str}"`
     }
 
-    // 逐条输出：一天多件事 = 多行
-    const header = '日期,姓名,客户,项目,类型,来源,工作内容(Notes),待办事项,后续计划,时长'
-    const rows = reports.flatMap((r: any) => {
-      const entryList: any[] = (r.entries && r.entries.length > 0)
-        ? r.entries
-        : [{ title: null, content: r.content, organization: null, project: null, sourceType: null }]
-      return entryList.map(e =>
-        [
-          escape(toLocalDateStr(r.reportDate)),
-          escape(r.user?.name || ''),
-          escape(e.organization?.name || r.organization?.name || ''),
-          escape(e.project?.name || r.project?.name || ''),
-          escape(typeMap[r.type] || r.type),
-          escape(e.sourceType || (e.source === 'AUTO' ? '自动' : '')),
-          escape(e.content || e.title || ''),
-          escape(Array.isArray(r.todos) ? r.todos.join('；') : ''),
-          escape(r.plan),
-          escape(Number(r.hours || 0).toFixed(1))
-        ].join(',')
-      )
-    })
+    const rows = buildExportRows(reports).map(row => columns.map(c => escape(row[c.key])).join(','))
 
-    const csv = '﻿' + [header, ...rows].join('\r\n')
+    const csv = '﻿' + [columns.map(c => c.label).join(','), ...rows].join('\r\n')
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
     res.setHeader('Content-Disposition', 'attachment; filename="daily-reports.csv"')
@@ -1283,19 +1323,6 @@ router.get('/stats/hours-analysis', authenticateToken, checkPermission('office:d
   }
 })
 
-const columns = [
-  { key: 'reportDate', label: '日期' },
-  { key: 'userName', label: '姓名' },
-  { key: 'orgName', label: '客户' },
-  { key: 'projName', label: '项目' },
-  { key: 'sourceLabel', label: '来源' },
-  { key: 'notesText', label: '工作内容(Notes)' },
-  { key: 'todosText', label: '待办事项' },
-  { key: 'plan', label: '后续计划' },
-  { key: 'hours', label: '工时' },
-  { key: 'status', label: '状态' }
-]
-
 const labelMap: Record<string, string> = {
   '日期': 'reportDate',
   '类型': 'type',
@@ -1309,44 +1336,26 @@ const labelMap: Record<string, string> = {
   '工时': 'hours'
 }
 
+// 导出日报 Excel —— 筛选条件、列结构、行数据与 CSV 完全一致
 router.get('/export/excel', authenticateToken, checkPermission('office:dailyreport:list'), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = await getReportScopeWhere(req.user!.id)
+    const where = buildReportFilterWhere(req.query, { deletedAt: null, ...dataScopeWhere })
+
     const reports = await prisma.dailyReport.findMany({
-      where: { deletedAt: null, ...dataScopeWhere },
+      where,
       include: {
         user: { select: { name: true } },
         project: { select: { name: true } },
         organization: { select: { name: true } },
         ...entryInclude
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: [{ reportDate: 'desc' }, { createdAt: 'asc' }]
     })
-    // 逐条输出：一天多件事 = 多行
-    const sourceLabelMap: Record<string, string> = {
-      INVOICE: '发票', RECEIPT: '回款', CONTRACT: '合同', SHIPMENT: '发货',
-      PROCUREMENT: '采购', PROCUREMENT_PAYMENT: '采购付款', TASK: '任务', NOTE: '项目备注',
-      OPPORTUNITY: '售前', QUOTATION: '报价', EXPENSE: '报销', BUSINESS_TRIP: '出差',
-      PROJECT: '项目', ORGANIZATION: '客户'
-    }
-    const data = reports.flatMap((r: any) => {
-      const entryList: any[] = (r.entries && r.entries.length > 0)
-        ? r.entries
-        : [{ title: null, content: r.content, organization: null, project: null, sourceType: null }]
-      return entryList.map(e => ({
-        reportDate: toLocalDateStr(r.reportDate),
-        userName: r.user?.name || '',
-        orgName: e.organization?.name || r.organization?.name || '',
-        projName: e.project?.name || r.project?.name || '',
-        sourceLabel: sourceLabelMap[e.sourceType] || (e.source === 'AUTO' ? '自动' : '手动'),
-        notesText: e.content || e.title || '',
-        todosText: Array.isArray(r.todos) ? r.todos.join('；') : '',
-        plan: r.plan || '',
-        hours: r.hours,
-        status: r.status
-      }))
-    })
-    exportExcel(res, 'daily-reports.xlsx', '工作日报', columns, data)
+
+    const data = buildExportRows(reports)
+    // 各列宽度：工作内容/待办/计划加宽，其余窄列
+    exportExcel(res, 'daily-reports.xlsx', '工作日报', columns, data, [12, 10, 18, 18, 8, 10, 55, 25, 25, 8, 9])
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })

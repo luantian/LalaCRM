@@ -503,7 +503,7 @@ function RoleManagement() {
                 : (dataScopeLabel[record.dataScope || 'SELF'] || record.dataScope || '-')
             },
             {
-              title: '权限数', key: 'count', width: 70, align: 'center' as const,
+              title: '权限数', key: 'count', width: 100, align: 'center' as const,
               render: (_: any, record: Role) => (
                 <span style={{ fontWeight: 'bold', color: '#1890ff' }}>{record.permissions?.length || 0}</span>
               )
