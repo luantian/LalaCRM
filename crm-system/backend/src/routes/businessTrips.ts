@@ -130,14 +130,14 @@ router.get('/import-template', authenticateToken, checkPermission('office:trip:l
     const buf = buildTemplateWorkbook(
       '费用报销单',
       [
-        ['出差统计表', '', '', '', '', ''],
-        ['报销人：（填写出差人姓名，须与系统用户姓名一致）', '', '', '', '', ''],
-        ['公司：', '', '', '', '', ''],
-        ['序号', '起始日期', '结束日期', '金额', '总计（天）', '目的地(选填)'],
-        [1, '2026-08-04', '2026-08-05', 200, 2, '（示例）哈尔滨'],
-        [2, '2026-08-10', '2026-08-14', 500, 5, ''],
-        ['', '', '', '', '', ''],
-        ['', '', '', '', '合计', '']
+        ['出差统计表', '', '', '', ''],
+        ['报销人：（填写出差人姓名，须与系统用户姓名一致）', '', '', '', ''],
+        ['公司：', '', '', '', ''],
+        ['序号', '起始日期', '结束日期', '总计（天）', '目的地(选填)'],
+        [1, '2026-08-04', '2026-08-05', 2, '（示例）哈尔滨'],
+        [2, '2026-08-10', '2026-08-14', 5, ''],
+        ['', '', '', '', ''],
+        ['', '', '', '合计', '']
       ],
       [
         '【出差统计导入模板 · 填写说明】',
@@ -145,14 +145,13 @@ router.get('/import-template', authenticateToken, checkPermission('office:trip:l
         '2. 报销人：填系统内用户姓名（整表默认同一人），匹配不到时归属导入操作者',
         '3. 起始/结束日期：格式如 2026-08-04 或 2026/8/4，起始不能晚于结束',
         '4. 总计（天）：可留空，自动按日期差计算（含首尾两天）',
-        '5. 金额：暂不导入系统（出差模块无金额字段），仅作线下核对',
-        '6. 目的地：选填，留空记为“旧表导入”',
-        '7. “合计”行及以下内容不会导入；示例行请替换为真实数据',
-        '8. 同一人相同起止日期的记录重复导入会自动跳过',
-        '9. 出差审批、关联费用报销请在导入后于系统内操作',
-        '10. 填好后在本系统“出差管理 → 导入导出 → 导入旧版出差统计(客户Excel)”中上传'
+        '5. 目的地：选填，留空记为“旧表导入”',
+        '6. “合计”行及以下内容不会导入；示例行请替换为真实数据',
+        '7. 同一人相同起止日期的记录重复导入会自动跳过',
+        '8. 出差审批、关联费用报销请在导入后于系统内操作',
+        '9. 填好后在本系统“出差管理 → 导入导出 → 导入旧版出差统计(客户Excel)”中上传'
       ],
-      [8, 14, 14, 12, 12, 20]
+      [8, 14, 14, 12, 20]
     )
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent('出差统计导入模板.xlsx')}`)
@@ -718,15 +717,22 @@ async function handleLegacyTripImport(req: AuthRequest, file: Express.Multer.Fil
   const ownerName = findPersonName(grid.slice(0, headerIdx))
   const ownerId = (await userIdByName(ownerName)) || req.user!.id
 
+  // 按表头名定位各列(兼容带/不带"金额"列的两种布局,列顺序无关)
+  const headerRow = grid[headerIdx].map((c: any) => String(c || ''))
+  const colIdx = (kw: string) => headerRow.findIndex(h => h.includes(kw))
+  const startIdx = colIdx('起始日期')
+  const endIdx = colIdx('结束日期')
+  const daysIdx = colIdx('总计')
+  const destIdx = colIdx('目的地')
+
   let created = 0, skipped = 0
   for (const r of grid.slice(headerIdx + 1)) {
-    const [seq, sd, ed, , daysCol, destCol] = r
-    // 合计行及之后(大写金额等)不再解析;样本里"合计"在第5列,扫前5列
-    if (r.slice(0, 5).some(c => String(c || '').includes('合计'))) break
+    // 合计行及之后(大写金额等)不再解析
+    if (r.slice(0, 6).some(c => String(c || '').includes('合计'))) break
     // 整行空白不算跳过,静默略过
-    if (r.slice(0, 5).every(c => String(c || '').trim() === '')) continue
-    const start = legacyDateToLocal(sd)
-    const end = legacyDateToLocal(ed)
+    if (r.every(c => String(c || '').trim() === '')) continue
+    const start = legacyDateToLocal(startIdx >= 0 ? r[startIdx] : null)
+    const end = legacyDateToLocal(endIdx >= 0 ? r[endIdx] : null)
     if (!start || !end) { skipped++; continue }
     // 日期倒挂(起始晚于结束)属于源数据错误,跳过不导入
     if (start.getTime() > end.getTime()) { skipped++; continue }
@@ -734,12 +740,12 @@ async function handleLegacyTripImport(req: AuthRequest, file: Express.Multer.Fil
     const dup = await prisma.businessTrip.findFirst({ where: { ownerId, startDate: start, endDate: end, deletedAt: null } })
     if (dup) { skipped++; continue }
     // 天数:取"总计(天)",没有则按日期差推算
-    let days = Number(daysCol) || 0
+    let days = Number(daysIdx >= 0 ? r[daysIdx] : 0) || 0
     if (!days) days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1)
     const s = toLocalDateStr(start)
     const e = toLocalDateStr(end)
     // 目的地(选填列):留空记为"旧表导入"
-    const dest = String(destCol || '').trim() || '旧表导入'
+    const dest = String(destIdx >= 0 ? r[destIdx] : '').trim() || '旧表导入'
     await prisma.businessTrip.create({
       data: {
         title: `出差(${s}~${e})`,
