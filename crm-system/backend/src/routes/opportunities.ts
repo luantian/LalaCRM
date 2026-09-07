@@ -1145,8 +1145,9 @@ router.get('/export/excel', authenticateToken, checkPermission('crm:opportunity:
     // 金额权限：与列表接口一致，无权限用户导出的金额列脱敏
     const canSeeAmount = await hasAmountPermission(req.user!.id)
     const processed = canSeeAmount ? data : data.map(filterOpportunityAmount)
+    // 状态文案与列表页一致(OpportunityList statusMap)
     const oppStatusLabels: Record<string, string> = {
-      OPEN: '初步接触', FOLLOWING: '跟进中', WON: '赢单', LOST: '输单', CLOSED: '关闭'
+      OPEN: '开放', FOLLOWING: '跟进中', WON: '已赢单', LOST: '已丢单', CLOSED: '已关闭'
     }
     const rows = (processed as any[]).map((o: any) => ({
       name: o.name,
