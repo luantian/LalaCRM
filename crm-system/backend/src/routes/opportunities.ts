@@ -1139,7 +1139,7 @@ router.get('/export/excel', authenticateToken, checkPermission('crm:opportunity:
     const dataScopeWhere = (req as any).dataScopeWhere || {}
     const data = await prisma.opportunity.findMany({
       where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, organization: { select: { name: true } } },
+      include: { owner: { select: { name: true } }, organization: { select: { name: true } }, contact: { select: { name: true, title: true } } },
       orderBy: { createdAt: 'desc' },
     })
     // 金额权限：与列表接口一致，无权限用户导出的金额列脱敏
@@ -1151,6 +1151,7 @@ router.get('/export/excel', authenticateToken, checkPermission('crm:opportunity:
     const rows = (processed as any[]).map((o: any) => ({
       name: o.name,
       orgName: o.organization?.name || '',
+      contactName: o.contact ? `${o.contact.name}${o.contact.title ? ` (${o.contact.title})` : ''}` : (o.decisionMaker || ''),
       application: o.application || '',
       budget: o.budget != null ? Number(o.budget) : '',
       winRate: o.winRate != null ? Number(o.winRate) : '',
@@ -1160,6 +1161,7 @@ router.get('/export/excel', authenticateToken, checkPermission('crm:opportunity:
     await exportStyledExcel(res, '商机列表.xlsx', '商机', '售前商机', [
       { key: 'name', label: '商机名称', width: 26, wrap: true },
       { key: 'orgName', label: '客户', width: 22 },
+      { key: 'contactName', label: '联系人', width: 16 },
       { key: 'application', label: '应用领域', width: 18 },
       { key: 'budget', label: '预算', width: 14, align: 'right', numFmt: '#,##0.00' },
       { key: 'winRate', label: '赢单率(%)', width: 11, align: 'center' },
