@@ -16,8 +16,18 @@ import {
 /** 在行内"更多"下拉中点指定菜单项 */
 async function clickMoreMenuItem(page: Page, rowText: string, itemText: string) {
   const row = tableRow(page, rowText)
-  await row.getByRole('button', { name: /更\s*多/ }).click()
   const item = page.locator('.ant-dropdown:visible .ant-dropdown-menu-item', { hasText: itemText }).first()
+  // 时序抖动兜底(同出差审批):创建后列表刷新重渲染可能销毁已打开的下拉 → 点开-等不到-重点
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await row.getByRole('button', { name: /更\s*多/ }).click()
+    try {
+      await item.waitFor({ timeout: 3_000 })
+      await item.click()
+      return
+    } catch {
+      await page.keyboard.press('Escape').catch(() => {})
+    }
+  }
   await item.waitFor({ timeout: 10_000 })
   await item.click()
 }

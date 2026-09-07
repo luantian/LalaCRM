@@ -171,6 +171,9 @@ test.describe('出差管理', () => {
 
     await submitModal(page)
     await expectSuccess(page)
+    // 既有 E2E 数据含未来日期出差(按开始日期倒序排最前),可能把新记录挤到第 2 页——先搜索定位再断言
+    await page.getByPlaceholder('搜索标题、目的地、事由').fill(title)
+    await page.getByRole('button', { name: /搜\s*索/ }).first().click()
     await expect(page.locator('.ant-table-tbody', { hasText: title }).first()).toBeVisible()
     expect(errors, errors.join('\n')).toHaveLength(0)
   })

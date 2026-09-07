@@ -155,9 +155,10 @@ test.describe('项目 Notes 与列表功能', () => {
 
     await loginViaApi(page, ADMIN)
     await gotoApp(page, '/quotations')
-    // 打开状态下拉选"已批准"
+    // 打开状态下拉选"已批准",然后点"搜索"生效(2026-09-07 筛选区统一:选定条件后需点搜索)
     await page.locator('.ant-select-selector').first().click()
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: '已批准' }).first().click()
+    await page.getByRole('button', { name: /搜\s*索/ }).first().click()
     await page.waitForTimeout(800)
     await expect(page.locator('.ant-table-tbody tr', { hasText: approved }).first()).toBeVisible()
     await expect(page.locator('.ant-table-tbody tr', { hasText: draft })).toHaveCount(0)
@@ -165,6 +166,7 @@ test.describe('项目 Notes 与列表功能', () => {
   })
 
   test('项目归档页导出 CSV 下载', async ({ page }) => {
+    test.skip(true, '项目归档导出已按需求暂停(2026-09-07 按钮注释,恢复入口后取消本行跳过)')
     const errors = collectPageErrors(page)
     await loginViaApi(page, ADMIN)
     await gotoApp(page, '/sales')
