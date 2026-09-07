@@ -214,6 +214,7 @@ function ProjectArchive() {
             <Space>
               <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>搜索</Button>
               <Button icon={<ReloadOutlined />} onClick={handleReset}>重置</Button>
+              <Button icon={<ReloadOutlined />} onClick={() => fetchProjects(pagination.current, pagination.pageSize)}>刷新</Button>
             </Space>
           </Col>
         </Row>
@@ -222,7 +223,6 @@ function ProjectArchive() {
       {/* 操作按钮 */}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => fetchProjects(pagination.current, pagination.pageSize)}>刷新</Button>
           {/* [项目归档导出暂停:与项目管理一致暂无意义,恢复时取消下方注释] */}
           {/* <Dropdown menu={{ items: [
             { key: 'csv', icon: <DownloadOutlined />, label: '导出 CSV', onClick: () => handleExport('csv') },
