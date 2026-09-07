@@ -296,27 +296,18 @@ function buildReportFilterWhere(query: any, baseWhere: any): any {
 }
 
 // 导出统一列（CSV 与 Excel 保持一致）
+// 注:类型列已去掉——前端无设置入口、所有写入路径默认 WORK,恒为"工作"无信息量(同状态列先例)
 const columns = [
   { key: 'reportDate', label: '日期' },
   { key: 'userName', label: '姓名' },
   { key: 'orgName', label: '客户' },
   { key: 'projName', label: '项目' },
-  { key: 'typeLabel', label: '类型' },
   { key: 'sourceLabel', label: '来源' },
   { key: 'notesText', label: '工作内容(Notes)' },
   { key: 'todosText', label: '待办事项' },
   { key: 'plan', label: '后续计划' },
   { key: 'hours', label: '工时' }
 ]
-
-const reportTypeLabel: Record<string, string> = {
-  WORK: '工作',
-  PRE_SALES: '售前',
-  PROJECT: '项目',
-  MEETING: '会议',
-  TRAINING: '培训',
-  OTHER: '其他'
-}
 
 const sourceLabelMap: Record<string, string> = {
   INVOICE: '发票', RECEIPT: '回款', CONTRACT: '合同', SHIPMENT: '发货',
@@ -344,7 +335,6 @@ function buildExportRows(reports: any[]): any[] {
         userName: r.user?.name || '',
         orgName: e.organization?.name || r.organization?.name || '',
         projName: e.project?.name || r.project?.name || '',
-        typeLabel: first ? (reportTypeLabel[r.type] || r.type || '') : '',
         sourceLabel: sourceLabelMap[e.sourceType] || (e.source === 'AUTO' ? '自动' : '手动'),
         notesText: (e.content || e.title || '').split('\n').filter(Boolean).join('；'),
         // 待办带序号逐条换行(导出文档里多条待办可辨识;导入端会拆分并剥序号,回环无损)
@@ -1362,7 +1352,7 @@ router.get('/export/excel', authenticateToken, checkPermission('office:dailyrepo
       pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } }
     })
 
-    const widths = [12, 10, 18, 18, 8, 10, 55, 26, 26, 8]
+    const widths = [12, 10, 18, 18, 10, 55, 26, 26, 8]
     columns.forEach((c, i) => { ws.getColumn(i + 1).width = widths[i] })
 
     // 行1:大标题
@@ -1399,9 +1389,9 @@ router.get('/export/excel', authenticateToken, checkPermission('office:dailyrepo
     // 数据行(按日报块:块内同底色、块间交替;块首行上边框分隔)
     const thin = { style: 'thin' as const, color: { argb: 'FFC9D3E0' } }
     const blockTop = { style: 'medium' as const, color: { argb: 'FF8EAADB' } }
-    const CENTER_COLS = new Set([1, 2, 5, 6, 7, 10]) // 日期/姓名/类型/来源/工作内容/工时 → 横向居中
-    const MERGE_COLS = [1, 2, 5, 8, 9, 10]           // 日报级字段 → 按块纵向合并
-    const WRAP_COLS = new Set([7, 8, 9])             // 内容/待办/计划 → 自动换行
+    const CENTER_COLS = new Set([1, 2, 5, 6, 9]) // 日期/姓名/来源/工作内容/工时 → 横向居中
+    const MERGE_COLS = [1, 2, 7, 8, 9]           // 日报级字段(日期/姓名/待办/计划/工时) → 按块纵向合并
+    const WRAP_COLS = new Set([6, 7, 8])         // 内容/待办/计划 → 自动换行
 
     // 预先按块分段
     const blocks: Array<{ start: number, end: number }> = []
