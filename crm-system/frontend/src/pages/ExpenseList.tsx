@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, message, Space, Popconfirm, Tag, Card, Row, Col, Statistic, Dropdown, List, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, CheckOutlined, CloseOutlined, SearchOutlined, MoreOutlined, FileOutlined, UploadOutlined, DownloadOutlined, SendOutlined, DollarOutlined, UndoOutlined, EyeOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getOrganizationsSimple, getProjects, getBusinessTrips, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, downloadExpenseFileUrl, downloadFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses, importLegacyExpenses, downloadExpenseImportTemplate, previewExpenseFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
+import { getExpenses, createExpense, updateExpense, deleteExpense, approveExpense, submitExpense, rejectExpense, resubmitExpense, payExpense, getExpenseStats, getOrganizationsSimple, getProjects, getBusinessTrips, uploadExpenseFiles, getExpenseFiles, deleteExpenseFile, downloadExpenseFileUrl, downloadFile, safeJsonParse, exportExpensesCsv, exportExpensesExcel, importExpenses, downloadExpenseImportTemplate, previewExpenseFileUrl, openFilePreview, isPreviewableFile } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import { usePermission } from '../hooks/usePermission'
@@ -47,7 +47,6 @@ function ExpenseList() {
   const [expenseFiles, setExpenseFiles] = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
   const [importModalVisible, setImportModalVisible] = useState(false)
-  const [legacyImportVisible, setLegacyImportVisible] = useState(false)
 
   const user = safeJsonParse(localStorage.getItem('user'), {})
   const canApprove = checkPermission('finance:expense:approve')
@@ -394,18 +393,6 @@ function ExpenseList() {
     return project ? project.name : '-'
   }
 
-  // 导入客户旧版报销单 Excel(整表一张报销单,报销人自动匹配)
-  const handleLegacyImport = async (file: File) => {
-    try {
-      const result: any = await importLegacyExpenses(file)
-      message.success(result?.message || '导入完成')
-      setLegacyImportVisible(false)
-      fetchExpenses(1, pagination.pageSize)
-    } catch (e: any) {
-      message.error(e?.error || '导入失败')
-    }
-  }
-
   // 下载报销单导入模板(含填写说明)
   const handleDownloadTemplate = async () => {
     try {
@@ -658,7 +645,6 @@ function ExpenseList() {
             { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
             { type: 'divider' },
             { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
-            { key: 'import-legacy', icon: <ImportOutlined />, label: '导入旧版报销单(客户Excel)', onClick: () => setLegacyImportVisible(true) },
             { key: 'template', icon: <DownloadOutlined />, label: '下载导入模板', onClick: handleDownloadTemplate },
           ]}}>
             <Button icon={<DownloadOutlined />}>导入导出</Button>
@@ -1004,15 +990,7 @@ function ExpenseList() {
         <Upload.Dragger accept=".csv,.xlsx,.xls" beforeUpload={(file) => { handleImport(file); return false }} showUploadList={false}>
           <p className="ant-upload-drag-icon"><InboxOutlined /></p>
           <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
-          <p className="ant-upload-tip">支持 CSV、Excel 格式</p>
-        </Upload.Dragger>
-      </Modal>
-
-      <Modal title="导入旧版报销单(客户Excel)" open={legacyImportVisible} onCancel={() => setLegacyImportVisible(false)} footer={null}>
-        <Upload.Dragger accept=".xlsx,.xls" beforeUpload={(file) => { handleLegacyImport(file); return false }} showUploadList={false}>
-          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p className="ant-upload-text">点击或拖拽旧版报销单文件到此区域上传</p>
-          <p className="ant-upload-tip">格式:表头"序号/费用类别/名称/金额/事由",上方有"报销人:xxx";整张表导入为一张报销单,报销人按姓名自动匹配</p>
+          <p className="ant-upload-tip">支持 CSV、Excel 格式；旧版报销单/模板文件会自动识别</p>
         </Upload.Dragger>
         <div style={{ marginTop: 12 }}>
           <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate} block>

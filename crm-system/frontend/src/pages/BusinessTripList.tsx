@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, Button, Modal, Form, Input, Select, DatePicker, message, Space, Tag, Card, Row, Col, Statistic, Dropdown, Popconfirm, Upload } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, CheckOutlined, CloseOutlined, MoreOutlined, SendOutlined, UndoOutlined, CheckCircleOutlined, DownloadOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons'
-import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getOrganizationsSimple, getProjects, safeJsonParse, exportBusinessTripsCsv, exportBusinessTripsExcel, importBusinessTrips, importLegacyBusinessTrips, downloadTripImportTemplate } from '../services/api'
+import { getBusinessTrips, createBusinessTrip, updateBusinessTrip, deleteBusinessTrip, submitBusinessTrip, approveBusinessTrip, rejectBusinessTrip, resubmitBusinessTrip, completeBusinessTrip, getBusinessTripStats, getOrganizationsSimple, getProjects, safeJsonParse, exportBusinessTripsCsv, exportBusinessTripsExcel, importBusinessTrips, downloadTripImportTemplate } from '../services/api'
 import dayjs from 'dayjs'
 import { OrgContactSelector } from '../components/OrgContactSelector'
 import { usePermission } from '../hooks/usePermission'
@@ -41,7 +41,6 @@ function BusinessTripList() {
   const [approveRemark, setApproveRemark] = useState('')
   const [rejectReason, setRejectReason] = useState('')
   const [importModalVisible, setImportModalVisible] = useState(false)
-  const [legacyImportVisible, setLegacyImportVisible] = useState(false)
 
   const fetchTrips = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true)
@@ -268,18 +267,6 @@ function BusinessTripList() {
   const getOrganizationName = (organizationId: number) => {
     const organization = organizations.find(c => c.id === organizationId)
     return organization ? organization.name : '-'
-  }
-
-  // 导入客户旧版出差统计 Excel(报销人自动匹配)
-  const handleLegacyImport = async (file: File) => {
-    try {
-      const result: any = await importLegacyBusinessTrips(file)
-      message.success(result?.message || '导入完成')
-      setLegacyImportVisible(false)
-      fetchTrips(1, pagination.pageSize)
-    } catch (e: any) {
-      message.error(e?.error || '导入失败')
-    }
   }
 
   // 下载出差统计导入模板(含填写说明)
@@ -510,7 +497,6 @@ function BusinessTripList() {
             { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
             { type: 'divider' },
             { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
-            { key: 'import-legacy', icon: <ImportOutlined />, label: '导入旧版出差统计(客户Excel)', onClick: () => setLegacyImportVisible(true) },
             { key: 'template', icon: <DownloadOutlined />, label: '下载导入模板', onClick: handleDownloadTemplate },
           ]}}>
             <Button icon={<DownloadOutlined />}>导入导出</Button>
@@ -632,15 +618,7 @@ function BusinessTripList() {
         <Upload.Dragger accept=".csv,.xlsx,.xls" beforeUpload={(file) => { handleImport(file); return false }} showUploadList={false}>
           <p className="ant-upload-drag-icon"><InboxOutlined /></p>
           <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
-          <p className="ant-upload-tip">支持 CSV、Excel 格式</p>
-        </Upload.Dragger>
-      </Modal>
-
-      <Modal title="导入旧版出差统计(客户Excel)" open={legacyImportVisible} onCancel={() => setLegacyImportVisible(false)} footer={null}>
-        <Upload.Dragger accept=".xlsx,.xls" beforeUpload={(file) => { handleLegacyImport(file); return false }} showUploadList={false}>
-          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p className="ant-upload-text">点击或拖拽旧版出差统计表到此区域上传</p>
-          <p className="ant-upload-tip">格式:表头"序号/起始日期/结束日期/金额/总计(天)",上方有"报销人:xxx";报销人按姓名自动匹配,同人同起止日期不重复导入</p>
+          <p className="ant-upload-tip">支持 CSV、Excel 格式；旧版出差统计/模板文件会自动识别</p>
         </Upload.Dragger>
         <div style={{ marginTop: 12 }}>
           <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate} block>

@@ -514,11 +514,7 @@ export const importQuotations = (file: File) => importFile('/quotations/import',
 export const importBusinessTrips = (file: File) => importFile('/business-trips/import', file)
 export const importExpenses = (file: File) => importFile('/expenses/import', file)
 export const importDailyReports = (file: File) => importFile('/daily-reports/import', file)
-// 导入客户旧版 Excel(报销单/出差统计/工作日报,格式见 docs/ 样本)
-export const importLegacyExpenses = (file: File) => importFile('/expenses/import-legacy', file)
-export const importLegacyBusinessTrips = (file: File) => importFile('/business-trips/import-legacy', file)
-export const importLegacyDailyReports = (file: File) => importFile('/daily-reports/import-legacy', file)
-// 下载旧版导入模板(与导入格式对齐,附填写说明)
+// 下载旧版导入模板(与导入格式对齐,附填写说明;导入走各模块"导入数据",旧版格式自动识别)
 export const downloadExpenseImportTemplate = () => api.get('/expenses/import-template', { responseType: 'blob' })
 export const downloadTripImportTemplate = () => api.get('/business-trips/import-template', { responseType: 'blob' })
 

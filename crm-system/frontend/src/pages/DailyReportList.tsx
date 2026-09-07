@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Modal, Form, Input, Select, DatePicker, message, Space, Tag, Card, Row, Col, Statistic, Table, Popconfirm, InputNumber, Upload, Dropdown, Empty, Pagination } from 'antd'
 import { EditOutlined, DeleteOutlined, ReloadOutlined, SearchOutlined, DownloadOutlined, ImportOutlined, InboxOutlined, MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
-import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, getOrganizationsSimple, exportDailyReports, exportDailyReportsExcel, importDailyReports, importLegacyDailyReports, safeJsonParse } from '../services/api'
+import { getDailyReports, createDailyReport, updateDailyReport, deleteDailyReport, getDailyReportStats, getProjects, getOrganizationsSimple, exportDailyReports, exportDailyReportsExcel, importDailyReports, safeJsonParse } from '../services/api'
 import dayjs from 'dayjs'
 import { usePermission } from '../hooks/usePermission'
 
@@ -43,7 +43,6 @@ function DailyReportList() {
   const [filterOrgId, setFilterOrgId] = useState<number | undefined>(undefined)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [importModalVisible, setImportModalVisible] = useState(false)
-  const [legacyImportVisible, setLegacyImportVisible] = useState(false)
   const searchTextRef = useRef(searchText)
   const dateRangeRef = useRef(dateRange)
   const filterProjectIdRef = useRef(filterProjectId)
@@ -186,19 +185,6 @@ function DailyReportList() {
       fetchStats()
     } catch (error: any) {
       message.error(error?.error || '操作失败')
-    }
-  }
-
-  // 导入客户旧版日报 Excel(按日期归组,归属人自动识别)
-  const handleLegacyImport = async (file: File) => {
-    try {
-      const result: any = await importLegacyDailyReports(file)
-      message.success(result?.message || '导入完成')
-      setLegacyImportVisible(false)
-      fetchReports(1, pagination.pageSize)
-      fetchStats()
-    } catch (e: any) {
-      message.error(e?.error || '导入失败')
     }
   }
 
@@ -448,7 +434,6 @@ function DailyReportList() {
             { key: 'excel', icon: <DownloadOutlined />, label: '导出 Excel', onClick: () => handleExport('excel') },
             { type: 'divider' },
             { key: 'import', icon: <ImportOutlined />, label: '导入数据', onClick: () => setImportModalVisible(true) },
-            { key: 'import-legacy', icon: <ImportOutlined />, label: '导入旧版日报(客户Excel)', onClick: () => setLegacyImportVisible(true) },
           ]}}>
             <Button icon={<DownloadOutlined />}>导入导出</Button>
           </Dropdown>
@@ -578,15 +563,7 @@ function DailyReportList() {
         <Upload.Dragger accept=".csv,.xlsx,.xls" beforeUpload={(file) => { handleImport(file); return false }} showUploadList={false}>
           <p className="ant-upload-drag-icon"><InboxOutlined /></p>
           <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
-          <p className="ant-upload-tip">支持 CSV、Excel 格式</p>
-        </Upload.Dragger>
-      </Modal>
-
-      <Modal title="导入旧版日报(客户Excel)" open={legacyImportVisible} onCancel={() => setLegacyImportVisible(false)} footer={null}>
-        <Upload.Dragger accept=".xlsx,.xls" beforeUpload={(file) => { handleLegacyImport(file); return false }} showUploadList={false}>
-          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p className="ant-upload-text">点击或拖拽旧版日报文件到此区域上传</p>
-          <p className="ant-upload-tip">格式:列"日期/客户名/详细信息/待办事项";按日期归组生成日报,归属人取"客户名"列出现最多的系统用户;同一天已有日报则追加记录</p>
+          <p className="ant-upload-tip">支持 CSV、Excel 格式；旧版日报(列:日期/客户名/详细信息/待办事项)会自动识别</p>
         </Upload.Dragger>
       </Modal>
     </div>
