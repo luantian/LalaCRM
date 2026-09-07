@@ -488,8 +488,8 @@ export const exportProjectsExcel = () => api.get('/projects/export/excel', { res
 export const exportOpportunitiesExcel = () => api.get('/opportunities/export/excel', { responseType: 'blob' })
 export const exportContractsExcel = () => api.get('/contracts/export/excel', { responseType: 'blob' })
 export const exportQuotationsExcel = () => api.get('/quotations/export/excel', { responseType: 'blob' })
-export const exportBusinessTripsExcel = () => api.get('/business-trips/export/excel', { responseType: 'blob' })
-export const exportExpensesExcel = () => api.get('/expenses/export/excel', { responseType: 'blob' })
+export const exportBusinessTripsExcel = (params?: any) => api.get('/business-trips/export/excel', { params, responseType: 'blob' })
+export const exportExpensesExcel = (params?: any) => api.get('/expenses/export/excel', { params, responseType: 'blob' })
 export const exportDailyReportsExcel = (params?: any) => api.get('/daily-reports/export/excel', { params, responseType: 'blob' })
 
 // ==================== 导出(CSV) - 补充缺失的 ====================
@@ -497,8 +497,8 @@ export const exportProjectsCsv = () => api.get('/projects/export/csv', { respons
 export const exportContractsCsv = () => api.get('/contracts/export/csv', { responseType: 'blob' })
 export const exportOpportunitiesCsv = () => api.get('/opportunities/export/csv', { responseType: 'blob' })
 export const exportQuotationsCsv = () => api.get('/quotations/export/csv', { responseType: 'blob' })
-export const exportBusinessTripsCsv = () => api.get('/business-trips/export/csv', { responseType: 'blob' })
-export const exportExpensesCsv = () => api.get('/expenses/export/csv', { responseType: 'blob' })
+export const exportBusinessTripsCsv = (params?: any) => api.get('/business-trips/export/csv', { params, responseType: 'blob' })
+export const exportExpensesCsv = (params?: any) => api.get('/expenses/export/csv', { params, responseType: 'blob' })
 
 // ==================== 导入 ====================
 const importFile = (url: string, file: File) => {

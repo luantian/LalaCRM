@@ -6,7 +6,7 @@ import { authenticateToken, AuthRequest, checkPermission } from '../middleware/a
 import { logOperation } from '../middleware/logOperation'
 import { clampPagination } from '../middleware/validation'
 import logger from '../utils/logger'
-import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { exportCSV, exportExcel, parseImportFile, mapImportRow, parseImportDate } from '../utils/exportImport'
 import { upload } from '../middleware/upload'
 
 const router = Router()
@@ -305,8 +305,7 @@ const columns = [
   { key: 'notesText', label: '工作内容(Notes)' },
   { key: 'todosText', label: '待办事项' },
   { key: 'plan', label: '后续计划' },
-  { key: 'hours', label: '工时' },
-  { key: 'statusLabel', label: '状态' }
+  { key: 'hours', label: '工时' }
 ]
 
 const reportTypeLabel: Record<string, string> = {
@@ -325,18 +324,12 @@ const sourceLabelMap: Record<string, string> = {
   PROJECT: '项目', ORGANIZATION: '客户'
 }
 
-const statusLabelMap: Record<string, string> = {
-  DRAFT: '草稿',
-  SUBMITTED: '已提交',
-  APPROVED: '已批准',
-  REJECTED: '已拒绝'
-}
-
 /**
  * 导出统一行结构：一天多件事 = 多行（一条 entry 一行）。
- * 日报级字段（类型/待办/计划/工时/状态）只出现在该日报块的首行，
+ * 日报级字段（类型/待办/计划/工时）只出现在该日报块的首行，
  * 后续行留空——避免逐行重复导致的大片重复内容，工时列也可直接求和。
  * 日期/姓名每行保留，便于在 Excel 中筛选。
+ * 注：状态列已去掉——日报无审批流，全部恒为草稿，无信息量。
  */
 function buildExportRows(reports: any[]): any[] {
   return reports.flatMap((r: any) => {
@@ -355,8 +348,7 @@ function buildExportRows(reports: any[]): any[] {
         notesText: (e.content || e.title || '').split('\n').filter(Boolean).join('；'),
         todosText: first && Array.isArray(r.todos) ? r.todos.join('；') : '',
         plan: first ? (r.plan || '') : '',
-        hours: first && r.hours != null ? Number(r.hours) : '',
-        statusLabel: first ? (statusLabelMap[r.status] || r.status || '') : ''
+        hours: first && r.hours != null ? Number(r.hours) : ''
       }
     })
   })
@@ -1355,7 +1347,7 @@ router.get('/export/excel', authenticateToken, checkPermission('office:dailyrepo
 
     const data = buildExportRows(reports)
     // 各列宽度：工作内容/待办/计划加宽，其余窄列
-    exportExcel(res, 'daily-reports.xlsx', '工作日报', columns, data, [12, 10, 18, 18, 8, 10, 55, 25, 25, 8, 9])
+    exportExcel(res, 'daily-reports.xlsx', '工作日报', columns, data, [12, 10, 18, 18, 8, 10, 55, 25, 25, 8])
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })
@@ -1395,7 +1387,7 @@ router.post('/import', authenticateToken, checkPermission('office:dailyreport:ad
         await prisma.dailyReport.create({
           data: {
             ...rest,
-            reportDate: mapped.reportDate ? new Date(mapped.reportDate) : new Date(),
+            reportDate: parseImportDate(mapped.reportDate),
             hours: parseFloat(mapped.hours) || 0,
             organizationId,
             projectId,

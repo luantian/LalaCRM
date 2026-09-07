@@ -5,7 +5,7 @@ import { applyDataScope } from '../middleware/dataScope'
 import { logOperation } from '../middleware/logOperation'
 import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
-import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { exportCSV, exportExcel, parseImportFile, mapImportRow, parseImportDate } from '../utils/exportImport'
 import { autoWriteBusinessTripRecord } from '../utils/autoDailyReport'
 import { upload } from '../middleware/upload'
 import { isAdmin } from '../utils/permission'
@@ -526,16 +526,102 @@ router.delete('/:id', authenticateToken, checkPermission('office:trip:add'), log
   }
 })
 
+// ===== 导出共用（CSV/Excel 同一套列、映射、行结构、筛选）=====
+
+/** Date → 本地 YYYY-MM-DD 字符串（显示稳定且导出文件可直接回环导入） */
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const tripStatusLabels: Record<string, string> = {
+  DRAFT: '草稿',
+  SUBMITTED: '待审批',
+  APPROVED: '已批准',
+  REJECTED: '已驳回',
+  COMPLETED: '已完成'
+}
+
 const columns = [
   { key: 'title', label: '出差标题' },
+  { key: 'orgName', label: '客户' },
+  { key: 'projName', label: '项目' },
   { key: 'destination', label: '目的地' },
   { key: 'purpose', label: '目的' },
   { key: 'startDate', label: '开始日期' },
   { key: 'endDate', label: '结束日期' },
   { key: 'days', label: '天数' },
-  { key: 'status', label: '状态' },
-  { key: 'owner.name', label: '负责人' }
+  { key: 'statusLabel', label: '状态' },
+  { key: 'ownerName', label: '负责人' }
 ]
+
+function buildExportRows(list: any[]): any[] {
+  return list.map((t: any) => ({
+    title: t.title,
+    orgName: t.organization?.name || '',
+    projName: t.project?.name || '',
+    destination: t.destination,
+    purpose: t.purpose || '',
+    startDate: toLocalDateStr(t.startDate),
+    endDate: toLocalDateStr(t.endDate),
+    days: t.days,
+    statusLabel: tripStatusLabels[t.status] || t.status || '',
+    ownerName: t.owner?.name || ''
+  }))
+}
+
+/** 导出条件：数据权限 + 列表同款筛选（状态/搜索） */
+function buildExportWhere(req: AuthRequest): any {
+  const { status = '', search = '' } = req.query
+  const dataScopeWhere = (req as any).dataScopeWhere || {}
+  const conditions: any[] = [{ deletedAt: null }]
+  if (Object.keys(dataScopeWhere).length > 0) {
+    conditions.push(dataScopeWhere)
+  }
+  if (status) {
+    conditions.push({ status: status as string })
+  }
+  if (search) {
+    conditions.push({
+      OR: [
+        { title: { contains: search as string, mode: 'insensitive' } },
+        { destination: { contains: search as string, mode: 'insensitive' } },
+        { purpose: { contains: search as string, mode: 'insensitive' } }
+      ]
+    })
+  }
+  return conditions.length > 1 ? { AND: conditions } : conditions[0]
+}
+
+const exportInclude = {
+  owner: { select: { name: true } },
+  organization: { select: { name: true } },
+  project: { select: { name: true } }
+}
+
+router.get('/export/csv', authenticateToken, checkPermission('office:trip:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
+  try {
+    const where = buildExportWhere(req)
+    const list = await prisma.businessTrip.findMany({ where, include: exportInclude, orderBy: { startDate: 'desc' } })
+    exportCSV(res, 'business-trips.csv', columns, buildExportRows(list))
+  } catch (error) {
+    logger.error('Export business trips CSV error:', error)
+    res.status(500).json({ error: '导出 CSV 失败' })
+  }
+})
+
+router.get('/export/excel', authenticateToken, checkPermission('office:trip:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
+  try {
+    const where = buildExportWhere(req)
+    const list = await prisma.businessTrip.findMany({ where, include: exportInclude, orderBy: { startDate: 'desc' } })
+    exportExcel(res, 'business-trips.xlsx', '出差记录', columns, buildExportRows(list), [24, 20, 20, 14, 20, 12, 12, 8, 10, 10])
+  } catch (error) {
+    logger.error('Export error:', error)
+    res.status(500).json({ error: '导出失败' })
+  }
+})
 
 const labelMap: Record<string, string> = {
   '出差标题': 'title',
@@ -545,21 +631,6 @@ const labelMap: Record<string, string> = {
   '结束日期': 'endDate',
   '天数': 'days'
 }
-
-router.get('/export/excel', authenticateToken, checkPermission('office:trip:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
-  try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
-    const data = await prisma.businessTrip.findMany({
-      where: { deletedAt: null, ...dataScopeWhere },
-      include: { owner: { select: { name: true } }, organization: { select: { name: true } }, project: { select: { name: true } } },
-      orderBy: { createdAt: 'desc' }
-    })
-    exportExcel(res, 'business-trips.xlsx', '出差记录', columns, data)
-  } catch (error) {
-    logger.error('Export error:', error)
-    res.status(500).json({ error: '导出失败' })
-  }
-})
 
 router.post('/import', authenticateToken, checkPermission('office:trip:add'), upload.single('file'), logOperation('出差管理', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
@@ -575,8 +646,8 @@ router.post('/import', authenticateToken, checkPermission('office:trip:add'), up
         await prisma.businessTrip.create({
           data: {
             ...mapped,
-            startDate: mapped.startDate ? new Date(mapped.startDate) : new Date(),
-            endDate: mapped.endDate ? new Date(mapped.endDate) : new Date(),
+            startDate: parseImportDate(mapped.startDate),
+            endDate: parseImportDate(mapped.endDate),
             days: parseInt(mapped.days) || 1,
             status: 'DRAFT',
             ownerId: req.user!.id,

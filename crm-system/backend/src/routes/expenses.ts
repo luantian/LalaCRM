@@ -115,7 +115,7 @@ router.get('/', authenticateToken, checkPermission('finance:expense:list'), appl
       conditions.push({
         OR: [
           { title: { contains: search as string, mode: 'insensitive' } },
-          { description: { contains: search as string, mode: 'insensitive' } }
+          { items: { some: { description: { contains: search as string, mode: 'insensitive' } } } }
         ]
       })
     }
@@ -667,45 +667,111 @@ router.post('/:id/pay', authenticateToken, checkPermission('finance:expense:appr
   }
 })
 
+// ===== 导出共用（CSV/Excel 同一套列、映射、行结构、筛选）=====
+
+/** Date → 本地 YYYY-MM-DD（避免按 UTC 截断导致日期偏移） */
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const expenseStatusLabels: Record<string, string> = {
+  DRAFT: '草稿',
+  SUBMITTED: '待审批',
+  APPROVED: '已批准',
+  REJECTED: '已拒绝',
+  PAID: '已支付'
+}
+// 中文状态 → 枚举（导出状态列为中文，导入时反解析保证导出文件可回环导入）
+const expenseStatusByLabel: Record<string, string> = Object.fromEntries(
+  Object.entries(expenseStatusLabels).map(([k, v]) => [v, k])
+)
+
 const columns = [
   { key: 'title', label: '报销标题' },
+  { key: 'createdAt', label: '创建日期' },
+  { key: 'orgName', label: '客户' },
+  { key: 'projName', label: '项目' },
   { key: 'totalAmount', label: '总金额' },
   { key: 'itemCount', label: '明细数量' },
-  { key: 'organization.name', label: '组织' },
-  { key: 'project.name', label: '项目' },
-  { key: 'status', label: '状态' },
-  { key: 'owner.name', label: '负责人' }
+  { key: 'statusLabel', label: '状态' },
+  { key: 'ownerName', label: '负责人' }
 ]
+
+function buildExportRows(list: any[]): any[] {
+  return list.map((e: any) => ({
+    title: e.title,
+    createdAt: toLocalDateStr(e.createdAt),
+    orgName: e.organization?.name || '',
+    projName: e.project?.name || '',
+    totalAmount: e.totalAmount != null ? Number(e.totalAmount) : '',
+    itemCount: e.items ? e.items.length : 0,
+    statusLabel: expenseStatusLabels[e.status] || e.status || '',
+    ownerName: e.owner?.name || ''
+  }))
+}
+
+/** 导出条件：数据权限（沿用审批池逻辑，与列表一致）+ 列表同款筛选 */
+async function buildExportConditions(req: AuthRequest): Promise<any> {
+  const { status = '', search = '', tripId = '' } = req.query
+  const dataScopeWhere = await withApprovalPool(req.user!.id, (req as any).dataScopeWhere || {})
+  const conditions: any[] = [{ deletedAt: null }]
+  if (Object.keys(dataScopeWhere).length > 0) {
+    conditions.push(dataScopeWhere)
+  }
+  if (status) {
+    conditions.push({ status: status as string })
+  }
+  if (tripId) {
+    conditions.push({ tripId: parseInt(tripId as string) })
+  }
+  if (search) {
+    conditions.push({
+      OR: [
+        { title: { contains: search as string, mode: 'insensitive' } },
+        { items: { some: { description: { contains: search as string, mode: 'insensitive' } } } }
+      ]
+    })
+  }
+  return conditions.length > 1 ? { AND: conditions } : conditions[0]
+}
+
+const exportInclude = {
+  organization: { select: { name: true } },
+  project: { select: { name: true } },
+  owner: { select: { name: true } },
+  items: { where: { deletedAt: null } }
+}
+
+router.get('/export/csv', authenticateToken, checkPermission('finance:expense:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
+  try {
+    const where = await buildExportConditions(req)
+    const list = await prisma.expense.findMany({ where, include: exportInclude, orderBy: { createdAt: 'desc' } })
+    exportCSV(res, 'expenses.csv', columns, buildExportRows(list))
+  } catch (error) {
+    logger.error('Export expenses CSV error:', error)
+    res.status(500).json({ error: '导出 CSV 失败' })
+  }
+})
+
+router.get('/export/excel', authenticateToken, checkPermission('finance:expense:list'), applyDataScope({ ownerField: 'ownerId', relations: [{ path: 'project', ownerField: 'ownerId', teamMemberField: 'teamMembers' }] }), async (req: AuthRequest, res) => {
+  try {
+    const where = await buildExportConditions(req)
+    const list = await prisma.expense.findMany({ where, include: exportInclude, orderBy: { createdAt: 'desc' } })
+    exportExcel(res, 'expenses.xlsx', '费用报销', columns, buildExportRows(list), [26, 12, 20, 20, 12, 10, 10, 10])
+  } catch (error) {
+    logger.error('Export error:', error)
+    res.status(500).json({ error: '导出失败' })
+  }
+})
 
 const labelMap: Record<string, string> = {
   '报销标题': 'title',
   '总金额': 'totalAmount',
   '状态': 'status'
 }
-
-router.get('/export/excel', authenticateToken, checkPermission('finance:expense:list'), async (req: AuthRequest, res) => {
-  try {
-    const dataScopeWhere = (req as any).dataScopeWhere || {}
-    const data = await prisma.expense.findMany({
-      where: { deletedAt: null, ...dataScopeWhere },
-      include: { 
-        owner: { select: { name: true } }, 
-        organization: { select: { name: true } }, 
-        project: { select: { name: true } },
-        items: true
-      },
-      orderBy: { createdAt: 'desc' }
-    })
-    const exportData = data.map((e: any) => ({
-      ...e,
-      itemCount: e.items.length
-    }))
-    exportExcel(res, 'expenses.xlsx', '费用报销', columns, exportData)
-  } catch (error) {
-    logger.error('Export error:', error)
-    res.status(500).json({ error: '导出失败' })
-  }
-})
 
 router.post('/import', authenticateToken, checkPermission('finance:expense:add'), upload.single('file'), logOperation('费用报销', 'IMPORT'), async (req: AuthRequest, res) => {
   try {
@@ -718,12 +784,17 @@ router.post('/import', authenticateToken, checkPermission('finance:expense:add')
     for (const row of data) {
       try {
         const mapped = mapImportRow(row, labelMap)
+        // 状态兼容中文标签（导出列为中文）与英文枚举，其余回退草稿
+        const rawStatus = String(mapped.status || '').trim()
+        const statusValue = (expenseStatusLabels[rawStatus]
+          ? rawStatus
+          : (expenseStatusByLabel[rawStatus] || 'DRAFT')) as 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PAID'
         // 导入时创建一个默认明细
         await prisma.expense.create({
           data: {
             title: mapped.title,
             totalAmount: parseFloat(mapped.totalAmount) || 0,
-            status: mapped.status || 'DRAFT',
+            status: statusValue,
             ownerId: req.user!.id,
             items: {
               create: [{

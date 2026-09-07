@@ -57,6 +57,26 @@ export function exportExcel(res: Response, filename: string, sheetName: string, 
 }
 
 /**
+ * 导入日期解析：兼容三种形态——
+ *  1. Excel 日期序列值（SheetJS 读 CSV 时会把日期样文本嗅探为数值序列）
+ *  2. 'YYYY-MM-DD' / 'YYYY/M/D' 字符串（按本地零点解析，避免 UTC 偏移移日）
+ *  3. 其他可解析字符串；空值返回 fallback（默认当前时间）
+ */
+export function parseImportDate(val: any, fallback: Date = new Date()): Date {
+  if (val == null || val === '') return fallback
+  if (val instanceof Date) return val
+  if (typeof val === 'number' && isFinite(val)) {
+    // Excel 1900 日期体系序列值 → 当日 UTC 零点
+    return new Date(Math.round((val - 25569) * 86400000))
+  }
+  const s = String(val).trim()
+  const m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(s)
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? fallback : d
+}
+
+/**
  * 解析导入文件（CSV 或 Excel）
  * 返回行数据数组（对象数组）
  */

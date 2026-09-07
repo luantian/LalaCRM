@@ -395,7 +395,11 @@ function ExpenseList() {
 
   const handleExport = async (type: 'csv' | 'excel') => {
     try {
-      const blob: any = type === 'csv' ? await exportExpensesCsv() : await exportExpensesExcel()
+      // 与列表查询同条件导出：搜索词 + 状态
+      const params: any = {}
+      if (searchTextRef.current.trim()) params.search = searchTextRef.current.trim()
+      if (filterStatusRef.current) params.status = filterStatusRef.current
+      const blob: any = type === 'csv' ? await exportExpensesCsv(params) : await exportExpensesExcel(params)
       if (!blob) { message.error('导出失败：无数据'); return }
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
