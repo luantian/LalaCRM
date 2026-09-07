@@ -1501,9 +1501,10 @@ async function handleLegacyDailyImport(req: AuthRequest, file: Express.Multer.Fi
         else appendedReports++
       }
 
-      // 待办合并去重 + 重算 content 缓存与总工时(与自动写入逻辑一致)
-      const newTodos = dayRows.map(r => r.todo).filter(t => t && t !== '/')
-      const todos = [...new Set([...(Array.isArray(report.todos) ? report.todos : []), ...newTodos])]
+      // 待办合并去重(单元格内多行编号格式拆成多条) + 重算 content 缓存与总工时(与自动写入逻辑一致)
+      const newTodos = dayRows.flatMap(r => splitTodoCell(r.todo))
+      const existingTodos = Array.isArray(report.todos) ? report.todos.flatMap((t: string) => splitTodoCell(t)) : []
+      const todos = [...new Set([...existingTodos, ...newTodos])]
       const entries = await prisma.dailyReportEntry.findMany({
         where: { reportId: report.id, deletedAt: null },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -1532,6 +1533,18 @@ function looksLikeLegacyDaily(file: Express.Multer.File): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * 待办单元格拆分:单元格内多行/编号格式("1.嘎嘎\n2.哈哈\n3.呵呵")拆成多条独立待办,
+ * 并剥掉行首编号/圆点(前端待办列表自带 "1. 2. 3." 序号,保留会双重编号)。
+ * 编号分隔符为必匹配,避免误伤"3D打印"这类正常开头的文本。
+ */
+function splitTodoCell(text: string): string[] {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map(s => s.trim().replace(/^\(\d{1,3}\)\s*/, '').replace(/^\d{1,3}[.、．:：]\s*/, '').replace(/^[-•]\s*/, '').trim())
+    .filter(s => s && s !== '/')
 }
 
 router.post('/import-legacy', authenticateToken, checkPermission('office:dailyreport:add'), upload.single('file'), logOperation('工作日报', 'IMPORT'), async (req: AuthRequest, res) => {
