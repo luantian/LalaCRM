@@ -8,6 +8,7 @@ import { logOperation } from '../middleware/logOperation'
 import { sortValidation, clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { exportStyledExcel } from '../utils/styledExcel'
 import { autoWriteOpportunityRecord, autoWriteOpportunityStatusChange, autoWriteOpportunityCreate, autoWriteOpportunityConvert, autoWriteFileUploadRecord } from '../utils/autoDailyReport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import { hasAmountPermission, filterOpportunityAmount } from '../utils/amountPermission'
@@ -1132,7 +1133,7 @@ const opportunityLabelMap: Record<string, string> = {
   '状态': 'status',
 }
 
-// 导出商机 Excel
+// 导出商机 Excel(排版版:中文状态、预算数值化;金额无权限用户脱敏为空列)
 router.get('/export/excel', authenticateToken, checkPermission('crm:opportunity:list'), applyDataScope({ ownerField: 'ownerId', teamMemberField: 'teamMembers' }), async (req: AuthRequest, res) => {
   try {
     const dataScopeWhere = (req as any).dataScopeWhere || {}
@@ -1144,7 +1145,27 @@ router.get('/export/excel', authenticateToken, checkPermission('crm:opportunity:
     // 金额权限：与列表接口一致，无权限用户导出的金额列脱敏
     const canSeeAmount = await hasAmountPermission(req.user!.id)
     const processed = canSeeAmount ? data : data.map(filterOpportunityAmount)
-    exportExcel(res, '商机列表.xlsx', '商机', opportunityColumns, processed)
+    const oppStatusLabels: Record<string, string> = {
+      OPEN: '初步接触', FOLLOWING: '跟进中', WON: '赢单', LOST: '输单', CLOSED: '关闭'
+    }
+    const rows = (processed as any[]).map((o: any) => ({
+      name: o.name,
+      orgName: o.organization?.name || '',
+      application: o.application || '',
+      budget: o.budget != null ? Number(o.budget) : '',
+      winRate: o.winRate != null ? Number(o.winRate) : '',
+      statusLabel: oppStatusLabels[o.status] || o.status || '',
+      ownerName: o.owner?.name || ''
+    }))
+    await exportStyledExcel(res, '商机列表.xlsx', '商机', '售前商机', [
+      { key: 'name', label: '商机名称', width: 26, wrap: true },
+      { key: 'orgName', label: '客户', width: 22 },
+      { key: 'application', label: '应用领域', width: 18 },
+      { key: 'budget', label: '预算', width: 14, align: 'right', numFmt: '#,##0.00' },
+      { key: 'winRate', label: '赢单率(%)', width: 11, align: 'center' },
+      { key: 'statusLabel', label: '状态', width: 10, align: 'center' },
+      { key: 'ownerName', label: '负责人', width: 10, align: 'center' }
+    ], rows, `共 ${rows.length} 个商机`)
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })

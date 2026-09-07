@@ -6,6 +6,7 @@ import { logOperation } from '../middleware/logOperation'
 import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow, parseImportDate } from '../utils/exportImport'
+import { exportStyledExcel } from '../utils/styledExcel'
 import { readLegacySheet, findPersonName, userIdByName, orgIdByText, projectIdByName, legacyDateToLocal, buildTemplateWorkbook } from '../utils/legacyImport'
 import { autoWriteBusinessTripRecord } from '../utils/autoDailyReport'
 import { upload } from '../middleware/upload'
@@ -657,7 +658,20 @@ router.get('/export/excel', authenticateToken, checkPermission('office:trip:list
   try {
     const where = buildExportWhere(req)
     const list = await prisma.businessTrip.findMany({ where, include: exportInclude, orderBy: { startDate: 'desc' } })
-    exportExcel(res, 'business-trips.xlsx', '出差记录', columns, buildExportRows(list), [24, 20, 20, 14, 20, 12, 12, 8, 10, 10])
+    const rows = buildExportRows(list)
+    const totalDays = rows.reduce((s, r) => s + Number(r.days || 0), 0)
+    await exportStyledExcel(res, 'business-trips.xlsx', '出差记录', '出差记录', [
+      { key: 'title', label: '出差标题', width: 24, wrap: true },
+      { key: 'orgName', label: '客户', width: 20 },
+      { key: 'projName', label: '项目', width: 20 },
+      { key: 'destination', label: '目的地', width: 14 },
+      { key: 'purpose', label: '目的', width: 20, wrap: true },
+      { key: 'startDate', label: '开始日期', width: 12, align: 'center' },
+      { key: 'endDate', label: '结束日期', width: 12, align: 'center' },
+      { key: 'days', label: '天数', width: 8, align: 'center' },
+      { key: 'statusLabel', label: '状态', width: 10, align: 'center' },
+      { key: 'ownerName', label: '负责人', width: 10, align: 'center' }
+    ], rows, `共 ${rows.length} 次出差 · 合计 ${totalDays} 天`)
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })

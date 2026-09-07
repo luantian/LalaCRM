@@ -10,6 +10,7 @@ import logger from '../utils/logger'
 import { autoWriteQuotationRecord } from '../utils/autoDailyReport'
 import { notifyExternal, userNameOf } from '../utils/externalNotify'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow, parseImportDate } from '../utils/exportImport'
+import { exportStyledExcel } from '../utils/styledExcel'
 import { orgIdByText, buildTemplateWorkbook, readLegacySheet } from '../utils/legacyImport'
 import { servePreview, cleanupPreviewCache } from '../utils/filePreview'
 import { hasAmountPermission, filterQuotationAmount } from '../utils/amountPermission'
@@ -744,7 +745,18 @@ router.get('/export/excel', authenticateToken, checkPermission('crm:quotation:li
     })
     const canSeeAmount = await hasAmountPermission(req.user!.id)
     const processed = canSeeAmount ? data : data.map(filterQuotationAmount)
-    exportExcel(res, '报价单列表.xlsx', '报价单', quotationColumns, buildQuotationExportRows(processed), [26, 8, 22, 22, 14, 10, 12, 10])
+    const rows = buildQuotationExportRows(processed)
+    const total = rows.reduce((s, r) => s + Number(r.totalAmount || 0), 0)
+    await exportStyledExcel(res, '报价单列表.xlsx', '报价单', '报价单', [
+      { key: 'name', label: '报价单', width: 26, wrap: true },
+      { key: 'version', label: '版本', width: 8, align: 'center' },
+      { key: 'orgName', label: '客户', width: 22 },
+      { key: 'oppName', label: '关联商机', width: 22 },
+      { key: 'totalAmount', label: '报价总额', width: 14, align: 'right', numFmt: '#,##0.00' },
+      { key: 'statusLabel', label: '状态', width: 12, align: 'center' },
+      { key: 'validUntil', label: '有效期', width: 12, align: 'center' },
+      { key: 'ownerName', label: '创建人', width: 10, align: 'center' }
+    ], rows, `共 ${rows.length} 份报价单 · 合计 ¥${total.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`)
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })

@@ -7,6 +7,7 @@ import { logOperation } from '../middleware/logOperation'
 import { clampPagination, dateValidation } from '../middleware/validation'
 import logger from '../utils/logger'
 import { exportCSV, exportExcel, parseImportFile, mapImportRow } from '../utils/exportImport'
+import { exportStyledExcel } from '../utils/styledExcel'
 import { readLegacySheet, findPersonName, userIdByName, orgIdByText, projectIdByName, legacyDateToLocal, buildTemplateWorkbook } from '../utils/legacyImport'
 import { upload } from '../middleware/upload'
 import { autoWriteExpenseRecord } from '../utils/autoDailyReport'
@@ -804,7 +805,18 @@ router.get('/export/excel', authenticateToken, checkPermission('finance:expense:
   try {
     const where = await buildExportConditions(req)
     const list = await prisma.expense.findMany({ where, include: exportInclude, orderBy: { createdAt: 'desc' } })
-    exportExcel(res, 'expenses.xlsx', '费用报销', columns, buildExportRows(list), [26, 12, 20, 20, 12, 10, 10, 10])
+    const rows = buildExportRows(list)
+    const total = rows.reduce((s, r) => s + Number(r.totalAmount || 0), 0)
+    await exportStyledExcel(res, 'expenses.xlsx', '费用报销', '费用报销', [
+      { key: 'title', label: '报销标题', width: 26, wrap: true },
+      { key: 'createdAt', label: '创建日期', width: 12, align: 'center' },
+      { key: 'orgName', label: '客户', width: 18 },
+      { key: 'projName', label: '项目', width: 18 },
+      { key: 'totalAmount', label: '总金额', width: 13, align: 'right', numFmt: '#,##0.00' },
+      { key: 'itemCount', label: '明细数量', width: 10, align: 'center' },
+      { key: 'statusLabel', label: '状态', width: 10, align: 'center' },
+      { key: 'ownerName', label: '负责人', width: 10, align: 'center' }
+    ], rows, `共 ${rows.length} 张报销单 · 合计 ¥${total.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`)
   } catch (error) {
     logger.error('Export error:', error)
     res.status(500).json({ error: '导出失败' })
