@@ -6,51 +6,73 @@
 import { lazy } from 'react'
 import { ROLE_ADMIN } from '../constants'
 
+// 发版后旧 hash chunk 404 / 网络闪断会让懒加载抛错且无 ErrorBoundary 兜底，整树白屏。
+// 失败时整页刷新一次以换取最新 index.html 的 chunk 引用；
+// 60 秒窗口内只自动刷一次，防止资源持续不可用时刷新死循环。
+const CHUNK_RELOAD_KEY = 'chunk_reload_ts'
+const CHUNK_RELOAD_WINDOW_MS = 60_000
+
+function lazyWithRetry(factory: () => Promise<{ default: React.ComponentType<any> }>) {
+  return lazy(() =>
+    factory().catch((err: unknown) => {
+      let last = 0
+      try {
+        last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0)
+      } catch { /* 隐私模式等场景 sessionStorage 不可用，跳过防抖直接抛 */ }
+      if (Date.now() - last > CHUNK_RELOAD_WINDOW_MS) {
+        try { sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now())) } catch { /* 同上 */ }
+        window.location.reload()
+      }
+      throw err
+    })
+  )
+}
+
 // 路由级代码分割 — 所有页面组件懒加载
 export const routeComponents: Record<string, React.LazyExoticComponent<any>> = {
   // 工作总览
-  '/': lazy(() => import('../pages/Dashboard')),
+  '/': lazyWithRetry(() => import('../pages/Dashboard')),
   
   // 客户管理
-  '/organizations': lazy(() => import('../pages/OrganizationList')),
+  '/organizations': lazyWithRetry(() => import('../pages/OrganizationList')),
   
   // 售前管理
-  '/opportunities': lazy(() => import('../pages/OpportunityList')),
-  '/opportunities/:id': lazy(() => import('../pages/OpportunityDetail')),
+  '/opportunities': lazyWithRetry(() => import('../pages/OpportunityList')),
+  '/opportunities/:id': lazyWithRetry(() => import('../pages/OpportunityDetail')),
   
   // 报价单
-  '/quotations': lazy(() => import('../pages/QuotationList')),
-  '/quotations/:id': lazy(() => import('../pages/QuotationDetail')),
+  '/quotations': lazyWithRetry(() => import('../pages/QuotationList')),
+  '/quotations/:id': lazyWithRetry(() => import('../pages/QuotationDetail')),
   
   // 项目管理
-  '/projects': lazy(() => import('../pages/ProjectList')),
-  '/projects/archived': lazy(() => import('../pages/ProjectArchive')),
-  '/projects/:id': lazy(() => import('../pages/ProjectDetail')),
-  '/sales': lazy(() => import('../pages/ProjectArchive')),
+  '/projects': lazyWithRetry(() => import('../pages/ProjectList')),
+  '/projects/archived': lazyWithRetry(() => import('../pages/ProjectArchive')),
+  '/projects/:id': lazyWithRetry(() => import('../pages/ProjectDetail')),
+  '/sales': lazyWithRetry(() => import('../pages/ProjectArchive')),
   
   // 费用报销
-  '/expenses': lazy(() => import('../pages/ExpenseList')),
-  '/expenses/:id': lazy(() => import('../pages/ExpenseDetail')),
+  '/expenses': lazyWithRetry(() => import('../pages/ExpenseList')),
+  '/expenses/:id': lazyWithRetry(() => import('../pages/ExpenseDetail')),
   
   // 日常办公
-  '/daily-reports': lazy(() => import('../pages/DailyReportList')),
-  '/business-trips': lazy(() => import('../pages/BusinessTripList')),
-  '/business-trips/:id': lazy(() => import('../pages/BusinessTripDetail')),
-  '/check-ins': lazy(() => import('../pages/CheckInList')),
-  '/attendance-stats': lazy(() => import('../pages/AttendanceStats')),
+  '/daily-reports': lazyWithRetry(() => import('../pages/DailyReportList')),
+  '/business-trips': lazyWithRetry(() => import('../pages/BusinessTripList')),
+  '/business-trips/:id': lazyWithRetry(() => import('../pages/BusinessTripDetail')),
+  '/check-ins': lazyWithRetry(() => import('../pages/CheckInList')),
+  '/attendance-stats': lazyWithRetry(() => import('../pages/AttendanceStats')),
 
   // 系统管理
-  '/users': lazy(() => import('../pages/UserManagement')),
-  '/roles': lazy(() => import('../pages/RoleManagement')),
-  '/menus': lazy(() => import('../pages/MenuManagement')),
-  '/departments': lazy(() => import('../pages/DepartmentManagement')),
-  '/dicts': lazy(() => import('../pages/DictManagement')),
-  '/database-backup': lazy(() => import('../pages/DatabaseBackup')),
-  '/settings': lazy(() => import('../pages/SystemSettings')),
+  '/users': lazyWithRetry(() => import('../pages/UserManagement')),
+  '/roles': lazyWithRetry(() => import('../pages/RoleManagement')),
+  '/menus': lazyWithRetry(() => import('../pages/MenuManagement')),
+  '/departments': lazyWithRetry(() => import('../pages/DepartmentManagement')),
+  '/dicts': lazyWithRetry(() => import('../pages/DictManagement')),
+  '/database-backup': lazyWithRetry(() => import('../pages/DatabaseBackup')),
+  '/settings': lazyWithRetry(() => import('../pages/SystemSettings')),
   
   // 日志审计
-  '/operation-logs': lazy(() => import('../pages/OperationLogList')),
-  '/login-logs': lazy(() => import('../pages/LoginLogList')),
+  '/operation-logs': lazyWithRetry(() => import('../pages/OperationLogList')),
+  '/login-logs': lazyWithRetry(() => import('../pages/LoginLogList')),
 }
 
 // 权限标识与路由路径的映射

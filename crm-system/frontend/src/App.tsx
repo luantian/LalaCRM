@@ -1,6 +1,7 @@
-import { Suspense, useEffect, useState, useCallback } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { ConfigProvider, App as AntApp, Spin } from 'antd'
+import { Suspense, useEffect, useState, useCallback, Component } from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { ConfigProvider, App as AntApp, Spin, Result, Button } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -22,6 +23,48 @@ function ProtectedRoute({ children }: { children: React.ReactElement }) {
     return <Navigate to="/login" replace />
   }
   return children
+}
+
+// 嵌套路由未匹配兜底：菜单数据尚未加载完成、发版后路由未注册时，
+// 在内容区给出提示而不是无声弹回首页（此前表现为内容区空白）
+function NoMatch() {
+  const location = useLocation()
+  return (
+    <Result
+      status="404"
+      title="404"
+      subTitle={`页面不存在或暂无权限：${location.pathname}。可能是菜单数据尚未加载完成，请刷新重试。`}
+      extra={<Button type="primary" onClick={() => window.location.reload()}>刷新重试</Button>}
+    />
+  )
+}
+
+// 根错误边界：懒加载 chunk 失败（旧 hash 404 / 网络闪断）且自动刷新未生效时，
+// 错误此前会冒泡到根卸载整棵树（纯白屏），这里兜成可操作的错误页
+class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('页面渲染异常:', error, info)
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <Result
+          status="error"
+          title="页面加载异常"
+          subTitle="页面资源加载失败，请刷新重试；若持续出现请联系管理员。"
+          extra={<Button type="primary" onClick={() => window.location.reload()}>刷新页面</Button>}
+        />
+      )
+    }
+    return this.props.children
+  }
 }
 
 function App() {
@@ -267,6 +310,7 @@ function App() {
       }}
     >
       <AntApp>
+      <RootErrorBoundary>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -280,14 +324,17 @@ function App() {
                   </Suspense>
                 )
                 // 根路径使用 index route，其他路径去掉前导 /
-                return path === '/' 
+                return path === '/'
                   ? <Route key={path} index element={element} />
                   : <Route key={path} path={path.slice(1)} element={element} />
               })}
+            {/* 嵌套层兜底：未注册路由在内容区提示，菜单就绪后 App 重建路由会自动恢复 */}
+            <Route path="*" element={<NoMatch />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </RootErrorBoundary>
       </AntApp>
     </ConfigProvider>
   )
